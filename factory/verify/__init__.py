@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from factory.operators import registry
 from factory.schemas import GeneratedOperator, PipelinePlan, TaskSpec, ValidationReport
 from factory.verify.config import VerifyConfig, load_verify_config
 from factory.verify.sandbox import run_job
@@ -31,13 +32,19 @@ class Verifier:
             diags = check_source(gen.source, class_name=gen.spec.name, kind=gen.spec.kind)
             if diags:
                 return ValidationReport(plan_name=plan.name, passed=False, diagnostics=diags)
+        # 复用的生成算子（来自以前的运行）也要把源码带进子进程
+        sources = [g.source for g in generated.values()]
+        for step in plan.steps:
+            src = registry.source_of(step.operator_ref) if step.action == "reuse" else None
+            if src and src not in sources:
+                sources.append(src)
         # 第二到四级：沙箱子进程内执行
         job = {
             "plan": plan.model_dump(mode="json"),
             "spec": spec.model_dump(mode="json"),
             "config": cfg.model_dump(),
             "data_path": str(Path(data_path).resolve()),  # 子进程工作目录是临时目录
-            "sources": [g.source for g in generated.values()],
+            "sources": sources,
         }
         result, error = run_job(job, timeout=cfg.timeout_seconds, memory_mb=cfg.memory_mb, n_threads=cfg.n_threads)
         if error is not None:

@@ -20,8 +20,8 @@ from sklearn import metrics as skm
 from sklearn.base import clone
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
-from factory.operators import build_pipeline, registry
-from factory.operators.base import Operator
+from factory.operators import build_pipeline
+from factory.operators.synthesized import exec_operator_source
 from factory.profile import load_table
 from factory.schemas import Diagnostic, DiagnosticCode, OperatorKind, PipelinePlan, TaskSpec
 from factory.verify.config import VerifyConfig
@@ -82,7 +82,7 @@ def resolve_metric(name: str, n_classes: int) -> str:
 def run_checks(job: dict) -> dict:
     """执行冒烟、契约与指标检查，返回可 JSON 序列化的结果。"""
     for src in job.get("sources", []):
-        _load_generated(src)
+        exec_operator_source(src)
     plan = PipelinePlan.model_validate(job["plan"])
     spec = TaskSpec.model_validate(job["spec"])
     cfg = VerifyConfig.model_validate(job["config"])
@@ -101,16 +101,6 @@ def run_checks(job: dict) -> dict:
     result["diagnostics"] = [d.model_dump(mode="json") for d in diags]
     result["resources"]["peak_rss_mb"] = round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1)
     return result
-
-
-def _load_generated(source: str) -> None:
-    """执行生成的算子源码并注册其中的 Operator 子类（源码已通过静态检查）。"""
-    ns: dict[str, Any] = {"__name__": "factory_generated"}
-    exec(compile(source, "<generated>", "exec"), ns)  # noqa: S102 - 仅在沙箱子进程内执行
-    for obj in list(ns.values()):
-        if isinstance(obj, type) and issubclass(obj, Operator) and obj is not Operator and hasattr(obj, "meta"):
-            if obj.meta.key not in registry:
-                registry.register(obj)
 
 
 # ---------------------------------------------------------------------------
@@ -166,15 +156,23 @@ def smoke_and_contract(plan: PipelinePlan, X, y, classes, cfg: VerifyConfig) -> 
         if out_tr.shape[0] != cur_tr.shape[0] or out_te.shape[0] != cur_te.shape[0]:
             return [_diag(DiagnosticCode.BAD_SHAPE, "contract",
                           f"输出行数 {out_tr.shape[0]} 与输入 {cur_tr.shape[0]} 不一致", opname)]
+        if _bad_values(out_tr) > _bad_values(cur_tr):
+            return [_diag(DiagnosticCode.NAN_OUTPUT, "contract", "输出引入了新的 NaN/Inf", opname,
+                          "本算子产生的缺失值或无穷值需要在本算子内处理（如 fillna）")]
         cur_tr, cur_te = out_tr, out_te
 
     model_name = type(steps[-1][1]).meta.key
     try:
         model = steps[-1][1].fit(cur_tr, ytr)
-        proba = np.asarray(model.predict_proba(cur_te))
-        pred = np.asarray(model.predict(cur_te))
+        raw_proba, raw_pred = model.predict_proba(cur_te), model.predict(cur_te)
     except Exception as exc:  # noqa: BLE001
         return [_diag(DiagnosticCode.RUNTIME_ERROR, "sandbox", _short_exc(exc), model_name)]
+    if not isinstance(raw_proba, np.ndarray) or not isinstance(raw_pred, np.ndarray) or raw_pred.ndim != 1:
+        return [_diag(DiagnosticCode.BAD_SHAPE, "contract",
+                      f"predict_proba / predict 应返回 numpy 数组（二维 / 一维），实际为 "
+                      f"{type(raw_proba).__name__} / {type(raw_pred).__name__}", model_name,
+                      "sklearn 约定：predict_proba 返回 shape (n, n_classes) 的 ndarray，predict 返回 shape (n,) 的 ndarray")]
+    proba, pred = raw_proba, raw_pred
     if proba.shape != (len(Xte), len(model.classes_)) or pred.shape[0] != len(Xte):
         return [_diag(DiagnosticCode.BAD_SHAPE, "contract", f"predict_proba 形状 {proba.shape} 不符合预期", model_name)]
     if not np.isfinite(proba).all():
@@ -183,17 +181,30 @@ def smoke_and_contract(plan: PipelinePlan, X, y, classes, cfg: VerifyConfig) -> 
         return [_diag(DiagnosticCode.BAD_PROBA, "contract", "预测概率不在 [0,1] 或行和不为 1", model_name)]
 
     # 健壮性：未见类别与缺失值
+    cur, culprit = _perturb(Xte), model_name
     try:
-        cur = _perturb(Xte)
         for _, op in steps[:-1]:
+            culprit = type(op).meta.key
             cur = op.transform(cur)
+        culprit = model_name
         p2 = np.asarray(model.predict_proba(cur))
         if not np.isfinite(p2).all():
             raise ValueError("预测概率出现 NaN")
     except Exception as exc:  # noqa: BLE001
         return [_diag(DiagnosticCode.RUNTIME_ERROR, "contract", "未见类别/缺失值健壮性检查失败：" + _short_exc(exc),
-                      hint="编码器需忽略未见类别；预测前需处理缺失值")]
+                      culprit, "需能处理预测时出现的未见类别和缺失值")]
     return []
+
+
+def _bad_values(X) -> int:
+    """统计数值部分的 NaN/Inf 个数（稀疏矩阵只看非零元素）。"""
+    if hasattr(X, "select_dtypes"):
+        arr = X.select_dtypes(include="number").to_numpy(dtype=float)
+    elif hasattr(X, "data") and hasattr(X, "nnz"):
+        arr = X.data
+    else:
+        arr = np.asarray(X, dtype=float)
+    return int((~np.isfinite(arr)).sum())
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +230,8 @@ def evaluate(plan, spec: TaskSpec, X, y, classes, pos, cfg: VerifyConfig, result
 
     per_seed: dict[str, list[float]] = {m: [] for m in names}
     fit_s, pred_s, pred_rows = 0.0, 0.0, 0
-    model_name = plan.steps[-1].operator_ref or plan.steps[-1].kind.value
+    last = plan.steps[-1]
+    model_name = last.operator_ref if last.action == "reuse" else build_pipeline(plan).steps[-1][1].meta.key
     try:
         for seed in cfg.seeds:
             fold_vals: dict[str, list[float]] = {m: [] for m in names}
@@ -229,7 +241,7 @@ def evaluate(plan, spec: TaskSpec, X, y, classes, pos, cfg: VerifyConfig, result
                 pipe.fit(X.iloc[tr], y[tr])
                 t1 = time.perf_counter()
                 proba = pipe.predict_proba(X.iloc[te])
-                pred = pipe.classes_[np.argmax(proba, axis=1)]
+                pred = pipe.predict(X.iloc[te])  # 使用模型自身的决策规则（可能做了阈值调整）
                 pred_s += time.perf_counter() - t1
                 fit_s += t1 - t0
                 pred_rows += len(te)

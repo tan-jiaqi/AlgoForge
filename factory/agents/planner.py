@@ -4,6 +4,9 @@
 2. retrieve：按 TaskSpec 与画像标签，分步骤从 KG 检索候选算子和相关 Lesson（确定性）；
 3. propose：TaskSpec + 画像 + 检索结果 → 若干候选 ``PipelinePlan``（LLM，带语义校验）。
 
+每一步由 Planner 决定 Reuse（能力库中已有可执行算子）还是 Synthesize（交给 Synthesizer 生成；
+KG 中有抽取到的历史实现时，在 synth_spec.reference 中引用它）。
+
 所有 LLM 输出都经过 schema 与语义双重校验（算子是否存在、参数是否合法、模态是否匹配），
 失败时把错误反馈给 LLM 重试。
 """
@@ -82,10 +85,13 @@ def _wrap(payload: dict) -> str:
 
 
 class Planner:
-    def __init__(self, llm: LLM, kg: CapabilityKG, reg: OperatorRegistry = registry):
+    MAX_SYNTH_STEPS = 2
+
+    def __init__(self, llm: LLM, kg: CapabilityKG, reg: OperatorRegistry = registry, *, allow_synthesis: bool = True):
         self.llm = llm
         self.kg = kg
         self.reg = reg
+        self.allow_synthesis = allow_synthesis
 
     # ------------------------------------------------------------------
     # 1. 需求理解
@@ -125,18 +131,31 @@ class Planner:
         )
         if target and spec.target_column != target:
             spec = spec.model_copy(update={"target_column": target})
-        return spec
+        return self._grounded_metrics(spec, request, payload["scenario_metrics"])
+
+    @staticmethod
+    def _grounded_metrics(spec: TaskSpec, request: str, known: list[dict]) -> TaskSpec:
+        """次要指标的阈值必须有出处（用户需求或 KG 中的场景指标），否则只报告、不作为门槛。
+
+        例：需求文档只要求"报告 recall@20%"，LLM 却给它编了 0.7 的阈值，会让所有方案无端失败。
+        """
+        sources = {(m["name"], m.get("threshold")) for m in known if m.get("threshold") is not None}
+        kept = [m for m in spec.metrics
+                if m.primary or (m.name, m.threshold) in sources or f"{m.threshold:g}" in request]
+        return spec if len(kept) == len(spec.metrics) else spec.model_copy(update={"metrics": kept})
 
     # ------------------------------------------------------------------
     # 2. 知识检索
     # ------------------------------------------------------------------
 
     def retrieve(
-        self, spec: TaskSpec, profile: DataProfile, *, scenario: str | None, executable_only: bool = True, top_k: int = 3
+        self, spec: TaskSpec, profile: DataProfile, *, scenario: str | None, executable_only: bool | None = None, top_k: int = 3
     ) -> PlanningContext:
         conditions = sorted(set(profile.tags) | set(spec.constraints))
         query = f"{spec.description} {' '.join(conditions)}"
         order = TEXT_ORDER if spec.modality == Modality.TEXT else TABULAR_ORDER
+        if executable_only is None:
+            executable_only = not self.allow_synthesis
         ctx = PlanningContext(scenario=scenario, scenario_metrics=scenario_metrics(self.kg, scenario))
         for kind in order:
             hits = self.kg.search_operators(
@@ -147,7 +166,10 @@ class Planner:
                 ctx.options[kind.value] = [
                     {
                         "ref": h.key,
+                        "executable": h.key in self.reg,
+                        "origin": h.attrs.get("origin"),
                         "description": h.attrs["description"],
+                        "conditions": sorted(self.kg.operator_conditions(node_id("Operator", h.key))),
                         "params": operator_params(h.key, self.reg) if h.key in self.reg else [],
                         "defaults": h.attrs.get("params", {}),
                         "score": h.score,
@@ -177,6 +199,8 @@ class Planner:
             "task_spec": spec.model_dump(mode="json"),
             "data_profile": profile.summary(),
             "n_candidates": n_candidates,
+            "allow_synthesis": self.allow_synthesis,
+            "max_synthesize_steps": self.MAX_SYNTH_STEPS if self.allow_synthesis else 0,
             "step_order": [k.value for k in order],
             **ctx.to_prompt(),
             "feedback": feedback or [],
@@ -185,9 +209,18 @@ class Planner:
             "你是算法能力工厂的 Planner。根据 TaskSpec、数据画像和从知识图谱检索到的候选算子，"
             f"给出 {n_candidates} 个互不相同的候选 PipelinePlan，放在 plans 列表中；优先使用不同的模型，只有一个可选模型时改变预处理或超参数。\n"
             "规则：\n"
-            "- 步骤按 step_order 排列，可省略不需要的步骤，最后一步必须是 model；\n"
-            "- 每步 action 为 reuse，operator_ref 只能取 operator_options 中给出的 ref；\n"
-            "- params 只能使用该算子 params 列表中的参数名，不需要改动时留空；\n"
+            "- 步骤按 step_order 排列（清洗类 synthesize 步骤可放最前），可省略不需要的步骤，最后一步必须是 model；\n"
+            + (
+                "- executable=true 的选项用 action=reuse，operator_ref 取其 ref；\n"
+                "- 能力库中没有合适算子、但数据或需求确有需要时（如 string_typed_numeric、id_columns、特征工程），"
+                "用 action=synthesize 并给出 synth_spec（name 为 CamelCase 英文，purpose/inputs/outputs 用中文）；"
+                "若 operator_options 中有 executable=false 的历史实现，name 沿用其名字并把 ref 填入 synth_spec.reference；"
+                "每个方案最多 max_synthesize_steps 个 synthesize 步骤；清洗类的 synthesize 步骤放在最前面；\n"
+                "- 只处理特定列的清洗算子（如 TotalChargesCleaner）不能代替通用的缺失值填补，其他列有缺失时仍需 imputer；\n"
+                if self.allow_synthesis
+                else "- 每步 action 为 reuse，operator_ref 只能取 operator_options 中给出的 ref；\n"
+            )
+            + "- reuse 步骤的 params 只能使用该算子 params 列表中的参数名，不需要改动时留空；\n"
             "- 每步 rationale 用一句中文说明理由，引用 evidence 或 lessons；plan 的 rationale 说明整体设计依据；\n"
             "- 结合 lessons 中的经验，例如不平衡数据使用 class_weight=balanced；\n"
             "- feedback 非空时，表示之前的方案未通过验证，新方案必须针对这些问题调整（换算子或调参）；\n"
@@ -215,11 +248,22 @@ class Planner:
 
     def plan_errors(self, plan: PipelinePlan, spec: TaskSpec, *, allow_synthesis: bool = False) -> list[str]:
         """语义校验：算子存在、类型与模态匹配、参数合法。"""
+        allow_synthesis = allow_synthesis or self.allow_synthesis
         errors = []
+        n_synth = sum(s.action == "synthesize" for s in plan.steps)
+        if n_synth > self.MAX_SYNTH_STEPS:
+            errors.append(f"synthesize 步骤 {n_synth} 个，超过上限 {self.MAX_SYNTH_STEPS}")
         for i, step in enumerate(plan.steps):
             if step.action == "synthesize":
                 if not allow_synthesis:
                     errors.append(f"第 {i + 1} 步：当前只允许 reuse")
+                    continue
+                name = step.synth_spec.name
+                if name in self.reg and self.reg.get(name).meta.origin != "extracted":
+                    errors.append(f"第 {i + 1} 步：能力库已有可执行算子 {self.reg.get(name).meta.key}，应使用 reuse")
+                ref = step.synth_spec.reference
+                if ref and node_id("Operator", ref) not in self.kg.g:
+                    errors.append(f"第 {i + 1} 步：reference {ref} 不在知识图谱中")
                 continue
             if step.operator_ref not in self.reg:
                 errors.append(f"第 {i + 1} 步：未知算子 {step.operator_ref}")
@@ -239,6 +283,10 @@ class Planner:
         steps = []
         for step in plan.steps:
             update: dict = {}
+            if step.action == "synthesize" and step.synth_spec.reference and "@" not in step.synth_spec.reference:
+                hit = [d["key"] for _, d in self.kg.nodes("Operator") if d["name"] == step.synth_spec.reference]
+                ref = max(hit, default=None, key=lambda k: int(k.split("@")[1]))
+                update["synth_spec"] = step.synth_spec.model_copy(update={"reference": ref})
             if step.action == "reuse" and step.operator_ref:
                 meta = self.reg.get(step.operator_ref).meta
                 update["operator_ref"] = meta.key

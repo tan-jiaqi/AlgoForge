@@ -1,6 +1,6 @@
 """把 PipelinePlan 渲染为可独立运行的训练/预测脚本（"复刻"出的算法代码）。
 
-复用的算子以 import 方式引用，生成的算子源码直接内嵌；每一步附上 Planner 给出的理由。
+复用的内置算子以 import 方式引用，生成的算子（本次生成或以前沉淀的）源码直接内嵌；每一步附上 Planner 给出的理由。
 """
 
 from __future__ import annotations
@@ -68,18 +68,26 @@ if __name__ == "__main__":
 def render_pipeline(plan: PipelinePlan, spec: TaskSpec, generated: dict[str, GeneratedOperator] | None = None) -> str:
     generated = generated or {}
     imports: dict[str, set[str]] = {}
+    embedded = {name: g.source for name, g in generated.items()}
     steps = []
     for i, step in enumerate(plan.steps):
-        ref = step.operator_ref or step.synth_spec.name
-        cls = registry.get(ref)
-        if cls.meta.origin != "synthesized":
-            imports.setdefault(cls.__module__, set()).add(cls.__name__)
-        params = {**cls.meta.params, **step.params}
-        args = ", ".join(f"{k}={v!r}" for k, v in params.items())
+        if step.action == "synthesize":
+            # 本次生成的算子：源码内嵌，参数用其 __init__ 默认值
+            cls_name, args = step.synth_spec.name, ", ".join(f"{k}={v!r}" for k, v in step.params.items())
+        else:
+            cls = registry.get(step.operator_ref)
+            cls_name = cls.__name__
+            src = registry.source_of(step.operator_ref)
+            if src:  # 以前沉淀的生成算子也内嵌源码，脚本不依赖运行时注册
+                embedded.setdefault(cls_name, src)
+            else:
+                imports.setdefault(cls.__module__, set()).add(cls_name)
+            params = {**cls.meta.params, **step.params}
+            args = ", ".join(f"{k}={v!r}" for k, v in params.items())
         comment = f"  # {step.rationale}" if step.rationale else ""
-        steps.append(f'        ("{i}_{step.kind.value}", {cls.__name__}({args})),{comment}')
+        steps.append(f'        ("{i}_{step.kind.value}", {cls_name}({args})),{comment}')
     import_lines = "\n".join(f"from {mod} import {', '.join(sorted(names))}" for mod, names in sorted(imports.items()))
-    gen_src = "\n\n".join(textwrap.dedent(g.source).strip() for g in generated.values())
+    gen_src = "\n\n".join(_strip_future(textwrap.dedent(src).strip()) for src in embedded.values())
     return TEMPLATE.format(
         title=f"{spec.description[:40]} —— 自动生成的算法流水线",
         request=spec.description,
@@ -92,3 +100,8 @@ def render_pipeline(plan: PipelinePlan, spec: TaskSpec, generated: dict[str, Gen
         target=spec.target_column,
         steps="\n".join(steps),
     )
+
+
+def _strip_future(src: str) -> str:
+    """内嵌源码时去掉 from __future__ import（它只能出现在文件开头）。"""
+    return "\n".join(line for line in src.splitlines() if not line.startswith("from __future__"))

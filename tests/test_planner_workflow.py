@@ -31,12 +31,12 @@ def _spec_and_ctx(planner, csv):
 
 
 def test_rule_mock_understand_and_retrieve(kg_path, churn_csv):
-    planner = Planner(rule_based_mock(), CapabilityKG.load(kg_path))
+    planner = Planner(rule_based_mock(), CapabilityKG.load(kg_path), allow_synthesis=False)
     spec, _, ctx = _spec_and_ctx(planner, churn_csv)
     assert spec.target_column == "churn" and spec.primary_metric.name == "recall"
     assert set(spec.constraints) == {"interpretable", "recall_first"}
     assert "model" in ctx.options and ctx.lessons
-    assert all(o["ref"] in registry for opts in ctx.options.values() for o in opts), "M3 只检索可执行算子"
+    assert all(o["ref"] in registry for opts in ctx.options.values() for o in opts), "不允许生成时只检索可执行算子"
 
 
 def test_planner_retries_on_unknown_operator(kg_path, churn_csv):

@@ -62,6 +62,7 @@ class OperatorRegistry:
 
     def __init__(self) -> None:
         self._ops: dict[str, type[Operator]] = {}
+        self.sources: dict[str, str] = {}  # 生成算子的源码（沙箱执行与代码导出时需要）
 
     def register(self, cls: type[Operator]) -> type[Operator]:
         meta = getattr(cls, "meta", None)
@@ -84,6 +85,9 @@ class OperatorRegistry:
     def create(self, ref: str, **params: Any) -> Operator:
         cls = self.get(ref)
         return cls(**{**cls.meta.params, **params})
+
+    def source_of(self, ref: str) -> str | None:
+        return self.sources.get(self.get(ref).meta.key) if ref in self else None
 
     def latest_version(self, name: str) -> int:
         versions = [cls.meta.version for cls in self._ops.values() if cls.meta.name == name]

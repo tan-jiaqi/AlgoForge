@@ -46,3 +46,16 @@ def fast_verify():
 
     return VerifyConfig(cv_folds=3, seeds=[0, 1], smoke_rows=120, timeout_seconds=60, report_metrics=["roc_auc"], n_threads=1,
                         max_metric_std=0.1)  # 小样本下种子间波动较大
+
+
+@pytest.fixture(autouse=True)
+def _isolate_registry():
+    """测试中注册的生成算子不能泄漏到其他测试。"""
+    from factory.operators import registry
+
+    ops, sources = dict(registry._ops), dict(registry.sources)
+    yield
+    registry._ops.clear()
+    registry._ops.update(ops)
+    registry.sources.clear()
+    registry.sources.update(sources)

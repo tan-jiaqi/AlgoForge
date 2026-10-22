@@ -315,7 +315,7 @@ def build_kg(result: ExtractionResult, manifest: dict, functions: list[CodeFunct
                     origin="history", note=exp.note, source=src,
                 )
         for les in know.lessons:
-            targets = [t for t in (_resolve_target(kg, name, sc["name"]) for name in les.applies_to) if t]
+            targets = [t for t in (resolve_target(kg, name, sc["name"]) for name in les.applies_to) if t]
             kg.add_lesson(
                 title=les.title, trigger=les.trigger, fix=les.fix, error_code=les.error_code,
                 applies_to=targets, learned_from=src,
@@ -335,7 +335,7 @@ def _resolve_operator(kg: CapabilityKG, name: str) -> str | None:
     return max(cands)[2] if cands else None
 
 
-def _resolve_target(kg: CapabilityKG, name: str, scenario: str) -> str | None:
+def resolve_target(kg: CapabilityKG, name: str, scenario: str) -> str | None:
     if op := _resolve_operator(kg, name):
         return op
     if name == scenario:

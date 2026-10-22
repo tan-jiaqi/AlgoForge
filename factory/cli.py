@@ -55,12 +55,15 @@ def run(
     max_replans: int = typer.Option(1, help="指标不达标时最多重新规划的次数"),
     kg: Path = typer.Option(None, help="知识图谱路径（默认 kg/capability_kg.json）"),
     no_writeback: bool = typer.Option(False, "--no-writeback", help="不把验证结果写回 KG"),
+    no_synthesis: bool = typer.Option(False, "--no-synthesis", help="只复用能力库中已有算子，不生成新算子"),
+    max_repairs: int = typer.Option(3, help="每个生成算子最多修复轮数"),
 ) -> None:
-    """端到端：需求理解 → 知识检索 → 方案规划 → 自动验证 → 知识沉淀。"""
+    """端到端：需求理解 → 知识检索 → 方案规划（复用/生成）→ 自动验证 → 修复优化 → 知识沉淀。"""
     from factory.kg import DEFAULT_KG_PATH
     from factory.workflow import Workflow, WorkflowConfig, best_report
 
-    cfg = WorkflowConfig(n_candidates=candidates, max_replans=max_replans, writeback=not no_writeback)
+    cfg = WorkflowConfig(n_candidates=candidates, max_replans=max_replans, max_repairs=max_repairs,
+                         allow_synthesis=not no_synthesis, writeback=not no_writeback)
     wf = Workflow(make_llm(llm), kg_path=kg or DEFAULT_KG_PATH, config=cfg)
     with console.status("运行中…"):
         state = wf.run(request, str(data), target=target)
@@ -93,7 +96,18 @@ def run(
         console.rule(f"最优方案：{plan.name}")
         console.print(plan.rationale)
         for i, step in enumerate(plan.steps):
-            console.print(f"  {i + 1}. [{step.kind.value}] {step.operator_ref} {step.params or ''} —— {step.rationale}")
+            op = step.operator_ref if step.action == "reuse" else f"[magenta]生成 {step.synth_spec.name}[/magenta]"
+            console.print(f"  {i + 1}. [{step.kind.value}] {op} {step.params or ''} —— {step.rationale}")
+    if state.generated or state.registered or state.lessons_learned:
+        console.rule("能力生成与沉淀")
+        for name, gen in state.generated.items():
+            console.print(f"  生成 {gen.key}（修复 {gen.revision} 轮）：{gen.spec.purpose}"
+                          + (f"，参考 {gen.spec.reference}" if gen.spec.reference else ""))
+        for rec in state.repairs:
+            mark = {True: "[green]已修复[/green]", False: "[red]未修复[/red]", None: "-"}[rec.fixed]
+            console.print(f"  修复 {rec.operator} r{rec.revision}：{rec.diagnostic.code.value} {rec.diagnostic.message[:60]} → {mark}")
+        console.print(f"  注册到能力库：{state.registered or '无'}；新增经验：{len(state.lessons_learned)} 条；"
+                      f"使用经验：{len(state.lessons_used)} 条")
     console.rule("运行记录")
     for line in state.log:
         console.print("  " + line)

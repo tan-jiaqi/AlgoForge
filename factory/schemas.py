@@ -86,6 +86,7 @@ class SynthSpec(BaseModel):
     purpose: str
     inputs: str = Field(description="期望输入，如 '含数值列的 DataFrame'")
     outputs: str = Field(description="产出，如 '新增比值特征后的 DataFrame'")
+    reference: str | None = Field(default=None, description="KG 中可参考的历史实现（抽取算子的 Name@version）")
 
 
 class Step(BaseModel):
@@ -135,7 +136,12 @@ class GeneratedOperator(BaseModel):
 
     spec: SynthSpec
     source: str
-    revision: int = 0
+    version: int = Field(default=1, description="注册时的算子版本号（与已有同名算子顺延）")
+    revision: int = Field(default=0, description="本次运行内的修复轮次，0 为首版")
+
+    @property
+    def key(self) -> str:
+        return f"{self.spec.name}@{self.version}"
 
 
 class DiagnosticCode(str, Enum):
@@ -200,6 +206,18 @@ class ValidationReport(BaseModel):
         return self.metrics.get(spec.primary_metric.name, float("-inf"))
 
 
+class RepairRecord(BaseModel):
+    """一次"诊断 → 修复"，任务结束后提炼为 Lesson。"""
+
+    operator: str
+    revision: int = Field(description="修复后的修订号")
+    diagnostic: Diagnostic
+    lessons: list[str] = Field(default_factory=list, description="修复时放进 prompt 的 Lesson id")
+    fixed: bool | None = Field(default=None, description="修复后的版本是否通过了该项检查")
+    before: str = Field(default="", description="修复前源码")
+    after: str = Field(default="", description="修复后源码")
+
+
 # ---------------------------------------------------------------------------
 # 在各 Agent 之间传递的工作流状态
 # ---------------------------------------------------------------------------
@@ -220,6 +238,10 @@ class RunState(BaseModel):
     best_plan: str | None = None
     repair_rounds: int = 0
     replans: int = 0
+    history: list[ValidationReport] = Field(default_factory=list, description="被修复替换掉的旧验证结果")
+    repairs: list[RepairRecord] = Field(default_factory=list)
+    registered: list[str] = Field(default_factory=list, description="本次注册到能力库的新算子")
+    lessons_learned: list[str] = Field(default_factory=list, description="本次提炼写入 KG 的 Lesson")
     lessons_used: list[str] = Field(default_factory=list, description="规划/修复时放进 prompt 的 Lesson 节点 id")
     kg_writes: list[str] = Field(default_factory=list, description="回写到 KG 的 ValidationRun 节点 id")
     artifacts: dict[str, str] = Field(default_factory=dict)

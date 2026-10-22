@@ -1,10 +1,14 @@
 """工作流：一个显式的状态机，在各 Agent 之间传递 RunState。
 
-    PLAN → BUILD → VERIFY → ROUTE ─┬─ 有方案通过        → CURATE → DONE
-                                   ├─ 指标不达标且可重试 → REPLAN → BUILD ...
-                                   └─ 其他              → CURATE → FAILED（失败结果同样回写 KG）
+    PLAN → BUILD → VERIFY → ROUTE ─┬─ 生成算子有代码类错误且未超轮数 → REPAIR → VERIFY ...
+                                   ├─ 有方案通过                    → CURATE → DONE
+                                   ├─ 指标不达标且可重试            → REPLAN → BUILD ...
+                                   └─ 其他                          → CURATE → FAILED（失败结果同样回写 KG）
 
-里程碑 3 只做 Reuse；代码类错误的修复（REPAIR）与新算子生成（SYNTHESIZE）在里程碑 4 加入。
+- BUILD：为 synthesize 步骤调用 Synthesizer 生成算子（同名算子在一次运行内只生成一次）；
+- REPAIR：诊断能定位到生成算子时，只修复该算子（带上同诊断码的 Lesson），然后只重验受影响的方案；
+- 先修复、后选优：所有候选都得到修复机会后再比较，保证公平。
+
 不使用 LangGraph 等框架：状态转移一目了然，依赖少，便于单元测试。
 """
 
@@ -17,11 +21,14 @@ from pathlib import Path
 
 from factory.agents.curator import Curator
 from factory.agents.planner import Planner, PlanningContext, resolve_scenario
+from factory.agents.synthesizer import Synthesizer
 from factory.codegen import render_pipeline
 from factory.kg import DEFAULT_KG_PATH, CapabilityKG, short_hash
 from factory.llm import LLM
+from factory.operators import registry
+from factory.operators.synthesized import load_saved_operators
 from factory.profile import DataProfile, profile
-from factory.schemas import RunState, ValidationReport
+from factory.schemas import Diagnostic, GeneratedOperator, PipelinePlan, RepairRecord, RunState, ValidationReport
 from factory.utils import ROOT, get_logger
 from factory.verify import Verifier, VerifyConfig
 
@@ -34,6 +41,8 @@ DEFAULT_RUNS_DIR = ROOT / "runs"
 class WorkflowConfig:
     n_candidates: int = 2
     max_replans: int = 1
+    max_repairs: int = 3  # 每个生成算子最多修复的轮数
+    allow_synthesis: bool = True
     writeback: bool = True
     verify: VerifyConfig | None = None  # None 表示按任务类型读取 configs/tasks/*.yaml
 
@@ -46,6 +55,8 @@ class _Ctx:
     scenario: str | None = None
     planning: PlanningContext | None = None
     feedback: list[str] = field(default_factory=list)
+    repair_queue: list[tuple[str, Diagnostic]] = field(default_factory=list)
+    retired: set[str] = field(default_factory=set)  # 重新规划后被替换的旧方案，不再验证和修复
 
 
 class Workflow:
@@ -60,11 +71,15 @@ class Workflow:
         self.llm = llm
         self.kg_path = Path(kg_path)
         self.kg = CapabilityKG.load(self.kg_path)
+        loaded = load_saved_operators(self.kg_path)
+        if loaded:
+            log.info("加载已沉淀的生成算子：%s", loaded)
         self.runs_dir = Path(runs_dir)
         self.cfg = config or WorkflowConfig()
-        self.planner = Planner(llm, self.kg)
+        self.planner = Planner(llm, self.kg, allow_synthesis=self.cfg.allow_synthesis)
+        self.synthesizer = Synthesizer(llm, self.kg)
         self.verifier = Verifier(self.cfg.verify)
-        self.curator = Curator(self.kg, self.kg_path if self.cfg.writeback else None)
+        self.curator = Curator(self.kg, self.kg_path if self.cfg.writeback else None, llm)
 
     # ------------------------------------------------------------------
 
@@ -77,6 +92,7 @@ class Workflow:
             "BUILD": self._build,
             "VERIFY": self._verify,
             "ROUTE": self._route,
+            "REPAIR": self._repair,
             "REPLAN": self._replan,
             "CURATE": self._curate,
         }
@@ -115,73 +131,173 @@ class Workflow:
         ctx.planning = self.planner.retrieve(state.spec, ctx.profile, scenario=ctx.scenario)
         state.lessons_used = [les["id"] for les in ctx.planning.lessons]
         state.candidates = self.planner.propose(state.spec, ctx.profile, ctx.planning, n_candidates=self.cfg.n_candidates)
-        state.note(f"[PLAN] 候选方案：{[p.name for p in state.candidates]}")
+        state.note(f"[PLAN] 候选方案：{[_describe(p) for p in state.candidates]}")
         return "BUILD"
 
     def _build(self, state: RunState, ctx: _Ctx) -> str:
-        # 里程碑 3：所有步骤均为 reuse，Planner 已校验算子存在，这里无需生成代码
+        """为尚未生成的 synthesize 步骤生成算子代码。"""
+        for plan in state.candidates:
+            for step in plan.steps:
+                if step.action != "synthesize" or step.synth_spec.name in state.generated:
+                    continue
+                spec = step.synth_spec
+                lessons = self.kg.search_lessons(f"{spec.purpose} {spec.inputs} {spec.outputs}", top_k=3)
+                self._use_lessons(state, lessons)
+                gen = self.synthesizer.synthesize(spec, state.spec, ctx.profile, version=self._next_version(spec.name), lessons=lessons)
+                state.generated[spec.name] = gen
+                ref = f"（参考 {spec.reference}）" if spec.reference else ""
+                state.note(f"[BUILD] 生成算子 {gen.key}{ref}：{spec.purpose}")
         return "VERIFY"
 
     def _verify(self, state: RunState, ctx: _Ctx) -> str:
         done = {r.plan_name for r in state.reports}
         for plan in state.candidates:
-            if plan.name in done:
+            if plan.name in done or plan.name in ctx.retired:
                 continue
-            report = self.verifier.verify(plan, state.spec, state.data_path, state.generated)
+            report = self.verifier.verify(plan, state.spec, state.data_path, self._generated_for(plan, state))
             state.reports.append(report)
             primary = state.spec.primary_metric.name
             state.note(f"[VERIFY] {plan.name}：{'通过' if report.passed else '未通过'}，"
                        f"{primary}={report.metrics.get(primary, float('nan')):.4f}"
                        + "".join(f"；{d.code.value} {d.message}" for d in report.diagnostics))
+        self._mark_repairs(state)
         return "ROUTE"
 
     def _route(self, state: RunState, ctx: _Ctx) -> str:
+        ctx.repair_queue = self._repairable(state, ctx)
+        if ctx.repair_queue:
+            return "REPAIR"
         passed = [r for r in state.reports if r.passed]
         if passed:
             state.best_plan = max(passed, key=lambda r: r.primary_value(state.spec)).plan_name
             return "CURATE"
-        latest = [r for r in state.reports if r.plan_name in {p.name for p in state.candidates}]
-        metric_only = all(d.code.category == "metric" for r in latest for d in r.diagnostics)
-        if metric_only and state.replans < self.cfg.max_replans:
+        metric_only = all(d.code.category == "metric" for r in state.reports for d in r.diagnostics)
+        if state.replans < self.cfg.max_replans and (metric_only or self.cfg.allow_synthesis):
             return "REPLAN"
         best = max(state.reports, key=lambda r: r.primary_value(state.spec), default=None)
         state.best_plan = best.plan_name if best else None
-        state.note("[ROUTE] 没有方案通过验证" + ("" if metric_only else "（存在代码类错误，里程碑 4 将支持修复）"))
+        state.note("[ROUTE] 没有方案通过验证")
         return "CURATE"
+
+    def _repair(self, state: RunState, ctx: _Ctx) -> str:
+        for name, diag in ctx.repair_queue:
+            gen = state.generated[name]
+            lessons = self.kg.search_lessons(f"{diag.message} {diag.hint}", error_code=diag.code, top_k=3)
+            self._use_lessons(state, lessons)
+            fixed = self.synthesizer.repair(gen, diag, lessons=lessons)
+            state.generated[name] = fixed
+            state.repairs.append(RepairRecord(
+                operator=gen.key, revision=fixed.revision, diagnostic=diag,
+                lessons=[les["id"] for les in lessons], before=gen.source, after=fixed.source,
+            ))
+            state.repair_rounds += 1
+            hit = f"，参考经验：{[les['title'] for les in lessons]}" if lessons else ""
+            state.note(f"[REPAIR] 修复 {gen.key} 第 {fixed.revision} 轮：{diag.code.value} {diag.message[:80]}{hit}")
+            # 用到该算子的方案需要重新验证
+            stale = {p.name for p in state.candidates if _uses(p, name) and p.name not in ctx.retired}
+            state.history += [r for r in state.reports if r.plan_name in stale]
+            state.reports = [r for r in state.reports if r.plan_name not in stale]
+        return "VERIFY"
 
     def _replan(self, state: RunState, ctx: _Ctx) -> str:
         state.replans += 1
+        names = {p.name for p in state.candidates}
         for r in state.reports:
-            if r.plan_name in {p.name for p in state.candidates} and not r.passed:
+            if r.plan_name in names and not r.passed:
                 ctx.feedback.append(f"{r.plan_name}: " + "；".join(f"{d.code.value} {d.message}" for d in r.diagnostics))
-        tried = {p.name for p in state.candidates}
+        for name, gen in state.generated.items():
+            if gen.revision >= self.cfg.max_repairs:
+                ctx.feedback.append(f"生成算子 {name} 修复 {gen.revision} 轮仍未通过，请换一种实现思路或不用它")
+        ctx.retired |= names
         new = self.planner.propose(state.spec, ctx.profile, ctx.planning, n_candidates=self.cfg.n_candidates, feedback=ctx.feedback)
         for p in new:
-            if p.name in tried:
+            if p.name in names:
                 p.name = f"{p.name}_r{state.replans}"
+            for step in p.steps:  # 修复失败的生成算子不再沿用旧代码，重新生成
+                gen = state.generated.get(step.synth_spec.name) if step.action == "synthesize" else None
+                if gen and gen.revision >= self.cfg.max_repairs:
+                    state.generated.pop(step.synth_spec.name)
         state.candidates += new
-        state.note(f"[REPLAN] 第 {state.replans} 次重新规划：{[p.name for p in new]}")
+        state.note(f"[REPLAN] 第 {state.replans} 次重新规划：{[_describe(p) for p in new]}")
         return "BUILD"
 
     def _curate(self, state: RunState, ctx: _Ctx) -> str:
         state.kg_writes = self.curator.record(state, ctx.scenario)
-        state.note(f"[CURATE] 写入 KG：{len(state.kg_writes)} 条 ValidationRun")
+        state.note(f"[CURATE] 写入 KG：{len(state.kg_writes)} 条 ValidationRun；注册新算子 {state.registered}；"
+                   f"新增经验 {len(state.lessons_learned)} 条")
         return "DONE" if any(r.passed for r in state.reports) else "FAILED"
 
     # ------------------------------------------------------------------
+    # 辅助
+    # ------------------------------------------------------------------
+
+    def _next_version(self, name: str) -> int:
+        """与能力库、KG 中的同名算子顺延版本号（抽取的历史实现记为 v1，生成的从 v2 开始）。"""
+        versions = [d["version"] for _, d in self.kg.nodes("Operator") if d["name"] == name]
+        if name in registry:
+            versions.append(registry.latest_version(name))
+        return max(versions, default=0) + 1
+
+    def _generated_for(self, plan: PipelinePlan, state: RunState) -> dict[str, GeneratedOperator]:
+        return {s.synth_spec.name: state.generated[s.synth_spec.name] for s in plan.steps
+                if s.action == "synthesize" and s.synth_spec.name in state.generated}
+
+    def _repairable(self, state: RunState, ctx: _Ctx) -> list[tuple[str, Diagnostic]]:
+        """找出可以修复的生成算子：诊断为代码类、能定位到该算子、且未超过修复轮数。"""
+        queue: dict[str, Diagnostic] = {}
+        for report in state.reports:
+            if report.plan_name in ctx.retired:
+                continue
+            for d in report.diagnostics:
+                if d.code.category != "code" or not d.operator:
+                    continue
+                name = d.operator.split("@")[0]
+                gen = state.generated.get(name)
+                if gen and gen.revision < self.cfg.max_repairs and name not in queue:
+                    queue[name] = d
+        return list(queue.items())
+
+    def _mark_repairs(self, state: RunState) -> None:
+        """修复后的版本重新验证完毕时，判断该次修复是否解决了原来的问题。"""
+        for rec in state.repairs:
+            if rec.fixed is not None:
+                continue
+            name = rec.operator.split("@")[0]
+            related = [r for r in state.reports if any(_uses(p, name) for p in state.candidates if p.name == r.plan_name)]
+            if not related:
+                continue
+            same = [d for r in related for d in r.diagnostics
+                    if d.code == rec.diagnostic.code and (d.operator or "").split("@")[0] == name]
+            rec.fixed = not same
+
+    def _use_lessons(self, state: RunState, lessons: list[dict]) -> None:
+        for les in lessons:
+            if les["id"] not in state.lessons_used:
+                state.lessons_used.append(les["id"])
 
     def _save(self, state: RunState) -> None:
         out = self.runs_dir / state.run_id
         out.mkdir(parents=True, exist_ok=True)
         plan = next((p for p in state.candidates if p.name == state.best_plan), None)
         if plan is not None and state.spec is not None:
-            code = render_pipeline(plan, state.spec, state.generated)
+            code = render_pipeline(plan, state.spec, self._generated_for(plan, state))
             if state.status != "succeeded":
                 code = "# 警告：该方案未通过验证，仅为得分最高的候选，供人工参考。\n" + code
             (out / "pipeline.py").write_text(code, encoding="utf-8")
             state.artifacts["pipeline"] = str(out / "pipeline.py")
+        for name, gen in state.generated.items():
+            (out / f"{name}_v{gen.version}_r{gen.revision}.py").write_text(gen.source, encoding="utf-8")
         state.artifacts["state"] = str(out / "state.json")
         (out / "state.json").write_text(state.model_dump_json(indent=2), encoding="utf-8")
+
+
+def _uses(plan: PipelinePlan, name: str) -> bool:
+    return any(s.action == "synthesize" and s.synth_spec.name == name for s in plan.steps)
+
+
+def _describe(plan: PipelinePlan) -> str:
+    parts = [(s.operator_ref or "").split("@")[0] if s.action == "reuse" else f"*{s.synth_spec.name}" for s in plan.steps]
+    return f"{plan.name}({' → '.join(parts)})"
 
 
 def best_report(state: RunState) -> ValidationReport | None:

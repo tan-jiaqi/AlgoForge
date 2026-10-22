@@ -70,4 +70,33 @@ def check_source(source: str, *, class_name: str | None = None, kind: OperatorKi
     if missing:
         diags.append(_diag(DiagnosticCode.BAD_INTERFACE, f"{cls.name} 缺少 {missing}", cls.name,
                            "算子需继承 Operator，定义 meta = OperatorMeta(...) 并实现 sklearn 接口"))
+    mismatch = _params_mismatch(cls)
+    if mismatch:
+        diags.append(_diag(DiagnosticCode.BAD_INTERFACE, f"meta.params 与 __init__ 默认值不一致：{mismatch}", cls.name,
+                           "实例化时 meta.params 会覆盖 __init__ 默认值，两处必须一致"))
     return diags
+
+
+def _params_mismatch(cls: ast.ClassDef) -> list[str]:
+    """比较 meta = OperatorMeta(params={...}) 字面量与 __init__ 的默认值（只比较能字面求值的部分）。"""
+    meta_params: dict | None = None
+    for node in cls.body:
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "meta" for t in node.targets):
+            call = node.value
+            for kw in getattr(call, "keywords", []):
+                if kw.arg == "params":
+                    try:
+                        meta_params = ast.literal_eval(kw.value)
+                    except ValueError:
+                        return []
+    init = next((n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "__init__"), None)
+    if not meta_params or init is None:
+        return []
+    args = init.args.args[-len(init.args.defaults):] if init.args.defaults else []
+    defaults = {}
+    for a, d in zip(args, init.args.defaults):
+        try:
+            defaults[a.arg] = ast.literal_eval(d)
+        except ValueError:
+            pass
+    return [f"{k}: meta={v!r}, __init__={defaults[k]!r}" for k, v in meta_params.items() if k in defaults and defaults[k] != v]

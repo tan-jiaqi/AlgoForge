@@ -26,7 +26,7 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 | 1 | 骨架 | ✅ | `factory/schemas.py`、`factory/operators/`、`factory/llm.py` |
 | 2 | 数据与能力抽取 | ✅ | `data/`、`factory/extract.py`、`factory/kg.py`、`kg/`、`docs/schema.md` |
 | 3 | 最小闭环 | ✅ | `factory/agents/{planner,rules,curator}.py`、`factory/verify/`、`factory/workflow.py`、`factory/profile.py`、`factory/codegen.py` |
-| 4 | 生成与修复 | ⏳ | `factory/agents/synthesizer.py`、`factory/agents/curator.py` |
+| 4 | 生成与修复 | ✅ | `factory/agents/synthesizer.py`、`factory/agents/curator.py`、`factory/operators/synthesized.py` |
 | 5 | 候选比较与报告 | ⏳ | `factory/report.py`、`examples/` |
 | 6 | 界面与跨场景迁移 | ⏳ | `factory/cli.py`、`app.py`、KG 可视化 |
 | 7 | 收尾 | ⏳ | `README.md`、录制回放数据、测试补全 |
@@ -63,12 +63,18 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 - 工单分类（迁移场景，宏召回 ≥ 0.85 的严格要求）：首轮两个方案均为 0.83，触发重新规划，LLM 根据反馈调整 n-gram 和正则化强度，仍为 0.833，判定失败并如实回写——这一差距留给里程碑 4 的 Synthesize 处理
 - 生成的 `runs/<run_id>/pipeline.py` 可独立训练与预测
 
-### 4. 生成与修复 ⏳
+### 4. 生成与修复 ✅
 
 - Synthesizer：为缺失步骤生成算子代码。可参考知识图谱里抽取到的历史代码，例如 `TotalChargesCleaner`
 - 诊断分流：代码类错误只修复出错的算子，最多 N 轮；指标类问题回到规划阶段，换算子或调参
 - 修复时检索同一诊断码的经验放进 prompt；结束后把"诊断 → 修复"提炼成新经验写回
 - 新算子验证通过后注册为可执行算子，并记录版本谱系（`DERIVED_FROM`）
+
+实际结果：
+- 真实 API 第 1 次运行：Planner 参考 KG 中抽取的历史代码，生成 `TotalChargesCleaner@2`、`TenureBucketizer@2`、`ChargeRatioFeatureGenerator@2`，最优方案通过后注册前两个（`kg/operators/`），并记录 `DERIVED_FROM → @1`
+- 真实 API 第 2 次运行（换一种说法的相似需求）：直接 Reuse 上次注册的两个算子，只为新方案生成其余步骤
+- 真实 LLM 修复：LLM 生成的 `BalancedLightGBMClassifier` 的 `predict_proba` 返回了 DataFrame，被契约检查判为 `E_SHAPE` 并定位到该算子；带诊断调用 `Synthesizer.repair` 一轮修好，剩下的只是指标不达标（交给重新规划）
+- mock 模式稳定复现完整闭环：生成 → `E_NAN` → 修复 → 通过 → 注册 → 提炼 Lesson；再次运行直接复用（见 `tests/test_synthesis.py`）
 
 ### 5. 候选比较与报告 ⏳
 
@@ -107,3 +113,9 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 | 新增规则版 Planner `factory/agents/rules.py` | mock 模式解析与真实 LLM 相同的 prompt 上下文，离线也走完整链路 |
 | 沙箱子进程清除含 KEY/TOKEN/SECRET 的环境变量 | 防止生成的代码读取 API Key |
 | 工单数据加入跨类表述与 6% 标签噪声 | 原数据过于简单，F1 = 1.0，被泄漏检测判为异常 |
+| 生成算子沉淀为 `kg/operators/<Name>_v<版本>.py` | 能力库可跨进程复用；加载前重新做静态检查 |
+| 生成的算子版本号与 KG 中同名算子顺延 | 抽取的历史实现记为 v1，生成的从 v2 开始，形成版本谱系 |
+| 契约检查新增：逐算子检查 NaN/Inf、模型输出必须是 ndarray、`meta.params` 与 `__init__` 默认值一致 | 都是开发中真实遇到的生成代码缺陷 |
+| 次要指标阈值必须有出处 | LLM 曾给只需"报告"的 recall@20% 编造 0.7 的阈值，导致所有方案失败 |
+| 重新规划后旧方案不再验证和修复 | 避免重复计算和无效修复 |
+| 修复与选优的顺序：先修复所有可修复的候选，再比较 | 保证候选之间比较公平 |

@@ -20,6 +20,8 @@
 | `Lesson` | 标题哈希 | `title` `trigger` `fix` `error_code` `hits` | 可复用经验。`error_code` 对应验证器的诊断码，`hits` 记录被检索使用的次数 |
 | `Source` | 路径 | `kind`（code/doc） `path` `title` | 知识出处，用于溯源 |
 
+`origin=synthesized` 的算子由 Synthesizer 生成、通过四级验证后注册，源码同时保存在 `kg/operators/<Name>_v<版本>.py`，并用 `DERIVED_FROM` 指向参考的历史实现。由修复过程提炼出的 Lesson 带有 `origin=factory`。
+
 `executable` 区分两类算子：
 - `true`：已注册到 `OperatorRegistry`，可以直接组装进 Pipeline 复用。
 - `false`：从历史代码中抽取的参考实现，带有原始源码 `code`。需要由 Synthesizer 按算子接口改写，验证通过后注册为新版本才能使用。
