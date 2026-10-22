@@ -158,6 +158,8 @@ def test_synthesize_repair_register_then_reuse(kg_path, churn_csv, fast_verify, 
     assert "Operator:TotalChargesCleaner@1" in kg.neighbors("Operator:TotalChargesCleaner@2", "DERIVED_FROM")
     lesson = kg.g.nodes[s1.lessons_learned[0]]
     assert lesson["error_code"] == "E_NAN" and lesson["origin"] == "factory"
+    src = kg.neighbors(s1.lessons_learned[0], "LEARNED_FROM")
+    assert src == [f"ValidationRun:{s1.run_id}-{s1.best_plan}"], "经验应连到用了该算子的方案的验证记录"
 
     # 模拟新进程：注册表里没有这个算子，需要从 operators/ 目录加载
     registry._ops.pop("TotalChargesCleaner@2")

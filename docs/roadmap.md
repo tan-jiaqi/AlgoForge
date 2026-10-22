@@ -28,7 +28,7 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 | 3 | 最小闭环 | ✅ | `factory/agents/{planner,rules,curator}.py`、`factory/verify/`、`factory/workflow.py`、`factory/profile.py`、`factory/codegen.py` |
 | 4 | 生成与修复 | ✅ | `factory/agents/synthesizer.py`、`factory/agents/curator.py`、`factory/operators/synthesized.py` |
 | 5 | 候选比较与报告 | ✅ | `factory/report.py`、`examples/runs/` |
-| 6 | 界面与跨场景迁移 | ⏳ | `factory/cli.py`、`app.py`、KG 可视化 |
+| 6 | 界面与跨场景迁移 | ✅ | `app.py`、`factory/kg_viz.py`、`examples/runs/tickets_text_transfer/` |
 | 7 | 收尾 | ⏳ | `README.md`、录制回放数据、测试补全 |
 
 ### 1. 骨架 ✅
@@ -87,12 +87,20 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 - 报告包含：需求理解、知识检索的分项得分与证据（设计依据）、候选比较表与指标条形图、最优方案每一步的理由、生成算子与修复 diff、四级验证配置与资源消耗、知识沉淀情况、生成的代码与运行记录
 - 样例：`examples/runs/churn_3_candidates/`（真实 API，3 个候选：逻辑回归通过，随机森林与生成的 BalancedLightGBM 未达标）
 
-### 6. 界面与跨场景迁移 ⏳
+### 6. 界面与跨场景迁移 ✅
 
 - CLI：`run`、`report` 等命令
 - Streamlit 界面：提交需求、查看过程、报告和知识图谱
 - 知识图谱可视化（pyvis）
 - 用工单文本分类任务验证同一套框架可以迁移到其他场景
+
+实际结果：
+- `streamlit run app.py`：运行页（示例需求一键填入、可上传 CSV、实时显示各阶段进度、内嵌验证报告与代码下载）；能力库页（算子/经验列表、检索、可交互知识图谱，可按类型过滤、按节点聚焦邻域）；历史运行页
+- 默认不回写：界面上的运行在知识图谱副本上进行，勾选后才写回
+- 报告与图谱以 `data:` URL 嵌入 iframe，与应用不同源（其中有 LLM 生成的文本）
+- `python -m factory.cli kg viz` 生成 `kg/capability_kg.html`
+- 跨场景迁移（真实 API）：工单数据没有任何场景知识，系统自动识别为中文文本多分类、建立新场景；检索到调参笔记中"中文短文本用字符级 TF-IDF + 逻辑回归"的经验，最优方案 F1-macro 0.820 通过
+- 同一次运行中出现了真实的"失败 → 修复 → 通过"：LLM 生成的 `ChineseTextPreprocessor` 使用了 `getattr()`，被静态检查判为 `E_UNSAFE`；带诊断修复一轮后改用 `try/except AttributeError`，通过验证；Curator 将其提炼为经验"避免在安全沙箱环境中使用 getattr 获取动态属性"写入 KG。该方案随后因词级 TF-IDF 处理中文效果差（F1 0.42）未达标，被如实判为失败
 
 ### 7. 收尾 ⏳
 
@@ -125,3 +133,5 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 | 次要指标阈值必须有出处 | LLM 曾给只需"报告"的 recall@20% 编造 0.7 的阈值，导致所有方案失败 |
 | 重新规划后旧方案不再验证和修复 | 避免重复计算和无效修复 |
 | 修复与选优的顺序：先修复所有可修复的候选，再比较 | 保证候选之间比较公平 |
+| 静态检查的 `E_UNSAFE` 诊断带上修复提示 | 修复时 LLM 能直接看到可用的替代写法 |
+| Lesson 的 `LEARNED_FROM` 指向用了该算子的方案 | 原来固定连到第一条验证记录，可能指错 |

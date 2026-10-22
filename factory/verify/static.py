@@ -50,9 +50,11 @@ def check_source(source: str, *, class_name: str | None = None, kind: OperatorKi
             diags.append(_diag(DiagnosticCode.UNSAFE_CODE, f"禁止导入：{bad}", class_name,
                                f"只允许导入 {sorted(ALLOWED_MODULES)} 与 factory.operators"))
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in FORBIDDEN_CALLS:
-            diags.append(_diag(DiagnosticCode.UNSAFE_CODE, f"禁止调用 {node.func.id}()", class_name))
+            diags.append(_diag(DiagnosticCode.UNSAFE_CODE, f"禁止调用 {node.func.id}()", class_name,
+                               f"沙箱不允许 {sorted(FORBIDDEN_CALLS)}；访问可选属性请用 try/except AttributeError"))
         if isinstance(node, ast.Attribute) and node.attr.startswith("__") and node.attr not in SAFE_DUNDERS:
-            diags.append(_diag(DiagnosticCode.UNSAFE_CODE, f"禁止访问属性 {node.attr}", class_name))
+            diags.append(_diag(DiagnosticCode.UNSAFE_CODE, f"禁止访问属性 {node.attr}", class_name,
+                               "不允许访问 __class__/__init__/__name__ 以外的双下划线属性"))
     if diags:
         return diags
 

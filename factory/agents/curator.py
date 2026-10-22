@@ -128,9 +128,14 @@ class Curator:
             targets = [t for t in (resolve_target(self.kg, n, scenario) for n in les.applies_to) if t]
             if gen and gen.spec.reference:
                 targets.append(node_id("Operator", gen.spec.reference))
+            # 经验来源：用到该算子的方案的验证记录
+            name = rec.operator.split("@")[0]
+            using = [f"ValidationRun:{state.run_id}-{p.name}" for p in state.candidates
+                     if any(st.action == "synthesize" and st.synth_spec.name == name for st in p.steps)]
+            source = next((r for r in using if r in runs), runs[0] if runs else None)
             lid = self.kg.add_lesson(
                 title=les.title, trigger=les.trigger, fix=les.fix, error_code=rec.diagnostic.code,
-                applies_to=targets, learned_from=runs[0] if runs else None,
+                applies_to=targets, learned_from=source,
             )
             self.kg.g.nodes[lid]["origin"] = "factory"
             state.lessons_learned.append(lid)

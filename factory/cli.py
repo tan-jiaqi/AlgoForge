@@ -199,6 +199,22 @@ def kg_search(
     console.print(table)
 
 
+@kg_app.command("viz")
+def kg_viz(
+    out: Path = typer.Option(Path("kg/capability_kg.html"), help="输出 HTML 路径"),
+    focus: str = typer.Option(None, help="中心节点 id，如 Operator:TotalChargesCleaner@1；只看其邻域"),
+    radius: int = typer.Option(1, help="邻域半径（跳数）"),
+    types: list[str] = typer.Option([], "--type", "-t", help="只显示这些节点类型，可多次指定"),
+    path: Path = typer.Option(None, help="KG 文件路径"),
+) -> None:
+    """生成可交互的知识图谱 HTML（pyvis），浏览器打开即可拖拽、缩放、悬停查看属性。"""
+    from factory.kg import DEFAULT_KG_PATH, CapabilityKG
+    from factory.kg_viz import render_html
+
+    render_html(CapabilityKG.load(path or DEFAULT_KG_PATH), out, types=types or None, focus=focus, radius=radius)
+    console.print(f"已生成 {out}")
+
+
 @kg_app.command("lessons")
 def kg_lessons(
     query: str = typer.Argument("", help="检索文本"),

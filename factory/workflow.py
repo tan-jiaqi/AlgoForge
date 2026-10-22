@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from typing import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -68,8 +69,10 @@ class Workflow:
         kg_path: Path = DEFAULT_KG_PATH,
         runs_dir: Path = DEFAULT_RUNS_DIR,
         config: WorkflowConfig | None = None,
+        on_event: Callable[[str], None] | None = None,
     ):
         self.llm = llm
+        self.on_event = on_event  # 每条运行记录产生时回调，用于界面实时展示进度
         self.kg_path = Path(kg_path)
         self.kg = CapabilityKG.load(self.kg_path)
         loaded = load_saved_operators(self.kg_path)
@@ -88,6 +91,8 @@ class Workflow:
         run_id = datetime.now().strftime("%Y%m%d-%H%M%S-") + short_hash(request + data_path)[:4]
         state = RunState(run_id=run_id, request=request, data_path=str(data_path), target=target,
                          llm_model=getattr(self.llm, "model", None))
+        if self.on_event is not None:
+            state._listener = self.on_event
         ctx = _Ctx()
         handlers = {
             "PLAN": self._plan,

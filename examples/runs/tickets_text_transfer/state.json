@@ -1,0 +1,400 @@
+{
+  "run_id": "20261022-172305-25eb",
+  "request": "把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低于 0.8",
+  "data_path": "data/tickets.csv",
+  "target": null,
+  "status": "succeeded",
+  "spec": {
+    "description": "把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低于 0.8",
+    "task_type": "multiclass_classification",
+    "modality": "text",
+    "target_column": "label",
+    "text_column": "text",
+    "metrics": [
+      {
+        "name": "f1_macro",
+        "threshold": 0.8,
+        "primary": true
+      }
+    ],
+    "constraints": []
+  },
+  "profile_tags": [
+    "id_columns",
+    "text_input",
+    "imbalanced"
+  ],
+  "candidates": [
+    {
+      "name": "text_preprocess_tfidf_lr",
+      "steps": [
+        {
+          "kind": "feature",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "ChineseTextPreprocessor",
+            "kind": "feature",
+            "purpose": "对中文文本进行分词、去除停用词和标点符号等预处理，以提升后续 TF-IDF 的特征质量",
+            "inputs": "包含原始文本列的 DataFrame",
+            "outputs": "分词并清洗后的文本列 DataFrame",
+            "reference": null
+          },
+          "params": {},
+          "rationale": "针对中文客服工单，先进行分词和去停用词预处理，能显著提升词级特征的准确性。"
+        },
+        {
+          "kind": "vectorizer",
+          "action": "reuse",
+          "operator_ref": "TfidfTextVectorizer@1",
+          "synth_spec": null,
+          "params": {
+            "column": "text",
+            "analyzer": "word"
+          },
+          "rationale": "在预处理后的文本上使用词级（word）TF-IDF 提取关键语义特征。"
+        },
+        {
+          "kind": "model",
+          "action": "reuse",
+          "operator_ref": "LogisticRegressionModel@1",
+          "synth_spec": null,
+          "params": {
+            "class_weight": "balanced",
+            "C": 1.0
+          },
+          "rationale": "使用逻辑回归作为强基线分类器，并设置 class_weight='balanced' 解决工单类别不平衡问题。"
+        }
+      ],
+      "rationale": "方案一通过合成中文预处理算子进行精细化分词，配合词级 TF-IDF 和平衡权重的逻辑回归，旨在通过提升特征质量来达到 0.8 的宏 F1 目标。"
+    },
+    {
+      "name": "char_ngram_tfidf_lr_tuned",
+      "steps": [
+        {
+          "kind": "vectorizer",
+          "action": "reuse",
+          "operator_ref": "TfidfTextVectorizer@1",
+          "synth_spec": null,
+          "params": {
+            "column": "text",
+            "analyzer": "char_wb",
+            "ngram_range": [
+              1,
+              3
+            ],
+            "max_features": 30000
+          },
+          "rationale": "采用字符级 n-gram（1-3元），无需分词即可捕获丰富的局部文本结构，对拼写变体和中文词组边界更稳健。"
+        },
+        {
+          "kind": "model",
+          "action": "reuse",
+          "operator_ref": "LogisticRegressionModel@1",
+          "synth_spec": null,
+          "params": {
+            "class_weight": "balanced",
+            "C": 0.5
+          },
+          "rationale": "使用逻辑回归，微调正则化强度 C=0.5 以防止高维特征过拟合，并保持 class_weight='balanced'。"
+        }
+      ],
+      "rationale": "方案二避免了显式分词，通过扩大字符级 n-gram 范围至 [1, 3] 并增加最大特征数来捕捉更细粒度的文本模式，同时微调正则化参数以优化泛化性能。"
+    }
+  ],
+  "generated": {
+    "ChineseTextPreprocessor": {
+      "spec": {
+        "name": "ChineseTextPreprocessor",
+        "kind": "feature",
+        "purpose": "对中文文本进行分词、去除停用词和标点符号等预处理，以提升后续 TF-IDF 的特征质量",
+        "inputs": "包含原始文本列的 DataFrame",
+        "outputs": "分词并清洗后的文本列 DataFrame",
+        "reference": null
+      },
+      "source": "import re\nimport numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind, Modality\n\n\nclass ChineseTextPreprocessor(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"ChineseTextPreprocessor\",\n        kind=OperatorKind.FEATURE,\n        version=1,\n        origin=\"synthesized\",\n        description=\"对中文文本进行标点过滤、字符规整及空格分字预处理以提升TF-IDF特征质量\",\n        conditions=[\"text_input\"],\n        dependencies=[],\n        params={\n            \"text_columns\": None,\n            \"remove_punctuation\": True,\n            \"remove_digits\": False,\n            \"to_lower\": True,\n            \"space_between_chars\": True,\n        },\n    )\n\n    def __init__(\n        self,\n        text_columns=None,\n        remove_punctuation=True,\n        remove_digits=False,\n        to_lower=True,\n        space_between_chars=True,\n    ):\n        self.text_columns = text_columns\n        self.remove_punctuation = remove_punctuation\n        self.remove_digits = remove_digits\n        self.to_lower = to_lower\n        self.space_between_chars = space_between_chars\n\n    def fit(self, X, y=None):\n        if self.text_columns is not None:\n            self.text_columns_ = [col for col in self.text_columns if col in X.columns]\n        else:\n            self.text_columns_ = [\n                col for col in X.columns if X[col].dtype == \"object\" or pd.api.types.is_string_dtype(X[col])\n            ]\n        return self\n\n    def _clean_text(self, text):\n        if pd.isna(text):\n            return \"\"\n        s = str(text)\n        if self.to_lower:\n            s = s.lower()\n        if self.remove_punctuation:\n            s = re.sub(r\"[^\\w\\s\\u4e00-\\u9fa5]\", \" \", s)\n        if self.remove_digits:\n            s = re.sub(r\"\\d+\", \" \", s)\n        if self.space_between_chars:\n            s = re.sub(r\"([\\u4e00-\\u9fa5])\", r\" \\1 \", s)\n        s = re.sub(r\"\\s+\", \" \", s).strip()\n        return s\n\n    def transform(self, X):\n        X = X.copy()\n        try:\n            cols = self.text_columns_\n        except AttributeError:\n            if self.text_columns is not None:\n                cols = [col for col in self.text_columns if col in X.columns]\n            else:\n                cols = [\n                    col for col in X.columns if X[col].dtype == \"object\" or pd.api.types.is_string_dtype(X[col])\n                ]\n\n        for col in cols:\n            if col in X.columns:\n                X[col] = X[col].apply(self._clean_text)\n\n        return X\n",
+      "version": 1,
+      "revision": 1
+    }
+  },
+  "reports": [
+    {
+      "plan_name": "char_ngram_tfidf_lr_tuned",
+      "passed": true,
+      "diagnostics": [],
+      "metrics": {
+        "f1_macro": 0.82,
+        "accuracy": 0.8333,
+        "recall_macro": 0.8289,
+        "precision_macro": 0.8148
+      },
+      "metric_std": {
+        "f1_macro": 0.0041,
+        "accuracy": 0.0039,
+        "recall_macro": 0.0036,
+        "precision_macro": 0.0041
+      },
+      "resources": {
+        "fit_seconds": 0.152,
+        "predict_ms_per_1k": 72.98,
+        "peak_rss_mb": 244.1
+      },
+      "notes": []
+    },
+    {
+      "plan_name": "text_preprocess_tfidf_lr",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "M_THRESHOLD",
+          "stage": "metric",
+          "message": "f1_macro = 0.4216 低于阈值 0.8",
+          "operator": "LogisticRegressionModel@1",
+          "hint": "考虑 class_weight、换模型、调参或调整决策阈值"
+        }
+      ],
+      "metrics": {
+        "f1_macro": 0.4216,
+        "accuracy": 0.4258,
+        "recall_macro": 0.4695,
+        "precision_macro": 0.5098
+      },
+      "metric_std": {
+        "f1_macro": 0.0037,
+        "accuracy": 0.0025,
+        "recall_macro": 0.0033,
+        "precision_macro": 0.0085
+      },
+      "resources": {
+        "fit_seconds": 0.078,
+        "predict_ms_per_1k": 62.78,
+        "peak_rss_mb": 247.7
+      },
+      "notes": []
+    }
+  ],
+  "best_plan": "char_ngram_tfidf_lr_tuned",
+  "repair_rounds": 1,
+  "replans": 0,
+  "history": [
+    {
+      "plan_name": "text_preprocess_tfidf_lr",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "E_UNSAFE",
+          "stage": "static",
+          "message": "禁止调用 getattr()",
+          "operator": "ChineseTextPreprocessor",
+          "hint": ""
+        }
+      ],
+      "metrics": {},
+      "metric_std": {},
+      "resources": {},
+      "notes": []
+    }
+  ],
+  "repairs": [
+    {
+      "operator": "ChineseTextPreprocessor@1",
+      "revision": 1,
+      "diagnostic": {
+        "code": "E_UNSAFE",
+        "stage": "static",
+        "message": "禁止调用 getattr()",
+        "operator": "ChineseTextPreprocessor",
+        "hint": ""
+      },
+      "lessons": [],
+      "fixed": true,
+      "before": "import re\nimport numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind, Modality\n\n\nclass ChineseTextPreprocessor(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"ChineseTextPreprocessor\",\n        kind=OperatorKind.FEATURE,\n        version=1,\n        origin=\"synthesized\",\n        description=\"对中文文本进行标点过滤、字符规整及空格分字预处理以提升TF-IDF特征质量\",\n        conditions=[\"text_input\"],\n        dependencies=[],\n        params={\n            \"text_columns\": None,\n            \"remove_punctuation\": True,\n            \"remove_digits\": False,\n            \"to_lower\": True,\n            \"space_between_chars\": True,\n        },\n    )\n\n    def __init__(\n        self,\n        text_columns=None,\n        remove_punctuation=True,\n        remove_digits=False,\n        to_lower=True,\n        space_between_chars=True,\n    ):\n        self.text_columns = text_columns\n        self.remove_punctuation = remove_punctuation\n        self.remove_digits = remove_digits\n        self.to_lower = to_lower\n        self.space_between_chars = space_between_chars\n\n    def fit(self, X, y=None):\n        if self.text_columns is not None:\n            self.text_columns_ = [col for col in self.text_columns if col in X.columns]\n        else:\n            self.text_columns_ = [\n                col for col in X.columns if X[col].dtype == \"object\" or pd.api.types.is_string_dtype(X[col])\n            ]\n        return self\n\n    def _clean_text(self, text):\n        if pd.isna(text):\n            return \"\"\n        s = str(text)\n        if self.to_lower:\n            s = s.lower()\n        if self.remove_punctuation:\n            s = re.sub(r\"[^\\w\\s\\u4e00-\\u9fa5]\", \" \", s)\n        if self.remove_digits:\n            s = re.sub(r\"\\d+\", \" \", s)\n        if self.space_between_chars:\n            s = re.sub(r\"([\\u4e00-\\u9fa5])\", r\" \\1 \", s)\n        s = re.sub(r\"\\s+\", \" \", s).strip()\n        return s\n\n    def transform(self, X):\n        X = X.copy()\n        cols = getattr(self, \"text_columns_\", [])\n        if not cols:\n            if self.text_columns is not None:\n                cols = [col for col in self.text_columns if col in X.columns]\n            else:\n                cols = [\n                    col for col in X.columns if X[col].dtype == \"object\" or pd.api.types.is_string_dtype(X[col])\n                ]\n\n        for col in cols:\n            if col in X.columns:\n                X[col] = X[col].apply(self._clean_text)\n\n        return X\n",
+      "after": "import re\nimport numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind, Modality\n\n\nclass ChineseTextPreprocessor(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"ChineseTextPreprocessor\",\n        kind=OperatorKind.FEATURE,\n        version=1,\n        origin=\"synthesized\",\n        description=\"对中文文本进行标点过滤、字符规整及空格分字预处理以提升TF-IDF特征质量\",\n        conditions=[\"text_input\"],\n        dependencies=[],\n        params={\n            \"text_columns\": None,\n            \"remove_punctuation\": True,\n            \"remove_digits\": False,\n            \"to_lower\": True,\n            \"space_between_chars\": True,\n        },\n    )\n\n    def __init__(\n        self,\n        text_columns=None,\n        remove_punctuation=True,\n        remove_digits=False,\n        to_lower=True,\n        space_between_chars=True,\n    ):\n        self.text_columns = text_columns\n        self.remove_punctuation = remove_punctuation\n        self.remove_digits = remove_digits\n        self.to_lower = to_lower\n        self.space_between_chars = space_between_chars\n\n    def fit(self, X, y=None):\n        if self.text_columns is not None:\n            self.text_columns_ = [col for col in self.text_columns if col in X.columns]\n        else:\n            self.text_columns_ = [\n                col for col in X.columns if X[col].dtype == \"object\" or pd.api.types.is_string_dtype(X[col])\n            ]\n        return self\n\n    def _clean_text(self, text):\n        if pd.isna(text):\n            return \"\"\n        s = str(text)\n        if self.to_lower:\n            s = s.lower()\n        if self.remove_punctuation:\n            s = re.sub(r\"[^\\w\\s\\u4e00-\\u9fa5]\", \" \", s)\n        if self.remove_digits:\n            s = re.sub(r\"\\d+\", \" \", s)\n        if self.space_between_chars:\n            s = re.sub(r\"([\\u4e00-\\u9fa5])\", r\" \\1 \", s)\n        s = re.sub(r\"\\s+\", \" \", s).strip()\n        return s\n\n    def transform(self, X):\n        X = X.copy()\n        try:\n            cols = self.text_columns_\n        except AttributeError:\n            if self.text_columns is not None:\n                cols = [col for col in self.text_columns if col in X.columns]\n            else:\n                cols = [\n                    col for col in X.columns if X[col].dtype == \"object\" or pd.api.types.is_string_dtype(X[col])\n                ]\n\n        for col in cols:\n            if col in X.columns:\n                X[col] = X[col].apply(self._clean_text)\n\n        return X\n"
+    }
+  ],
+  "registered": [],
+  "lessons_learned": [
+    "Lesson:24e0f098"
+  ],
+  "lessons_used": [
+    "Lesson:25484941",
+    "Lesson:9e9e77d6",
+    "Lesson:f2c1398b",
+    "Lesson:69d51358",
+    "Lesson:88299a38",
+    "Lesson:631c1a72",
+    "Lesson:6a946c79"
+  ],
+  "kg_writes": [
+    "ValidationRun:20261022-172305-25eb-char_ngram_tfidf_lr_tuned",
+    "ValidationRun:20261022-172305-25eb-text_preprocess_tfidf_lr"
+  ],
+  "artifacts": {
+    "pipeline": "examples/runs/tickets_text_transfer/pipeline.py",
+    "state": "examples/runs/tickets_text_transfer/state.json",
+    "report_md": "examples/runs/tickets_text_transfer/report.md",
+    "report_html": "examples/runs/tickets_text_transfer/report.html"
+  },
+  "llm_model": "gemini-3.5-flash",
+  "retrieval": {
+    "scenario": null,
+    "scenario_metrics": [],
+    "operator_options": {
+      "vectorizer": [
+        {
+          "ref": "TfidfTextVectorizer@1",
+          "executable": true,
+          "origin": "builtin",
+          "description": "文本列 TF-IDF 向量化，默认字符级 n-gram，对中文稳健。",
+          "conditions": [
+            "text_input"
+          ],
+          "params": [
+            "column",
+            "analyzer",
+            "ngram_range",
+            "max_features"
+          ],
+          "defaults": {
+            "column": "text",
+            "analyzer": "char_wb",
+            "ngram_range": [
+              1,
+              2
+            ],
+            "max_features": 20000
+          },
+          "score": 0.5,
+          "breakdown": {
+            "text": 1.0,
+            "condition": 0.333,
+            "history": 0.0
+          },
+          "evidence": [
+            "匹配条件：text_input"
+          ]
+        }
+      ],
+      "model": [
+        {
+          "ref": "LogisticRegressionModel@1",
+          "executable": true,
+          "origin": "builtin",
+          "description": "L2 逻辑回归：系数可解释，也是稀疏文本特征上的强基线。",
+          "conditions": [
+            "interpretable",
+            "scaled_features",
+            "sparse_features"
+          ],
+          "params": [
+            "C",
+            "class_weight",
+            "max_iter",
+            "random_state"
+          ],
+          "defaults": {
+            "C": 1.0,
+            "class_weight": "balanced",
+            "max_iter": 1000,
+            "random_state": 42
+          },
+          "score": 0.2295,
+          "breakdown": {
+            "text": 0.0,
+            "condition": 0.0,
+            "history": 0.765
+          },
+          "evidence": [
+            "历史验证 1 次，平均 f1_macro 0.765"
+          ]
+        }
+      ]
+    },
+    "lessons": [
+      {
+        "title": "样本不平衡导致默认阈值下召回率偏低",
+        "trigger": "正负样本 1:3 不平衡，默认 0.5 阈值下 recall 仅约 0.55，模型偏向多数类",
+        "fix": "设置 class_weight='balanced' 或在验证集上调整分类阈值以提升召回率",
+        "error_code": "M_THRESHOLD"
+      },
+      {
+        "title": "样本不平衡导致默认模型召回率偏低",
+        "trigger": "流失场景存在正负样本不平衡，模型默认阈值或未配置样本权重时召回率达不到业务要求",
+        "fix": "启用平衡类权重（如 class_weight='balanced' 或 BalancedLightGBMClassifier）以提升召回率",
+        "error_code": "M_THRESHOLD"
+      },
+      {
+        "title": "LightGBM 调参及不平衡处理",
+        "trigger": "数据量在 5k 到 10w 之间，或者样本不平衡时",
+        "fix": "设置 num_leaves 15~63, learning_rate 0.03~0.1, n_estimators 200~600；不平衡时设置 class_weight='balanced'；树模型无需标准化。",
+        "error_code": null
+      },
+      {
+        "title": "数值列含空白字符导致类型转换失败",
+        "trigger": "新入网客户累计消费为空白字符串，读取为 object 类型，转 float 时抛出 ValueError: could not convert string to float: ' '",
+        "fix": "先 str.strip()，再 pd.to_numeric(errors='coerce')，缺失值填补为 0",
+        "error_code": "E_RUNTIME"
+      },
+      {
+        "title": "未剔除客户 ID 导致 One-Hot 编码后维度暴涨与内存溢出",
+        "trigger": "customer_id 等标识列未剔除，直接进行 One-Hot 编码导致特征维度暴涨并引发内存溢出",
+        "fix": "建模前剔除 ID 等标识列，并在编码器中设置最大类别数",
+        "error_code": "E_TIMEOUT"
+      }
+    ],
+    "lesson_ids": [
+      "Lesson:25484941",
+      "Lesson:9e9e77d6",
+      "Lesson:f2c1398b",
+      "Lesson:69d51358",
+      "Lesson:88299a38"
+    ]
+  },
+  "verify_config": {
+    "cv_folds": 5,
+    "seeds": [
+      42,
+      7,
+      2024
+    ],
+    "smoke_rows": 300,
+    "timeout_seconds": 180.0,
+    "memory_mb": 8192,
+    "max_metric_std": 0.03,
+    "leakage_ceiling": 0.999,
+    "report_metrics": [
+      "accuracy",
+      "f1_macro",
+      "recall_macro",
+      "precision_macro"
+    ],
+    "n_threads": 4
+  },
+  "timings": {
+    "PLAN": 36.96,
+    "BUILD": 4.82,
+    "VERIFY": 7.71,
+    "ROUTE": 0.0,
+    "REPAIR": 13.25,
+    "CURATE": 6.91
+  },
+  "log": [
+    "[PLAN] 场景 新场景；画像标签 ['id_columns', 'text_input', 'imbalanced']",
+    "[PLAN] TaskSpec：multiclass_classification，目标 label，主指标 f1_macro >= 0.8",
+    "[PLAN] 候选方案：['text_preprocess_tfidf_lr(*ChineseTextPreprocessor → TfidfTextVectorizer → LogisticRegressionModel)', 'char_ngram_tfidf_lr_tuned(TfidfTextVectorizer → LogisticRegressionModel)']",
+    "[PLAN] 完成，用时 37.0s → BUILD",
+    "[BUILD] 生成算子 ChineseTextPreprocessor@1：对中文文本进行分词、去除停用词和标点符号等预处理，以提升后续 TF-IDF 的特征质量",
+    "[BUILD] 完成，用时 4.8s → VERIFY",
+    "[VERIFY] text_preprocess_tfidf_lr：未通过，f1_macro=nan；E_UNSAFE 禁止调用 getattr()",
+    "[VERIFY] char_ngram_tfidf_lr_tuned：通过，f1_macro=0.8200",
+    "[VERIFY] 完成，用时 4.5s → ROUTE",
+    "[ROUTE] 完成，用时 0.0s → REPAIR",
+    "[REPAIR] 修复 ChineseTextPreprocessor@1 第 1 轮：E_UNSAFE 禁止调用 getattr()",
+    "[REPAIR] 完成，用时 13.2s → VERIFY",
+    "[VERIFY] text_preprocess_tfidf_lr：未通过，f1_macro=0.4216；M_THRESHOLD f1_macro = 0.4216 低于阈值 0.8",
+    "[VERIFY] 完成，用时 3.2s → ROUTE",
+    "[ROUTE] 完成，用时 0.0s → CURATE",
+    "[CURATE] 写入 KG：2 条 ValidationRun；注册新算子 []；新增经验 1 条",
+    "[CURATE] 完成，用时 6.9s → DONE"
+  ]
+}

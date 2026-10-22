@@ -1,0 +1,19 @@
+{
+  "tag": "lesson",
+  "model": "gemini-3.5-flash",
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是算法能力工厂的 Curator。下面是一次被验证器发现、随后修复成功的代码问题。把它提炼为一条可复用的经验（LessonRecord）：title 一句话概括，trigger 写现象/报错，fix 写通用的修复方法（不要只描述这一处改动），applies_to 填相关的条件标签（从 condition_tags 中选）。error_code 与诊断码一致。"
+    },
+    {
+      "role": "user",
+      "content": "<<CONTEXT>>\n{\n \"operator_purpose\": \"对中文文本进行分词、去除停用词和标点符号等预处理，以提升后续 TF-IDF 的特征质量\",\n \"diagnostic\": {\n  \"code\": \"E_UNSAFE\",\n  \"stage\": \"static\",\n  \"message\": \"禁止调用 getattr()\",\n  \"operator\": \"ChineseTextPreprocessor\",\n  \"hint\": \"\"\n },\n \"code_diff\": \"--- \\n+++ \\n@@ -66,4 +66,5 @@\\n         X = X.copy()\\n-        cols = getattr(self, \\\"text_columns_\\\", [])\\n-        if not cols:\\n+        try:\\n+            cols = self.text_columns_\\n+        except AttributeError:\\n             if self.text_columns is not None:\",\n \"condition_tags\": [\n  \"has_missing_values\",\n  \"has_categorical_features\",\n  \"low_cardinality\",\n  \"high_cardinality\",\n  \"numeric_features\",\n  \"string_typed_numeric\",\n  \"id_columns\",\n  \"linear_model\",\n  \"scaled_features\",\n  \"nonlinear\",\n  \"mixed_features\",\n  \"large_tabular\",\n  \"imbalanced\",\n  \"recall_first\",\n  \"interpretable\",\n  \"feature_importance\",\n  \"sparse_features\",\n  \"text_input\",\n  \"time_tenure\"\n ]\n}\n<</CONTEXT>>"
+    },
+    {
+      "role": "system",
+      "content": "Respond with a single JSON object only, no prose, conforming to this JSON schema:\n{\"$defs\": {\"DiagnosticCode\": {\"enum\": [\"E_SYNTAX\", \"E_UNSAFE\", \"E_INTERFACE\", \"E_RUNTIME\", \"E_TIMEOUT\", \"E_SHAPE\", \"E_PROBA\", \"E_MUTATION\", \"E_NAN\", \"M_THRESHOLD\", \"M_UNSTABLE\"], \"title\": \"DiagnosticCode\", \"type\": \"string\"}}, \"properties\": {\"title\": {\"title\": \"Title\", \"type\": \"string\"}, \"trigger\": {\"description\": \"什么情况下会出现这个问题（现象/报错）\", \"title\": \"Trigger\", \"type\": \"string\"}, \"fix\": {\"description\": \"如何修复或规避\", \"title\": \"Fix\", \"type\": \"string\"}, \"error_code\": {\"anyOf\": [{\"$ref\": \"#/$defs/DiagnosticCode\"}, {\"type\": \"null\"}], \"default\": null}, \"applies_to\": {\"description\": \"相关的算子名、条件标签或场景名\", \"items\": {\"type\": \"string\"}, \"title\": \"Applies To\", \"type\": \"array\"}}, \"required\": [\"title\", \"trigger\", \"fix\"], \"title\": \"LessonRecord\", \"type\": \"object\"}"
+    }
+  ],
+  "response": "{\n  \"title\": \"避免在安全沙箱环境中使用 getattr 获取动态属性\",\n  \"trigger\": \"在静态安全检查严格的环境中，代码中调用了 `getattr()` 函数来动态获取对象属性（例如 `getattr(self, \\\"attr\\\", default)`），触发了 `E_UNSAFE` 安全限制报错。\",\n  \"fix\": \"使用 `try-except AttributeError` 结构来安全地尝试访问属性，并在捕获到 `AttributeError` 时执行回退逻辑或设置默认值，以此替代 `getattr()`。\",\n  \"error_code\": \"E_UNSAFE\",\n  \"applies_to\": [\n    \"text_input\"\n  ]\n}"
+}

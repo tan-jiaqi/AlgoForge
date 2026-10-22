@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>AlgoForge 验证报告</title><style>
+:root { --fg:#1f2328; --muted:#59636e; --bg:#ffffff; --line:#d1d9e0; --code:#f6f8fa; --accent:#0969da; }
+@media (prefers-color-scheme: dark) {
+  :root { --fg:#e6edf3; --muted:#9198a1; --bg:#0d1117; --line:#3d444d; --code:#151b23; --accent:#4493f8; }
+}
+body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color:var(--fg);
+       background:var(--bg); max-width: 1100px; margin: 0 auto; padding: 24px 16px; line-height: 1.6; }
+h1 { border-bottom: 2px solid var(--line); padding-bottom: 8px; }
+h2 { border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-top: 32px; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+th { background: var(--code); }
+pre { background: var(--code); padding: 12px; overflow-x: auto; border-radius: 6px; font-size: 13px; }
+code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; }
+p code, li code, td code { background: var(--code); padding: 1px 4px; border-radius: 4px; }
+</style></head>
+<body>
+<h1>AlgoForge 验证报告</h1>
+<table><thead><tr><th>项目</th><th>内容</th></tr></thead><tbody><tr><td>需求</td><td>把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低于 0.8</td></tr><tr><td>数据</td><td>data/tickets.csv</td></tr><tr><td>运行 ID</td><td>20261022-172305-25eb</td></tr><tr><td>LLM</td><td>gemini-3.5-flash</td></tr><tr><td>状态</td><td>✅ 成功</td></tr><tr><td>最优方案</td><td>char_ngram_tfidf_lr_tuned</td></tr><tr><td>总耗时</td><td>69.7 s</td></tr></tbody></table>
+<p>共验证 2 个候选方案，1 个通过；重新规划 0 次，修复 1 轮。最优方案 <code>char_ngram_tfidf_lr_tuned</code> 的 f1_macro = 0.820（要求 ≥ 0.8）。</p>
+<h2>1. 需求理解（TaskSpec）</h2>
+<table><thead><tr><th>字段</th><th>值</th></tr></thead><tbody><tr><td>任务类型</td><td>multiclass_classification</td></tr><tr><td>数据模态</td><td>text</td></tr><tr><td>目标列</td><td>label（文本列 text）</td></tr><tr><td>评价指标</td><td>f1_macro ≥ 0.8（主）</td></tr><tr><td>业务约束</td><td>-</td></tr><tr><td>数据画像标签</td><td>id_columns、text_input、imbalanced</td></tr></tbody></table>
+<h2>2. 知识检索（设计依据）</h2>
+<p>匹配场景：新场景。每类步骤从知识图谱检索候选算子，得分 = 0.4 × 文本相关度 + 0.3 × 条件匹配 + 0.3 × 历史验证分。</p>
+<table><thead><tr><th>步骤</th><th>候选算子</th><th>可直接复用</th><th>得分</th><th>文本/条件/历史</th><th>证据</th></tr></thead><tbody><tr><td>vectorizer</td><td>TfidfTextVectorizer@1</td><td>是</td><td>0.500</td><td>1.00 / 0.33 / 0.00</td><td>匹配条件：text_input</td></tr><tr><td>model</td><td>LogisticRegressionModel@1</td><td>是</td><td>0.230</td><td>0.00 / 0.00 / 0.77</td><td>历史验证 1 次，平均 f1_macro 0.765</td></tr></tbody></table>
+<h3>参考的历史经验</h3>
+<ul><li><strong>样本不平衡导致默认阈值下召回率偏低</strong>（M_THRESHOLD）：设置 class_weight=&#x27;balanced&#x27; 或在验证集上调整分类阈值以提升召回率</li><li><strong>样本不平衡导致默认模型召回率偏低</strong>（M_THRESHOLD）：启用平衡类权重（如 class_weight=&#x27;balanced&#x27; 或 BalancedLightGBMClassifier）以提升召回率</li><li><strong>LightGBM 调参及不平衡处理</strong>：设置 num_leaves 15~63, learning_rate 0.03~0.1, n_estimators 200~600；不平衡时设置 class_weight=&#x27;balanced&#x27;；树模型无需标准化。</li><li><strong>数值列含空白字符导致类型转换失败</strong>（E_RUNTIME）：先 str.strip()，再 pd.to_numeric(errors=&#x27;coerce&#x27;)，缺失值填补为 0</li><li><strong>未剔除客户 ID 导致 One-Hot 编码后维度暴涨与内存溢出</strong>（E_TIMEOUT）：建模前剔除 ID 等标识列，并在编码器中设置最大类别数</li></ul>
+<h2>3. 候选方案比较</h2>
+<p>排序规则：先看是否通过全部检查，再比主指标，再比次要指标之和，最后训练耗时短者优先。指标为多随机种子 × 分层 K 折交叉验证的均值 ± 种子间标准差。</p>
+<table><thead><tr><th>排名</th><th>方案</th><th>结果</th><th>f1_macro</th><th>accuracy</th><th>recall_macro</th><th>precision_macro</th><th>单次训练 (s)</th><th>峰值内存 (MB)</th></tr></thead><tbody><tr><td>1</td><td>★ char_ngram_tfidf_lr_tuned</td><td>通过</td><td>0.820 ± 0.004</td><td>0.833 ± 0.004</td><td>0.829 ± 0.004</td><td>0.815 ± 0.004</td><td>0.152</td><td>244</td></tr><tr><td>2</td><td>text_preprocess_tfidf_lr</td><td>未通过</td><td>0.422 ± 0.004</td><td>0.426 ± 0.003</td><td>0.469 ± 0.003</td><td>0.510 ± 0.009</td><td>0.078</td><td>248</td></tr></tbody></table>
+<pre><code>f1_macro（| 为阈值 0.8）
+char_ngram_tfidf_lr_tuned            ■■■■■■■■■■■■■■■■|··· 0.820
+text_preprocess_tfidf_lr             ■■■■■■■■········|··· 0.422</code></pre>
+<h3>各方案的结构与诊断</h3>
+<ul><li><code>char_ngram_tfidf_lr_tuned</code>：TfidfTextVectorizer → LogisticRegressionModel。诊断：无</li><li><code>text_preprocess_tfidf_lr</code>：生成:ChineseTextPreprocessor → TfidfTextVectorizer → LogisticRegressionModel。诊断：<code>M_THRESHOLD</code> f1_macro = 0.4216 低于阈值 0.8</li></ul>
+<h2>4. 最优方案：char_ngram_tfidf_lr_tuned</h2>
+<p>方案二避免了显式分词，通过扩大字符级 n-gram 范围至 [1, 3] 并增加最大特征数来捕捉更细粒度的文本模式，同时微调正则化参数以优化泛化性能。</p>
+<table><thead><tr><th>#</th><th>步骤</th><th>算子</th><th>参数</th><th>选择理由</th></tr></thead><tbody><tr><td>1</td><td>vectorizer</td><td>TfidfTextVectorizer@1</td><td>column=text, analyzer=char_wb, ngram_range=[1, 3], max_features=30000</td><td>采用字符级 n-gram（1-3元），无需分词即可捕获丰富的局部文本结构，对拼写变体和中文词组边界更稳健。</td></tr><tr><td>2</td><td>model</td><td>LogisticRegressionModel@1</td><td>class_weight=balanced, C=0.5</td><td>使用逻辑回归，微调正则化强度 C=0.5 以防止高维特征过拟合，并保持 class_weight=&#x27;balanced&#x27;。</td></tr></tbody></table>
+<h2>5. 能力生成与修复</h2>
+<table><thead><tr><th>生成算子</th><th>类型</th><th>用途</th><th>参考的历史实现</th><th>修复轮数</th><th>注册到能力库</th></tr></thead><tbody><tr><td>ChineseTextPreprocessor@1</td><td>feature</td><td>对中文文本进行分词、去除停用词和标点符号等预处理，以提升后续 TF-IDF 的特征质量</td><td>-</td><td>1</td><td>否</td></tr></tbody></table>
+<h3>修复 ChineseTextPreprocessor@1 第 1 轮：✅ 已修复</h3>
+<ul><li>诊断：<code>E_UNSAFE</code>（static）禁止调用 getattr()</li><li>提示：-</li><li>参考经验：0 条</li></ul>
+<pre><code>--- 修复前
++++ 修复后
+@@ -66,4 +66,5 @@
+         X = X.copy()
+-        cols = getattr(self, &quot;text_columns_&quot;, [])
+-        if not cols:
++        try:
++            cols = self.text_columns_
++        except AttributeError:
+             if self.text_columns is not None:</code></pre>
+<h2>6. 验证机制</h2>
+<table><thead><tr><th>级别</th><th>检查内容</th><th>本次配置</th></tr></thead><tbody><tr><td>1 静态检查</td><td>语法、import 白名单、禁止危险调用、接口与 meta 一致性</td><td>仅针对生成的算子</td></tr><tr><td>2 沙箱执行</td><td>独立子进程，限制超时与内存，清除含 KEY/TOKEN 的环境变量</td><td>超时 180 s，内存 8192 MB</td></tr><tr><td>3 契约检查</td><td>不修改输入、行数一致、不引入 NaN/Inf、概率合法、能处理未见类别与缺失值</td><td>冒烟样本 300 行</td></tr><tr><td>4 指标检查</td><td>阈值、种子间稳定性、疑似泄漏、耗时与内存</td><td>5 折 × 种子 [42, 7, 2024]；std 上限 0.03</td></tr></tbody></table>
+<p>最优方案资源消耗：单次训练 0.152 s，预测 73.0 ms / 千行，峰值内存 244 MB。</p>
+<p>修复前的 1 次验证结果保留在 state.json 的 history 中。</p>
+<h2>7. 知识沉淀</h2>
+<ul><li>回写验证记录 ValidationRun：2 条</li><li>注册到能力库的新算子：无</li><li>新提炼的经验：避免在安全沙箱环境中使用 getattr 获取动态属性（E_UNSAFE）</li><li>本次使用的经验：7 条（命中次数已累计）</li></ul>
+<h2>附录 A. 生成的算法代码（pipeline.py）</h2>
+<pre><code>&quot;&quot;&quot;把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低 —— 自动生成的算法流水线
+
+需求：把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低于 0.8
+方案：char_ngram_tfidf_lr_tuned
+设计依据：方案二避免了显式分词，通过扩大字符级 n-gram 范围至 [1, 3] 并增加最大特征数来捕捉更细粒度的文本模式，同时微调正则化参数以优化泛化性能。
+主指标：f1_macro &gt;= 0.8
+
+由 AlgoForge 自动生成。用法：
+    python pipeline.py --data &lt;train.csv&gt;                      # 训练并保存 model.joblib
+    python pipeline.py --predict &lt;new.csv&gt; --model model.joblib  # 预测
+&quot;&quot;&quot;
+
+import argparse
+
+import joblib
+import pandas as pd
+from sklearn.pipeline import Pipeline
+
+from factory.operators.models import LogisticRegressionModel
+from factory.operators.text import TfidfTextVectorizer
+
+
+TARGET = &#x27;label&#x27;
+
+
+def build_pipeline() -&gt; Pipeline:
+    return Pipeline([
+        (&quot;0_vectorizer&quot;, TfidfTextVectorizer(column=&#x27;text&#x27;, analyzer=&#x27;char_wb&#x27;, ngram_range=(1, 3), max_features=30000)),  # 采用字符级 n-gram（1-3元），无需分词即可捕获丰富的局部文本结构，对拼写变体和中文词组边界更稳健。
+        (&quot;1_model&quot;, LogisticRegressionModel(C=0.5, class_weight=&#x27;balanced&#x27;, max_iter=1000, random_state=42)),  # 使用逻辑回归，微调正则化强度 C=0.5 以防止高维特征过拟合，并保持 class_weight=&#x27;balanced&#x27;。
+    ])
+
+
+def main() -&gt; None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(&quot;--data&quot;, help=&quot;训练数据 CSV&quot;)
+    parser.add_argument(&quot;--predict&quot;, help=&quot;待预测数据 CSV&quot;)
+    parser.add_argument(&quot;--model&quot;, default=&quot;model.joblib&quot;)
+    args = parser.parse_args()
+    if args.data:
+        df = pd.read_csv(args.data)
+        pipe = build_pipeline().fit(df.drop(columns=[TARGET]), df[TARGET])
+        joblib.dump(pipe, args.model)
+        print(f&quot;模型已保存到 {args.model}&quot;)
+    if args.predict:
+        pipe = joblib.load(args.model)
+        df = pd.read_csv(args.predict)
+        X = df.drop(columns=[TARGET], errors=&quot;ignore&quot;)
+        out = pd.DataFrame(pipe.predict_proba(X), columns=[f&quot;proba_{c}&quot; for c in pipe.classes_])
+        out[&quot;prediction&quot;] = pipe.predict(X)
+        print(out.head().to_string())
+
+
+if __name__ == &quot;__main__&quot;:
+    main()
+</code></pre>
+<h2>附录 B. 运行记录</h2>
+<p>各阶段耗时：PLAN 37.0s，BUILD 4.8s，VERIFY 7.7s，ROUTE 0.0s，REPAIR 13.2s，CURATE 6.9s</p>
+<pre><code>[PLAN] 场景 新场景；画像标签 [&#x27;id_columns&#x27;, &#x27;text_input&#x27;, &#x27;imbalanced&#x27;]
+[PLAN] TaskSpec：multiclass_classification，目标 label，主指标 f1_macro &gt;= 0.8
+[PLAN] 候选方案：[&#x27;text_preprocess_tfidf_lr(*ChineseTextPreprocessor → TfidfTextVectorizer → LogisticRegressionModel)&#x27;, &#x27;char_ngram_tfidf_lr_tuned(TfidfTextVectorizer → LogisticRegressionModel)&#x27;]
+[PLAN] 完成，用时 37.0s → BUILD
+[BUILD] 生成算子 ChineseTextPreprocessor@1：对中文文本进行分词、去除停用词和标点符号等预处理，以提升后续 TF-IDF 的特征质量
+[BUILD] 完成，用时 4.8s → VERIFY
+[VERIFY] text_preprocess_tfidf_lr：未通过，f1_macro=nan；E_UNSAFE 禁止调用 getattr()
+[VERIFY] char_ngram_tfidf_lr_tuned：通过，f1_macro=0.8200
+[VERIFY] 完成，用时 4.5s → ROUTE
+[ROUTE] 完成，用时 0.0s → REPAIR
+[REPAIR] 修复 ChineseTextPreprocessor@1 第 1 轮：E_UNSAFE 禁止调用 getattr()
+[REPAIR] 完成，用时 13.2s → VERIFY
+[VERIFY] text_preprocess_tfidf_lr：未通过，f1_macro=0.4216；M_THRESHOLD f1_macro = 0.4216 低于阈值 0.8
+[VERIFY] 完成，用时 3.2s → ROUTE
+[ROUTE] 完成，用时 0.0s → CURATE
+[CURATE] 写入 KG：2 条 ValidationRun；注册新算子 []；新增经验 1 条
+[CURATE] 完成，用时 6.9s → DONE</code></pre>
+</body></html>

@@ -13,7 +13,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -251,5 +251,9 @@ class RunState(BaseModel):
     timings: dict[str, float] = Field(default_factory=dict, description="各阶段累计耗时（秒）")
     log: list[str] = Field(default_factory=list)
 
+    _listener: Any = PrivateAttr(default=None)
+
     def note(self, message: str) -> None:
         self.log.append(message)
+        if self._listener is not None:
+            self._listener(message)

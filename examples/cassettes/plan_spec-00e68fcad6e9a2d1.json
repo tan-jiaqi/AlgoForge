@@ -1,0 +1,19 @@
+{
+  "tag": "plan_spec",
+  "model": "gemini-3.5-flash",
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是算法能力工厂的 Planner。把用户的自然语言需求解析为 TaskSpec。\n规则：\n- description 原样保留用户需求；target_column 必须是数据中的列，用户指定了 user_target 时直接使用；\n- 目标列 2 类为 binary_classification，多于 2 类为 multiclass_classification；\n- 数据画像含 text_input 时 modality 为 text，并填写 text_column；\n- metrics 恰好一个 primary。需求未给出阈值时，优先采用 scenario_metrics 中的阈值，否则取 0.7；\n- 多分类用 f1_macro、recall_macro 等 macro 指标；\n- constraints 使用 snake_case 标签，如 interpretable、recall_first。"
+    },
+    {
+      "role": "user",
+      "content": "<<CONTEXT>>\n{\n \"request\": \"把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低于 0.8\",\n \"user_target\": null,\n \"data_profile\": {\n  \"rows\": 2000,\n  \"target\": \"label\",\n  \"class_counts\": {\n   \"网络故障\": 783,\n   \"账单争议\": 490,\n   \"套餐变更\": 447,\n   \"销户投诉\": 280\n  },\n  \"tags\": {\n   \"id_columns\": \"数据含客户 ID 等标识列\",\n   \"text_input\": \"输入为文本\",\n   \"imbalanced\": \"正负样本不平衡\"\n  },\n  \"columns\": [\n   \"ticket_id: id, str, missing 0.0%, unique 2000\",\n   \"text: text, str, missing 0.0%, unique 1416\"\n  ]\n },\n \"scenario_metrics\": []\n}\n<</CONTEXT>>"
+    },
+    {
+      "role": "system",
+      "content": "Respond with a single JSON object only, no prose, conforming to this JSON schema:\n{\"$defs\": {\"MetricTarget\": {\"description\": \"优化指标及流水线必须达到的阈值。\", \"properties\": {\"name\": {\"description\": \"sklearn 风格的指标名，如 'recall'、'f1_macro'、'roc_auc'\", \"title\": \"Name\", \"type\": \"string\"}, \"threshold\": {\"maximum\": 1.0, \"minimum\": 0.0, \"title\": \"Threshold\", \"type\": \"number\"}, \"primary\": {\"default\": true, \"title\": \"Primary\", \"type\": \"boolean\"}}, \"required\": [\"name\", \"threshold\"], \"title\": \"MetricTarget\", \"type\": \"object\"}, \"Modality\": {\"enum\": [\"tabular\", \"text\"], \"title\": \"Modality\", \"type\": \"string\"}, \"TaskType\": {\"enum\": [\"binary_classification\", \"multiclass_classification\"], \"title\": \"TaskType\", \"type\": \"string\"}}, \"description\": \"对自然语言能力需求的规范化理解。\", \"properties\": {\"description\": {\"description\": \"原始自然语言需求\", \"title\": \"Description\", \"type\": \"string\"}, \"task_type\": {\"$ref\": \"#/$defs/TaskType\"}, \"modality\": {\"$ref\": \"#/$defs/Modality\"}, \"target_column\": {\"title\": \"Target Column\", \"type\": \"string\"}, \"text_column\": {\"anyOf\": [{\"type\": \"string\"}, {\"type\": \"null\"}], \"default\": null, \"description\": \"modality 为 text 时必填\", \"title\": \"Text Column\"}, \"metrics\": {\"items\": {\"$ref\": \"#/$defs/MetricTarget\"}, \"minItems\": 1, \"title\": \"Metrics\", \"type\": \"array\"}, \"constraints\": {\"description\": \"业务约束，如 'interpretable'、'recall_first'、'latency<50ms'\", \"items\": {\"type\": \"string\"}, \"title\": \"Constraints\", \"type\": \"array\"}}, \"required\": [\"description\", \"task_type\", \"modality\", \"target_column\", \"metrics\"], \"title\": \"TaskSpec\", \"type\": \"object\"}"
+    }
+  ],
+  "response": "{\"description\": \"把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低于 0.8\", \"task_type\": \"multiclass_classification\", \"modality\": \"text\", \"target_column\": \"label\", \"text_column\": \"text\", \"metrics\": [{\"name\": \"f1_macro\", \"threshold\": 0.8, \"primary\": true}], \"constraints\": []}"
+}
