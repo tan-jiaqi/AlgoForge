@@ -1,0 +1,15 @@
+[project]
+name = "algoforge"
+version = "0.1.0"
+description = "Agent-based algorithm capability factory: extract -> synthesize -> verify -> curate"
+requires-python = ">=3.11"
+
+[project.scripts]
+algoforge = "factory.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["factory*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

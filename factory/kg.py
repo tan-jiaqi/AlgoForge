@@ -1,0 +1,411 @@
+"""能力知识图谱（Capability KG）：存储、检索、导出。
+
+底层使用 NetworkX MultiDiGraph。节点 id 形如 ``"<类型>:<键>"``，例如
+``Operator:LightGBMModel@1``、``Condition:imbalanced``。完整 schema 见 ``docs/schema.md``。
+
+检索打分 = 文本相关度(BM25+，小语料下 IDF 不会为负) × W_TEXT + 适用条件重合度 × W_COND + 历史验证分 × W_HIST，
+三项都归一化到 [0, 1]，并在结果中保留各项分值，便于 Planner 解释"为什么选它"。
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Iterable
+
+import networkx as nx
+from rank_bm25 import BM25Plus
+
+from factory.operators.base import OperatorMeta, OperatorRegistry
+from factory.schemas import DiagnosticCode, Modality, OperatorKind
+from factory.utils import ROOT, get_logger
+
+log = get_logger(__name__)
+
+DEFAULT_KG_PATH = ROOT / "kg" / "capability_kg.json"
+
+# ---------------------------------------------------------------------------
+# Schema：节点类型与边类型
+# ---------------------------------------------------------------------------
+
+NODE_TYPES = ("Scenario", "Operator", "Metric", "Condition", "Dependency", "ValidationRun", "Lesson", "Source")
+
+EDGE_TYPES = {
+    "SUITABLE_WHEN": ("Operator", "Condition"),        # 算子在该条件下适用
+    "DEPENDS_ON": ("Operator", "Dependency"),          # 算子依赖的 Python 包
+    "EVALUATED_BY": ("Scenario", "Metric"),            # 场景使用的评价指标（带 threshold、primary）
+    "VALIDATED_BY": ("Operator", "ValidationRun"),     # 算子参与的验证记录（带 metric、value）
+    "RUN_ON": ("ValidationRun", "Scenario"),           # 验证记录所属场景
+    "LEARNED_FROM": ("Lesson", "Source|ValidationRun"),  # 经验的来源
+    "APPLIES_TO": ("Lesson", "Operator|Condition|Scenario"),  # 经验适用的对象
+    "EXTRACTED_FROM": ("Operator|ValidationRun|Scenario|Metric", "Source"),  # 抽取出处
+    "DERIVED_FROM": ("Operator", "Operator"),          # 版本谱系：新版本 → 旧版本
+}
+
+# 受控的适用条件词表：抽取时优先使用这些标签，保证检索时能对上
+CONDITION_TAGS: dict[str, str] = {
+    "has_missing_values": "数据存在缺失值",
+    "has_categorical_features": "存在类别型特征",
+    "low_cardinality": "类别基数较低（适合 one-hot）",
+    "high_cardinality": "类别基数较高（适合目标编码等）",
+    "numeric_features": "存在数值型特征",
+    "string_typed_numeric": "数值列被读成字符串（含空白等脏值）",
+    "id_columns": "数据含客户 ID 等标识列",
+    "linear_model": "下游为线性模型",
+    "scaled_features": "要求特征已标准化",
+    "nonlinear": "存在非线性关系",
+    "mixed_features": "数值与类别特征混合",
+    "large_tabular": "表格数据量较大",
+    "imbalanced": "正负样本不平衡",
+    "recall_first": "业务上召回优先",
+    "interpretable": "要求结果可解释",
+    "feature_importance": "需要输出特征重要性",
+    "sparse_features": "高维稀疏特征",
+    "text_input": "输入为文本",
+    "time_tenure": "存在在网时长等时间长度字段",
+}
+
+# 文本检索、条件重合、历史表现三项的权重
+W_TEXT, W_COND, W_HIST = 0.4, 0.3, 0.3
+
+
+def node_id(ntype: str, key: str) -> str:
+    return f"{ntype}:{key}"
+
+
+def short_hash(text: str) -> str:
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:8]
+
+
+def tokenize(text: str) -> list[str]:
+    """中英混合分词：英文按词（拆 CamelCase 与下划线），中文按单字 + 相邻二元组。"""
+    text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text).replace("_", " ").lower()
+    tokens: list[str] = re.findall(r"[a-z0-9]+", text)
+    for run in re.findall(r"[一-鿿]+", text):
+        tokens.extend(run)
+        tokens.extend(run[i : i + 2] for i in range(len(run) - 1))
+    return tokens
+
+
+@dataclass
+class OperatorHit:
+    """一次算子检索结果，保留分项得分与证据，供 Planner 解释选择理由。"""
+
+    key: str
+    attrs: dict[str, Any]
+    score: float
+    breakdown: dict[str, float]
+    evidence: list[str] = field(default_factory=list)
+
+
+class CapabilityKG:
+    """能力知识图谱的读写与检索接口。"""
+
+    def __init__(self, graph: nx.MultiDiGraph | None = None):
+        self.g = graph if graph is not None else nx.MultiDiGraph()
+
+    # ------------------------------------------------------------------
+    # 基础写入
+    # ------------------------------------------------------------------
+
+    def add_node(self, ntype: str, key: str, **attrs: Any) -> str:
+        if ntype not in NODE_TYPES:
+            raise ValueError(f"未知节点类型 {ntype!r}")
+        nid = node_id(ntype, key)
+        if nid in self.g:
+            self.g.nodes[nid].update(attrs)
+        else:
+            self.g.add_node(nid, type=ntype, key=key, **attrs)
+        return nid
+
+    def add_edge(self, src: str, rel: str, dst: str, **attrs: Any) -> None:
+        if rel not in EDGE_TYPES:
+            raise ValueError(f"未知边类型 {rel!r}")
+        for nid in (src, dst):
+            if nid not in self.g:
+                raise KeyError(f"节点不存在：{nid}")
+        # 同一对节点之间同类型的边只保留一条，属性更新
+        for k, data in self.g.get_edge_data(src, dst, default={}).items():
+            if data["rel"] == rel:
+                self.g.edges[src, dst, k].update(attrs)
+                return
+        self.g.add_edge(src, dst, rel=rel, **attrs)
+
+    def nodes(self, ntype: str | None = None) -> list[tuple[str, dict[str, Any]]]:
+        return [(n, d) for n, d in self.g.nodes(data=True) if ntype is None or d["type"] == ntype]
+
+    def neighbors(self, nid: str, rel: str, direction: str = "out") -> list[str]:
+        edges = self.g.out_edges(nid, data=True) if direction == "out" else self.g.in_edges(nid, data=True)
+        return [(v if direction == "out" else u) for u, v, d in edges if d["rel"] == rel]
+
+    # ------------------------------------------------------------------
+    # 领域写入：算子、场景、验证记录、经验、来源
+    # ------------------------------------------------------------------
+
+    def add_source(self, kind: str, path: str, title: str = "") -> str:
+        return self.add_node("Source", path, kind=kind, path=path, title=title or path)
+
+    def add_condition(self, tag: str) -> str:
+        return self.add_node("Condition", tag, description=CONDITION_TAGS.get(tag, tag))
+
+    def add_operator(self, meta: OperatorMeta, *, executable: bool, source: str | None = None, code: str = "") -> str:
+        """写入算子节点及其条件、依赖、出处和版本谱系边。
+
+        executable=True 表示已注册到 OperatorRegistry、可直接复用；
+        False 表示从历史代码抽取的参考实现，需要 Synthesizer 改写后才能用。
+        """
+        nid = self.add_node(
+            "Operator",
+            meta.key,
+            name=meta.name,
+            version=meta.version,
+            kind=meta.kind.value,
+            modalities=[m.value for m in meta.modalities],
+            description=meta.description,
+            inputs=meta.inputs,
+            outputs=meta.outputs,
+            params=meta.params,
+            origin=meta.origin,
+            executable=executable,
+            code=code,
+        )
+        for tag in meta.conditions:
+            self.add_edge(nid, "SUITABLE_WHEN", self.add_condition(tag))
+        for dep in meta.dependencies:
+            self.add_edge(nid, "DEPENDS_ON", self.add_node("Dependency", dep, package=dep))
+        if source:
+            self.add_edge(nid, "EXTRACTED_FROM", source)
+        if meta.parent and node_id("Operator", meta.parent) in self.g:
+            self.add_edge(nid, "DERIVED_FROM", node_id("Operator", meta.parent))
+        return nid
+
+    def add_registry(self, registry: OperatorRegistry) -> int:
+        """把注册表中的所有算子同步为可执行算子节点。"""
+        for meta in registry.list():
+            self.add_operator(meta, executable=True)
+        return len(registry)
+
+    def add_scenario(self, name: str, *, title: str, task_type: str, modality: str, **attrs: Any) -> str:
+        return self.add_node("Scenario", name, title=title, task_type=task_type, modality=modality, **attrs)
+
+    def add_metric(self, scenario: str, metric: str, threshold: float | None = None, primary: bool = False) -> str:
+        mid = self.add_node("Metric", metric, name=metric)
+        self.add_edge(scenario, "EVALUATED_BY", mid, threshold=threshold, primary=primary)
+        return mid
+
+    def add_validation_run(
+        self,
+        *,
+        scenario: str,
+        operators: Iterable[str],
+        metrics: dict[str, float],
+        passed: bool,
+        origin: str,
+        note: str = "",
+        source: str | None = None,
+        run_id: str | None = None,
+    ) -> str:
+        """写入一次验证记录（历史实验或本系统的验证结果），并连到相关算子。"""
+        operators = list(operators)
+        run_id = run_id or short_hash(json.dumps([scenario, operators, metrics, note], sort_keys=True, ensure_ascii=False))
+        rid = self.add_node(
+            "ValidationRun",
+            run_id,
+            metrics=metrics,
+            passed=passed,
+            origin=origin,
+            note=note,
+            pipeline=operators,
+            created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        )
+        self.add_edge(rid, "RUN_ON", scenario)
+        for op in operators:
+            self.add_edge(op, "VALIDATED_BY", rid, **metrics)
+        if source:
+            self.add_edge(rid, "EXTRACTED_FROM", source)
+        return rid
+
+    def add_lesson(
+        self,
+        *,
+        title: str,
+        trigger: str,
+        fix: str,
+        error_code: DiagnosticCode | None = None,
+        applies_to: Iterable[str] = (),
+        learned_from: str | None = None,
+    ) -> str:
+        """写入一条可复用经验。applies_to 为已存在的节点 id。"""
+        lid = self.add_node(
+            "Lesson",
+            short_hash(title),
+            title=title,
+            trigger=trigger,
+            fix=fix,
+            error_code=error_code.value if error_code else None,
+            hits=0,
+        )
+        for target in applies_to:
+            if target in self.g:
+                self.add_edge(lid, "APPLIES_TO", target)
+        if learned_from:
+            self.add_edge(lid, "LEARNED_FROM", learned_from)
+        return lid
+
+    # ------------------------------------------------------------------
+    # 检索
+    # ------------------------------------------------------------------
+
+    def operator_conditions(self, nid: str) -> set[str]:
+        return {self.g.nodes[c]["key"] for c in self.neighbors(nid, "SUITABLE_WHEN")}
+
+    def historical_score(self, nid: str, scenario: str | None = None, metric: str | None = None) -> tuple[float, int]:
+        """算子在（指定场景的）通过的验证记录上的平均指标值，返回 (分数, 记录数)。"""
+        values = []
+        for rid in self.neighbors(nid, "VALIDATED_BY"):
+            run = self.g.nodes[rid]
+            if not run.get("passed"):
+                continue
+            if scenario and node_id("Scenario", scenario) not in self.neighbors(rid, "RUN_ON"):
+                continue
+            ms = run.get("metrics", {})
+            if metric and metric in ms:
+                values.append(ms[metric])
+            elif ms:
+                values.append(sum(ms.values()) / len(ms))
+        return (sum(values) / len(values), len(values)) if values else (0.0, 0)
+
+    def search_operators(
+        self,
+        query: str,
+        *,
+        kind: OperatorKind | None = None,
+        modality: Modality | None = None,
+        conditions: Iterable[str] = (),
+        scenario: str | None = None,
+        metric: str | None = None,
+        executable_only: bool = False,
+        top_k: int = 5,
+    ) -> list[OperatorHit]:
+        """结构化过滤 → BM25 文本匹配 → 条件重合与历史验证分加权排序。"""
+        cands = []
+        for nid, d in self.nodes("Operator"):
+            if kind and d["kind"] != kind.value:
+                continue
+            if modality and modality.value not in d.get("modalities", []):
+                continue
+            if executable_only and not d.get("executable"):
+                continue
+            cands.append((nid, d))
+        if not cands:
+            return []
+
+        docs = [tokenize(f"{d['name']} {d['description']} {' '.join(self.operator_conditions(n))}") for n, d in cands]
+        q = tokenize(query)
+        raw = BM25Plus(docs).get_scores(q) if q else [0.0] * len(cands)
+        top = max(max(raw), 1e-9)
+        wanted = set(conditions)
+
+        hits = []
+        for (nid, d), bm in zip(cands, raw):
+            conds = self.operator_conditions(nid)
+            cond = len(conds & wanted) / len(wanted) if wanted else 0.0
+            hist, n_runs = self.historical_score(nid, scenario, metric)
+            text = max(bm, 0.0) / top
+            score = W_TEXT * text + W_COND * cond + W_HIST * hist
+            evidence = []
+            if conds & wanted:
+                evidence.append("匹配条件：" + "、".join(sorted(conds & wanted)))
+            if n_runs:
+                evidence.append(f"历史验证 {n_runs} 次，平均 {metric or '指标'} {hist:.3f}")
+            hits.append(
+                OperatorHit(
+                    key=d["key"],
+                    attrs=d,
+                    score=round(score, 4),
+                    breakdown={"text": round(text, 3), "condition": round(cond, 3), "history": round(hist, 3)},
+                    evidence=evidence,
+                )
+            )
+        hits.sort(key=lambda h: h.score, reverse=True)
+        return hits[:top_k]
+
+    def search_lessons(self, query: str = "", *, error_code: DiagnosticCode | None = None, top_k: int = 3) -> list[dict]:
+        """按错误码精确过滤，再按文本相关度排序。"""
+        lessons = [
+            (n, d) for n, d in self.nodes("Lesson") if error_code is None or d.get("error_code") == error_code.value
+        ]
+        if not lessons:
+            return []
+        q = tokenize(query)
+        if q:
+            scores = BM25Plus([tokenize(f"{d['title']} {d['trigger']} {d['fix']}") for _, d in lessons]).get_scores(q)
+            lessons = [ls for _, ls in sorted(zip(scores, lessons), key=lambda t: t[0], reverse=True)]
+        return [{"id": n, **d} for n, d in lessons[:top_k]]
+
+    # ------------------------------------------------------------------
+    # 持久化与导出
+    # ------------------------------------------------------------------
+
+    def stats(self) -> dict[str, dict[str, int]]:
+        nodes: dict[str, int] = {}
+        for _, d in self.g.nodes(data=True):
+            nodes[d["type"]] = nodes.get(d["type"], 0) + 1
+        edges: dict[str, int] = {}
+        for _, _, d in self.g.edges(data=True):
+            edges[d["rel"]] = edges.get(d["rel"], 0) + 1
+        return {"nodes": dict(sorted(nodes.items())), "edges": dict(sorted(edges.items()))}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "nodes": [{"id": n, **d} for n, d in sorted(self.g.nodes(data=True))],
+            "edges": [{"source": u, "target": v, **d} for u, v, d in self.g.edges(data=True)],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "CapabilityKG":
+        g = nx.MultiDiGraph()
+        for n in data["nodes"]:
+            n = dict(n)
+            g.add_node(n.pop("id"), **n)
+        for e in data["edges"]:
+            e = dict(e)
+            g.add_edge(e.pop("source"), e.pop("target"), **e)
+        return cls(g)
+
+    def save(self, path: Path = DEFAULT_KG_PATH, *, graphml: bool = True) -> Path:
+        """保存为 JSON（主存储）；可选同时导出 GraphML（复杂属性序列化为 JSON 字符串）。"""
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(self.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        if graphml:
+            nx.write_graphml(_graphml_safe(self.g), path.with_suffix(".graphml"))
+        return path
+
+    @classmethod
+    def load(cls, path: Path = DEFAULT_KG_PATH) -> "CapabilityKG":
+        return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+
+
+def _graphml_safe(g: nx.MultiDiGraph) -> nx.MultiDiGraph:
+    """GraphML 只支持标量属性：列表/字典转为 JSON 字符串，None 去掉。"""
+
+    def conv(attrs: dict[str, Any]) -> dict[str, Any]:
+        out = {}
+        for k, v in attrs.items():
+            if v is None:
+                continue
+            out[k] = json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict, tuple)) else v
+        return out
+
+    h = nx.MultiDiGraph()
+    for n, d in g.nodes(data=True):
+        h.add_node(n, **conv(d))
+    for u, v, d in g.edges(data=True):
+        h.add_edge(u, v, **conv(d))
+    return h

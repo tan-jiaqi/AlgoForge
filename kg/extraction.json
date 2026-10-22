@@ -1,0 +1,547 @@
+{
+  "functions": [
+    {
+      "repo": "churn_v1",
+      "module": "cleaning",
+      "name": "clean_total_charges",
+      "signature": "clean_total_charges(df, col='total_charges')",
+      "docstring": "把累计消费列从字符串转为数值。\n\n新入网客户的 total_charges 为空白字符串，直接 astype(float) 会报\nValueError: could not convert string to float。这里先 strip 再\nto_numeric(errors=\"coerce\")，空值用 0 填充（新客户尚未产生消费）。",
+      "dependencies": [
+        "pandas"
+      ],
+      "lineno": 4,
+      "path": "churn_v1/cleaning.py::clean_total_charges"
+    },
+    {
+      "repo": "churn_v1",
+      "module": "cleaning",
+      "name": "drop_id_columns",
+      "signature": "drop_id_columns(df, id_cols=('customer_id',))",
+      "docstring": "删除客户 ID 等高基数标识列，避免被当作类别特征做 one-hot 导致维度爆炸。",
+      "dependencies": [],
+      "lineno": 16,
+      "path": "churn_v1/cleaning.py::drop_id_columns"
+    },
+    {
+      "repo": "churn_v1",
+      "module": "encoding",
+      "name": "target_encode",
+      "signature": "target_encode(train, test, col, target='churn', n_splits=5, smoothing=10)",
+      "docstring": "对高基数类别列做 K 折目标编码（带平滑）。\n\n注意：必须只在训练集内做折外编码再映射到测试集，否则会标签泄漏。\n2024-03 的实验里曾在全量数据上直接编码，AUC 虚高到 0.97，上线后崩到 0.71。",
+      "dependencies": [
+        "pandas",
+        "scikit-learn"
+      ],
+      "lineno": 5,
+      "path": "churn_v1/encoding.py::target_encode"
+    },
+    {
+      "repo": "churn_v1",
+      "module": "features",
+      "name": "add_tenure_bucket",
+      "signature": "add_tenure_bucket(df, col='tenure')",
+      "docstring": "按在网时长分段：0-6、6-12、12-24、24-48、48+ 个月。\n\n业务经验：前 6 个月是流失高发期，分段后对线性模型更友好，也便于向业务方解释。",
+      "dependencies": [
+        "numpy",
+        "pandas"
+      ],
+      "lineno": 5,
+      "path": "churn_v1/features.py::add_tenure_bucket"
+    },
+    {
+      "repo": "churn_v1",
+      "module": "features",
+      "name": "add_charge_ratio",
+      "signature": "add_charge_ratio(df, monthly='monthly_charges', total='total_charges', tenure='tenure')",
+      "docstring": "构造消费相关比值特征：月均消费 / 当前月费，衡量近期资费是否上涨。\n\n要求 total_charges 已为数值；tenure 为 0 时比值记为 1。",
+      "dependencies": [
+        "numpy"
+      ],
+      "lineno": 17,
+      "path": "churn_v1/features.py::add_charge_ratio"
+    },
+    {
+      "repo": "churn_v1",
+      "module": "features",
+      "name": "count_services",
+      "signature": "count_services(df, service_cols=('online_security', 'tech_support', 'streaming_tv'))",
+      "docstring": "统计客户订购的增值服务数量；订购越多，迁移成本越高，流失率越低。",
+      "dependencies": [],
+      "lineno": 28,
+      "path": "churn_v1/features.py::count_services"
+    },
+    {
+      "repo": "churn_v1",
+      "module": "modeling",
+      "name": "train_lgbm_balanced",
+      "signature": "train_lgbm_balanced(X, y, params=None)",
+      "docstring": "训练类别不平衡场景下的 LightGBM 流失模型。\n\n经验参数：num_leaves 15~63，learning_rate 0.03~0.1，用 scale_pos_weight\n或 class_weight=\"balanced\" 处理正负样本约 1:3 的不平衡。",
+      "dependencies": [
+        "lightgbm"
+      ],
+      "lineno": 6,
+      "path": "churn_v1/modeling.py::train_lgbm_balanced"
+    },
+    {
+      "repo": "churn_v1",
+      "module": "modeling",
+      "name": "tune_threshold_for_recall",
+      "signature": "tune_threshold_for_recall(y_true, proba, min_recall=0.75)",
+      "docstring": "在验证集上选择满足最低召回率要求的最大阈值（召回优先场景）。\n\n返回 (threshold, precision, recall)。默认 0.5 阈值下召回率往往只有 0.5 左右。",
+      "dependencies": [
+        "numpy",
+        "scikit-learn"
+      ],
+      "lineno": 18,
+      "path": "churn_v1/modeling.py::tune_threshold_for_recall"
+    },
+    {
+      "repo": "churn_v1",
+      "module": "modeling",
+      "name": "recall_at_top_k",
+      "signature": "recall_at_top_k(y_true, proba, k=0.2)",
+      "docstring": "业务指标：按流失概率排序，前 k 比例客户中覆盖了多少真实流失客户。\n\n挽留团队每月只能外呼 20% 的客户，因此关注 recall@20%。",
+      "dependencies": [
+        "numpy"
+      ],
+      "lineno": 31,
+      "path": "churn_v1/modeling.py::recall_at_top_k"
+    }
+  ],
+  "cards": {
+    "churn_v1/cleaning.py::clean_total_charges": {
+      "function": "clean_total_charges",
+      "capability_type": "operator",
+      "name": "TotalChargesCleaner",
+      "kind": "imputer",
+      "description": "将包含空白字符串的数值列安全转换为浮点型，并将缺失及空白值填充为0.0",
+      "inputs": "包含目标字符串数值列的 DataFrame",
+      "outputs": "目标列已转为浮点型且缺失值填充为0.0的 DataFrame",
+      "conditions": [
+        "string_typed_numeric",
+        "has_missing_values",
+        "numeric_features"
+      ],
+      "params": {
+        "col": "total_charges"
+      }
+    },
+    "churn_v1/cleaning.py::drop_id_columns": {
+      "function": "drop_id_columns",
+      "capability_type": "operator",
+      "name": "IdColumnDropper",
+      "kind": "feature",
+      "description": "删除客户 ID 等无实际预测价值的高基数标识列，避免被误作为类别特征导致维度爆炸或模型过拟合",
+      "inputs": "包含标识列的 DataFrame",
+      "outputs": "剔除指定标识列后的 DataFrame",
+      "conditions": [
+        "id_columns",
+        "high_cardinality"
+      ],
+      "params": {
+        "id_cols": [
+          "customer_id"
+        ]
+      }
+    },
+    "churn_v1/encoding.py::target_encode": {
+      "function": "target_encode",
+      "capability_type": "operator",
+      "name": "KFoldTargetEncoder",
+      "kind": "encoder",
+      "description": "对高基数类别特征进行带平滑的K折折外目标编码，防止训练集标签泄漏并增强对罕见类别的泛化能力。",
+      "inputs": "训练集DataFrame、测试集DataFrame、待编码类别列名、目标列名",
+      "outputs": "训练集和测试集编码后的Series元组",
+      "conditions": [
+        "has_categorical_features",
+        "high_cardinality"
+      ],
+      "params": {
+        "target": "churn",
+        "n_splits": 5,
+        "smoothing": 10
+      }
+    },
+    "churn_v1/features.py::add_charge_ratio": {
+      "function": "add_charge_ratio",
+      "capability_type": "operator",
+      "name": "ChargeRatioFeatureGenerator",
+      "kind": "feature",
+      "description": "构造历史月均消费与当前月费的比值特征，用于衡量用户近期资费变动趋势。",
+      "inputs": "包含月消费、总消费和在网时长字段的 DataFrame",
+      "outputs": "新增 charge_ratio 特征列的 DataFrame",
+      "conditions": [
+        "numeric_features",
+        "time_tenure"
+      ],
+      "params": {
+        "monthly": "monthly_charges",
+        "total": "total_charges",
+        "tenure": "tenure"
+      }
+    },
+    "churn_v1/features.py::add_tenure_bucket": {
+      "function": "add_tenure_bucket",
+      "capability_type": "operator",
+      "name": "TenureBucketizer",
+      "kind": "feature",
+      "description": "将连续的在网时长字段（tenure）按照业务经验分箱为离散的区间段，以提升线性模型的表现并增强可解释性。",
+      "inputs": "pandas.DataFrame containing tenure column",
+      "outputs": "pandas.DataFrame with an additional tenure_bucket column",
+      "conditions": [
+        "time_tenure",
+        "linear_model",
+        "interpretable",
+        "numeric_features"
+      ],
+      "params": {
+        "col": "tenure"
+      }
+    },
+    "churn_v1/features.py::count_services": {
+      "function": "count_services",
+      "capability_type": "operator",
+      "name": "ServiceCountFeature",
+      "kind": "feature",
+      "description": "统计客户订购的增值服务总数，反映客户业务粘性与迁移成本以辅助流失预测",
+      "inputs": "包含各增值服务开通状态（如'是'）列的 DataFrame",
+      "outputs": "新增 n_services 统计列的 DataFrame",
+      "conditions": [
+        "has_categorical_features"
+      ],
+      "params": {
+        "service_cols": [
+          "online_security",
+          "tech_support",
+          "streaming_tv"
+        ]
+      }
+    },
+    "churn_v1/modeling.py::recall_at_top_k": {
+      "function": "recall_at_top_k",
+      "capability_type": "metric",
+      "name": "RecallAtTopK",
+      "kind": null,
+      "description": "按预测概率降序排序后计算前 k 比例样本中真实正例的覆盖率，用于触达资源受限场景下的业务召回评估。",
+      "inputs": "y_true (array-like): 真实二分类标签；proba (array-like): 预测为正类的概率值",
+      "outputs": "float: 前 k 比例样本中的正例召回率",
+      "conditions": [
+        "recall_first",
+        "imbalanced"
+      ],
+      "params": {
+        "k": 0.2
+      }
+    },
+    "churn_v1/modeling.py::train_lgbm_balanced": {
+      "function": "train_lgbm_balanced",
+      "capability_type": "operator",
+      "name": "BalancedLightGBMClassifier",
+      "kind": "model",
+      "description": "使用 LightGBM 训练分类模型，通过设置 class_weight='balanced' 自动平衡正负样本权重，适用于类别不平衡的流失预测等场景。",
+      "inputs": "X: 特征矩阵 (DataFrame 或 Array-like), y: 目标变量标签 (Series 或 Array-like)",
+      "outputs": "model: 训练好的 LGBMClassifier 模型实例",
+      "conditions": [
+        "imbalanced",
+        "nonlinear",
+        "large_tabular",
+        "feature_importance"
+      ],
+      "params": {
+        "params": null
+      }
+    },
+    "churn_v1/modeling.py::tune_threshold_for_recall": {
+      "function": "tune_threshold_for_recall",
+      "capability_type": "utility",
+      "name": "RecallThresholdTuner",
+      "kind": null,
+      "description": "在验证或测试集上寻找满足最低召回率约束的最大分类阈值，以在保证召回率的前提下最大化精确率，适用于召回优先的业务场景。",
+      "inputs": "y_true: 真实标签数组; proba: 预测正类概率数组",
+      "outputs": "tuple (threshold, precision, recall): 满足条件的最佳阈值及对应的精确率和召回率",
+      "conditions": [
+        "recall_first",
+        "imbalanced"
+      ],
+      "params": {
+        "min_recall": 0.75
+      }
+    }
+  },
+  "docs": {
+    "docs/business_requirements.md": {
+      "metrics": [
+        {
+          "name": "recall",
+          "threshold": 0.75,
+          "primary": true
+        },
+        {
+          "name": "roc_auc",
+          "threshold": 0.8,
+          "primary": false
+        },
+        {
+          "name": "recall_at_20",
+          "threshold": null,
+          "primary": false
+        }
+      ],
+      "constraints": [
+        "recall_first",
+        "interpretable",
+        "feature_importance",
+        "id_columns",
+        "imbalanced"
+      ],
+      "experiments": [],
+      "lessons": []
+    },
+    "docs/experiment_log.md": {
+      "metrics": [
+        {
+          "name": "roc_auc",
+          "threshold": null,
+          "primary": false
+        },
+        {
+          "name": "recall",
+          "threshold": null,
+          "primary": true
+        }
+      ],
+      "constraints": [
+        "imbalanced",
+        "recall_first",
+        "has_missing_values",
+        "has_categorical_features",
+        "feature_importance",
+        "time_tenure"
+      ],
+      "experiments": [
+        {
+          "pipeline": [
+            "MissingValueImputer",
+            "OneHotCategoricalEncoder",
+            "StandardFeatureScaler",
+            "LogisticRegressionModel"
+          ],
+          "metrics": {
+            "roc_auc": 0.82,
+            "recall": 0.71
+          },
+          "valid": true,
+          "note": "基线，可解释性好，召回略低于要求"
+        },
+        {
+          "pipeline": [
+            "MissingValueImputer",
+            "OneHotCategoricalEncoder",
+            "RandomForestModel"
+          ],
+          "metrics": {
+            "roc_auc": 0.83,
+            "recall": 0.66
+          },
+          "valid": true,
+          "note": "默认阈值下召回偏低"
+        },
+        {
+          "pipeline": [
+            "MissingValueImputer",
+            "OneHotCategoricalEncoder",
+            "BalancedLightGBMClassifier"
+          ],
+          "metrics": {
+            "roc_auc": 0.85,
+            "recall": 0.78
+          },
+          "valid": true,
+          "note": "最优，满足召回要求，可输出特征重要性"
+        },
+        {
+          "pipeline": [
+            "KFoldTargetEncoder",
+            "LightGBMModel"
+          ],
+          "metrics": {
+            "roc_auc": 0.97
+          },
+          "valid": false,
+          "note": "作废：全量数据目标编码泄漏标签，上线后 AUC 跌至 0.71"
+        },
+        {
+          "pipeline": [
+            "TenureBucketizer",
+            "ChargeRatioFeatureGenerator",
+            "LightGBMModel"
+          ],
+          "metrics": {
+            "roc_auc": 0.86,
+            "recall": 0.8
+          },
+          "valid": true,
+          "note": "特征工程带来小幅提升"
+        }
+      ],
+      "lessons": [
+        {
+          "title": "避免全量数据目标编码导致标签泄漏",
+          "trigger": "在全量数据集上进行目标编码后再做交叉验证或训练，验证集指标虚高（AUC 达 0.97），上线后大幅下跌至 0.71",
+          "fix": "必须使用按折目标编码（KFoldTargetEncoder）或严格在训练集/Fold内进行目标编码转换",
+          "error_code": "M_UNSTABLE",
+          "applies_to": [
+            "KFoldTargetEncoder",
+            "high_cardinality"
+          ]
+        },
+        {
+          "title": "样本不平衡导致默认模型召回率偏低",
+          "trigger": "流失场景存在正负样本不平衡，模型默认阈值或未配置样本权重时召回率达不到业务要求",
+          "fix": "启用平衡类权重（如 class_weight='balanced' 或 BalancedLightGBMClassifier）以提升召回率",
+          "error_code": "M_THRESHOLD",
+          "applies_to": [
+            "BalancedLightGBMClassifier",
+            "LogisticRegressionModel",
+            "imbalanced",
+            "recall_first"
+          ]
+        }
+      ]
+    },
+    "docs/failure_cases.md": {
+      "metrics": [
+        {
+          "name": "recall",
+          "threshold": null,
+          "primary": true
+        }
+      ],
+      "constraints": [
+        "string_typed_numeric",
+        "id_columns",
+        "imbalanced",
+        "recall_first",
+        "has_categorical_features"
+      ],
+      "experiments": [],
+      "lessons": [
+        {
+          "title": "数值列含空白字符导致类型转换失败",
+          "trigger": "新入网客户累计消费为空白字符串，读取为 object 类型，转 float 时抛出 ValueError: could not convert string to float: ' '",
+          "fix": "先 str.strip()，再 pd.to_numeric(errors='coerce')，缺失值填补为 0",
+          "error_code": "E_RUNTIME",
+          "applies_to": [
+            "TotalChargesCleaner",
+            "string_typed_numeric"
+          ]
+        },
+        {
+          "title": "未剔除客户 ID 导致 One-Hot 编码后维度暴涨与内存溢出",
+          "trigger": "customer_id 等标识列未剔除，直接进行 One-Hot 编码导致特征维度暴涨并引发内存溢出",
+          "fix": "建模前剔除 ID 等标识列，并在编码器中设置最大类别数",
+          "error_code": "E_TIMEOUT",
+          "applies_to": [
+            "IdColumnDropper",
+            "OneHotCategoricalEncoder",
+            "id_columns"
+          ]
+        },
+        {
+          "title": "样本不平衡导致默认阈值下召回率偏低",
+          "trigger": "正负样本 1:3 不平衡，默认 0.5 阈值下 recall 仅约 0.55，模型偏向多数类",
+          "fix": "设置 class_weight='balanced' 或在验证集上调整分类阈值以提升召回率",
+          "error_code": "M_THRESHOLD",
+          "applies_to": [
+            "BalancedLightGBMClassifier",
+            "LightGBMModel",
+            "LogisticRegressionModel",
+            "imbalanced",
+            "recall_first"
+          ]
+        },
+        {
+          "title": "预测阶段出现未见类别导致编码报错",
+          "trigger": "线上/测试集出现未见类别，OneHotEncoder 抛出 ValueError: Found unknown categories",
+          "fix": "编码器配置 handle_unknown='ignore' 或 infrequent_if_exist 忽略未知类别",
+          "error_code": "E_RUNTIME",
+          "applies_to": [
+            "OneHotCategoricalEncoder",
+            "has_categorical_features"
+          ]
+        },
+        {
+          "title": "特征工程函数原地修改 DataFrame 导致交叉验证列重复",
+          "trigger": "函数内直接对入参 DataFrame 进行原地赋值修改，交叉验证多折运行时特征列重复",
+          "fix": "函数开头先执行 df = df.copy() 规避原地修改副作用",
+          "error_code": "E_MUTATION",
+          "applies_to": [
+            "ChargeRatioFeatureGenerator",
+            "ServiceCountFeature",
+            "TenureBucketizer"
+          ]
+        }
+      ]
+    },
+    "docs/tuning_notes.md": {
+      "metrics": [],
+      "constraints": [
+        "imbalanced",
+        "scaled_features",
+        "interpretable",
+        "recall_first",
+        "text_input",
+        "linear_model"
+      ],
+      "experiments": [],
+      "lessons": [
+        {
+          "title": "LightGBM 调参及不平衡处理",
+          "trigger": "数据量在 5k 到 10w 之间，或者样本不平衡时",
+          "fix": "设置 num_leaves 15~63, learning_rate 0.03~0.1, n_estimators 200~600；不平衡时设置 class_weight='balanced'；树模型无需标准化。",
+          "error_code": null,
+          "applies_to": [
+            "LightGBMModel",
+            "large_tabular",
+            "imbalanced"
+          ]
+        },
+        {
+          "title": "逻辑回归标准化与可解释性",
+          "trigger": "使用逻辑回归模型，或者需要模型具有高可解释性时",
+          "fix": "必须先进行特征标准化（如 StandardFeatureScaler），在 0.1~10 之间搜索正则化强度 C，可直接输出系数给业务方。",
+          "error_code": null,
+          "applies_to": [
+            "LogisticRegressionModel",
+            "StandardFeatureScaler",
+            "scaled_features",
+            "interpretable",
+            "linear_model"
+          ]
+        },
+        {
+          "title": "随机森林防过拟合与召回优化",
+          "trigger": "使用随机森林模型，面临过拟合风险，或业务要求召回优先时",
+          "fix": "设置 n_estimators 300 左右，限制 max_depth 在 8~16 防止过拟合；召回优先时需配合调整分类阈值。",
+          "error_code": null,
+          "applies_to": [
+            "RandomForestModel",
+            "recall_first"
+          ]
+        },
+        {
+          "title": "中文短文本字符级 TF-IDF 建模",
+          "trigger": "处理中文短文本分类任务时",
+          "fix": "直接使用字符级 TF-IDF（char 1~2 gram）配合逻辑回归，无需分词。",
+          "error_code": null,
+          "applies_to": [
+            "TfidfTextVectorizer",
+            "LogisticRegressionModel",
+            "text_input"
+          ]
+        }
+      ]
+    }
+  },
+  "errors": {}
+}

@@ -1,0 +1,1116 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+  <key id="d34" for="edge" attr.name="primary" attr.type="boolean" />
+  <key id="d33" for="edge" attr.name="threshold" attr.type="double" />
+  <key id="d32" for="edge" attr.name="recall" attr.type="double" />
+  <key id="d31" for="edge" attr.name="roc_auc" attr.type="double" />
+  <key id="d30" for="edge" attr.name="rel" attr.type="string" />
+  <key id="d29" for="node" attr.name="hits" attr.type="long" />
+  <key id="d28" for="node" attr.name="error_code" attr.type="string" />
+  <key id="d27" for="node" attr.name="fix" attr.type="string" />
+  <key id="d26" for="node" attr.name="trigger" attr.type="string" />
+  <key id="d25" for="node" attr.name="created_at" attr.type="string" />
+  <key id="d24" for="node" attr.name="pipeline" attr.type="string" />
+  <key id="d23" for="node" attr.name="note" attr.type="string" />
+  <key id="d22" for="node" attr.name="passed" attr.type="boolean" />
+  <key id="d21" for="node" attr.name="metrics" attr.type="string" />
+  <key id="d20" for="node" attr.name="path" attr.type="string" />
+  <key id="d19" for="node" attr.name="constraints" attr.type="string" />
+  <key id="d18" for="node" attr.name="target_column" attr.type="string" />
+  <key id="d17" for="node" attr.name="dataset" attr.type="string" />
+  <key id="d16" for="node" attr.name="modality" attr.type="string" />
+  <key id="d15" for="node" attr.name="task_type" attr.type="string" />
+  <key id="d14" for="node" attr.name="title" attr.type="string" />
+  <key id="d13" for="node" attr.name="package" attr.type="string" />
+  <key id="d12" for="node" attr.name="code" attr.type="string" />
+  <key id="d11" for="node" attr.name="executable" attr.type="boolean" />
+  <key id="d10" for="node" attr.name="origin" attr.type="string" />
+  <key id="d9" for="node" attr.name="params" attr.type="string" />
+  <key id="d8" for="node" attr.name="outputs" attr.type="string" />
+  <key id="d7" for="node" attr.name="inputs" attr.type="string" />
+  <key id="d6" for="node" attr.name="description" attr.type="string" />
+  <key id="d5" for="node" attr.name="modalities" attr.type="string" />
+  <key id="d4" for="node" attr.name="kind" attr.type="string" />
+  <key id="d3" for="node" attr.name="version" attr.type="long" />
+  <key id="d2" for="node" attr.name="name" attr.type="string" />
+  <key id="d1" for="node" attr.name="key" attr.type="string" />
+  <key id="d0" for="node" attr.name="type" attr.type="string" />
+  <graph edgedefault="directed">
+    <node id="Operator:LightGBMModel@1">
+      <data key="d0">Operator</data>
+      <data key="d1">LightGBMModel@1</data>
+      <data key="d2">LightGBMModel</data>
+      <data key="d3">1</data>
+      <data key="d4">model</data>
+      <data key="d5">["tabular"]</data>
+      <data key="d6">梯度提升树（LightGBM）：通常是表格数据上最强的选择。</data>
+      <data key="d7">pandas.DataFrame</data>
+      <data key="d8">labels / class probabilities</data>
+      <data key="d9">{"n_estimators": 300, "learning_rate": 0.05, "num_leaves": 31, "class_weight": "balanced", "random_state": 42}</data>
+      <data key="d10">builtin</data>
+      <data key="d11">True</data>
+      <data key="d12" />
+    </node>
+    <node id="Condition:nonlinear">
+      <data key="d0">Condition</data>
+      <data key="d1">nonlinear</data>
+      <data key="d6">存在非线性关系</data>
+    </node>
+    <node id="Condition:large_tabular">
+      <data key="d0">Condition</data>
+      <data key="d1">large_tabular</data>
+      <data key="d6">表格数据量较大</data>
+    </node>
+    <node id="Condition:imbalanced">
+      <data key="d0">Condition</data>
+      <data key="d1">imbalanced</data>
+      <data key="d6">正负样本不平衡</data>
+    </node>
+    <node id="Dependency:lightgbm">
+      <data key="d0">Dependency</data>
+      <data key="d1">lightgbm</data>
+      <data key="d13">lightgbm</data>
+    </node>
+    <node id="Operator:LogisticRegressionModel@1">
+      <data key="d0">Operator</data>
+      <data key="d1">LogisticRegressionModel@1</data>
+      <data key="d2">LogisticRegressionModel</data>
+      <data key="d3">1</data>
+      <data key="d4">model</data>
+      <data key="d5">["tabular", "text"]</data>
+      <data key="d6">L2 逻辑回归：系数可解释，也是稀疏文本特征上的强基线。</data>
+      <data key="d7">pandas.DataFrame</data>
+      <data key="d8">labels / class probabilities</data>
+      <data key="d9">{"C": 1.0, "class_weight": "balanced", "max_iter": 1000, "random_state": 42}</data>
+      <data key="d10">builtin</data>
+      <data key="d11">True</data>
+      <data key="d12" />
+    </node>
+    <node id="Condition:interpretable">
+      <data key="d0">Condition</data>
+      <data key="d1">interpretable</data>
+      <data key="d6">要求结果可解释</data>
+    </node>
+    <node id="Condition:scaled_features">
+      <data key="d0">Condition</data>
+      <data key="d1">scaled_features</data>
+      <data key="d6">要求特征已标准化</data>
+    </node>
+    <node id="Condition:sparse_features">
+      <data key="d0">Condition</data>
+      <data key="d1">sparse_features</data>
+      <data key="d6">高维稀疏特征</data>
+    </node>
+    <node id="Dependency:scikit-learn">
+      <data key="d0">Dependency</data>
+      <data key="d1">scikit-learn</data>
+      <data key="d13">scikit-learn</data>
+    </node>
+    <node id="Operator:MissingValueImputer@1">
+      <data key="d0">Operator</data>
+      <data key="d1">MissingValueImputer@1</data>
+      <data key="d2">MissingValueImputer</data>
+      <data key="d3">1</data>
+      <data key="d4">imputer</data>
+      <data key="d5">["tabular"]</data>
+      <data key="d6">数值列用中位数、类别列用众数填补缺失值。</data>
+      <data key="d7">pandas.DataFrame</data>
+      <data key="d8">pandas.DataFrame</data>
+      <data key="d9">{}</data>
+      <data key="d10">builtin</data>
+      <data key="d11">True</data>
+      <data key="d12" />
+    </node>
+    <node id="Condition:has_missing_values">
+      <data key="d0">Condition</data>
+      <data key="d1">has_missing_values</data>
+      <data key="d6">数据存在缺失值</data>
+    </node>
+    <node id="Dependency:pandas">
+      <data key="d0">Dependency</data>
+      <data key="d1">pandas</data>
+      <data key="d13">pandas</data>
+    </node>
+    <node id="Operator:OneHotCategoricalEncoder@1">
+      <data key="d0">Operator</data>
+      <data key="d1">OneHotCategoricalEncoder@1</data>
+      <data key="d2">OneHotCategoricalEncoder</data>
+      <data key="d3">1</data>
+      <data key="d4">encoder</data>
+      <data key="d5">["tabular"]</data>
+      <data key="d6">类别列 one-hot 编码，忽略未见类别。</data>
+      <data key="d7">pandas.DataFrame</data>
+      <data key="d8">pandas.DataFrame</data>
+      <data key="d9">{"max_categories": 20}</data>
+      <data key="d10">builtin</data>
+      <data key="d11">True</data>
+      <data key="d12" />
+    </node>
+    <node id="Condition:has_categorical_features">
+      <data key="d0">Condition</data>
+      <data key="d1">has_categorical_features</data>
+      <data key="d6">存在类别型特征</data>
+    </node>
+    <node id="Condition:low_cardinality">
+      <data key="d0">Condition</data>
+      <data key="d1">low_cardinality</data>
+      <data key="d6">类别基数较低（适合 one-hot）</data>
+    </node>
+    <node id="Operator:RandomForestModel@1">
+      <data key="d0">Operator</data>
+      <data key="d1">RandomForestModel@1</data>
+      <data key="d2">RandomForestModel</data>
+      <data key="d3">1</data>
+      <data key="d4">model</data>
+      <data key="d5">["tabular"]</data>
+      <data key="d6">随机森林：不受特征尺度影响，能拟合非线性，可输出特征重要性。</data>
+      <data key="d7">pandas.DataFrame</data>
+      <data key="d8">labels / class probabilities</data>
+      <data key="d9">{"n_estimators": 300, "max_depth": null, "class_weight": "balanced", "random_state": 42}</data>
+      <data key="d10">builtin</data>
+      <data key="d11">True</data>
+      <data key="d12" />
+    </node>
+    <node id="Condition:mixed_features">
+      <data key="d0">Condition</data>
+      <data key="d1">mixed_features</data>
+      <data key="d6">数值与类别特征混合</data>
+    </node>
+    <node id="Condition:feature_importance">
+      <data key="d0">Condition</data>
+      <data key="d1">feature_importance</data>
+      <data key="d6">需要输出特征重要性</data>
+    </node>
+    <node id="Operator:StandardFeatureScaler@1">
+      <data key="d0">Operator</data>
+      <data key="d1">StandardFeatureScaler@1</data>
+      <data key="d2">StandardFeatureScaler</data>
+      <data key="d3">1</data>
+      <data key="d4">scaler</data>
+      <data key="d5">["tabular"]</data>
+      <data key="d6">数值列 Z-score 标准化，线性模型和基于距离的模型需要。</data>
+      <data key="d7">pandas.DataFrame</data>
+      <data key="d8">pandas.DataFrame</data>
+      <data key="d9">{}</data>
+      <data key="d10">builtin</data>
+      <data key="d11">True</data>
+      <data key="d12" />
+    </node>
+    <node id="Condition:linear_model">
+      <data key="d0">Condition</data>
+      <data key="d1">linear_model</data>
+      <data key="d6">下游为线性模型</data>
+    </node>
+    <node id="Condition:numeric_features">
+      <data key="d0">Condition</data>
+      <data key="d1">numeric_features</data>
+      <data key="d6">存在数值型特征</data>
+    </node>
+    <node id="Operator:TfidfTextVectorizer@1">
+      <data key="d0">Operator</data>
+      <data key="d1">TfidfTextVectorizer@1</data>
+      <data key="d2">TfidfTextVectorizer</data>
+      <data key="d3">1</data>
+      <data key="d4">vectorizer</data>
+      <data key="d5">["text"]</data>
+      <data key="d6">文本列 TF-IDF 向量化，默认字符级 n-gram，对中文稳健。</data>
+      <data key="d7">pandas.DataFrame</data>
+      <data key="d8">scipy.sparse matrix</data>
+      <data key="d9">{"column": "text", "analyzer": "char_wb", "ngram_range": [1, 2], "max_features": 20000}</data>
+      <data key="d10">builtin</data>
+      <data key="d11">True</data>
+      <data key="d12" />
+    </node>
+    <node id="Condition:text_input">
+      <data key="d0">Condition</data>
+      <data key="d1">text_input</data>
+      <data key="d6">输入为文本</data>
+    </node>
+    <node id="Scenario:telecom_churn">
+      <data key="d0">Scenario</data>
+      <data key="d1">telecom_churn</data>
+      <data key="d14">电信客户流失预测</data>
+      <data key="d15">binary_classification</data>
+      <data key="d16">tabular</data>
+      <data key="d17">data/churn.csv</data>
+      <data key="d18">churn</data>
+      <data key="d19">["recall_first", "interpretable", "feature_importance", "id_columns", "imbalanced"]</data>
+    </node>
+    <node id="Source:churn_v1/cleaning.py::clean_total_charges">
+      <data key="d0">Source</data>
+      <data key="d1">churn_v1/cleaning.py::clean_total_charges</data>
+      <data key="d4">code</data>
+      <data key="d20">churn_v1/cleaning.py::clean_total_charges</data>
+      <data key="d14">clean_total_charges</data>
+    </node>
+    <node id="Operator:TotalChargesCleaner@1">
+      <data key="d0">Operator</data>
+      <data key="d1">TotalChargesCleaner@1</data>
+      <data key="d2">TotalChargesCleaner</data>
+      <data key="d3">1</data>
+      <data key="d4">imputer</data>
+      <data key="d5">["tabular"]</data>
+      <data key="d6">将包含空白字符串的数值列安全转换为浮点型，并将缺失及空白值填充为0.0</data>
+      <data key="d7">包含目标字符串数值列的 DataFrame</data>
+      <data key="d8">目标列已转为浮点型且缺失值填充为0.0的 DataFrame</data>
+      <data key="d9">{"col": "total_charges"}</data>
+      <data key="d10">extracted</data>
+      <data key="d11">False</data>
+      <data key="d12">def clean_total_charges(df, col="total_charges"):
+    """把累计消费列从字符串转为数值。
+
+    新入网客户的 total_charges 为空白字符串，直接 astype(float) 会报
+    ValueError: could not convert string to float。这里先 strip 再
+    to_numeric(errors="coerce")，空值用 0 填充（新客户尚未产生消费）。
+    """
+    out = df.copy()
+    out[col] = pd.to_numeric(out[col].astype(str).str.strip(), errors="coerce").fillna(0.0)
+    return out</data>
+    </node>
+    <node id="Condition:string_typed_numeric">
+      <data key="d0">Condition</data>
+      <data key="d1">string_typed_numeric</data>
+      <data key="d6">数值列被读成字符串（含空白等脏值）</data>
+    </node>
+    <node id="Source:churn_v1/cleaning.py::drop_id_columns">
+      <data key="d0">Source</data>
+      <data key="d1">churn_v1/cleaning.py::drop_id_columns</data>
+      <data key="d4">code</data>
+      <data key="d20">churn_v1/cleaning.py::drop_id_columns</data>
+      <data key="d14">drop_id_columns</data>
+    </node>
+    <node id="Operator:IdColumnDropper@1">
+      <data key="d0">Operator</data>
+      <data key="d1">IdColumnDropper@1</data>
+      <data key="d2">IdColumnDropper</data>
+      <data key="d3">1</data>
+      <data key="d4">feature</data>
+      <data key="d5">["tabular"]</data>
+      <data key="d6">删除客户 ID 等无实际预测价值的高基数标识列，避免被误作为类别特征导致维度爆炸或模型过拟合</data>
+      <data key="d7">包含标识列的 DataFrame</data>
+      <data key="d8">剔除指定标识列后的 DataFrame</data>
+      <data key="d9">{"id_cols": ["customer_id"]}</data>
+      <data key="d10">extracted</data>
+      <data key="d11">False</data>
+      <data key="d12">def drop_id_columns(df, id_cols=("customer_id",)):
+    """删除客户 ID 等高基数标识列，避免被当作类别特征做 one-hot 导致维度爆炸。"""
+    return df.drop(columns=[c for c in id_cols if c in df.columns])</data>
+    </node>
+    <node id="Condition:id_columns">
+      <data key="d0">Condition</data>
+      <data key="d1">id_columns</data>
+      <data key="d6">数据含客户 ID 等标识列</data>
+    </node>
+    <node id="Condition:high_cardinality">
+      <data key="d0">Condition</data>
+      <data key="d1">high_cardinality</data>
+      <data key="d6">类别基数较高（适合目标编码等）</data>
+    </node>
+    <node id="Source:churn_v1/encoding.py::target_encode">
+      <data key="d0">Source</data>
+      <data key="d1">churn_v1/encoding.py::target_encode</data>
+      <data key="d4">code</data>
+      <data key="d20">churn_v1/encoding.py::target_encode</data>
+      <data key="d14">target_encode</data>
+    </node>
+    <node id="Operator:KFoldTargetEncoder@1">
+      <data key="d0">Operator</data>
+      <data key="d1">KFoldTargetEncoder@1</data>
+      <data key="d2">KFoldTargetEncoder</data>
+      <data key="d3">1</data>
+      <data key="d4">encoder</data>
+      <data key="d5">["tabular"]</data>
+      <data key="d6">对高基数类别特征进行带平滑的K折折外目标编码，防止训练集标签泄漏并增强对罕见类别的泛化能力。</data>
+      <data key="d7">训练集DataFrame、测试集DataFrame、待编码类别列名、目标列名</data>
+      <data key="d8">训练集和测试集编码后的Series元组</data>
+      <data key="d9">{"target": "churn", "n_splits": 5, "smoothing": 10}</data>
+      <data key="d10">extracted</data>
+      <data key="d11">False</data>
+      <data key="d12">def target_encode(train, test, col, target="churn", n_splits=5, smoothing=10):
+    """对高基数类别列做 K 折目标编码（带平滑）。
+
+    注意：必须只在训练集内做折外编码再映射到测试集，否则会标签泄漏。
+    2024-03 的实验里曾在全量数据上直接编码，AUC 虚高到 0.97，上线后崩到 0.71。
+    """
+    prior = train[target].mean()
+    train_enc = pd.Series(index=train.index, dtype=float)
+    for fit_idx, val_idx in KFold(n_splits, shuffle=True, random_state=0).split(train):
+        stats = train.iloc[fit_idx].groupby(col)[target].agg(["mean", "count"])
+        smooth = (stats["mean"] * stats["count"] + prior * smoothing) / (stats["count"] + smoothing)
+        train_enc.iloc[val_idx] = train.iloc[val_idx][col].map(smooth).fillna(prior).values
+    stats = train.groupby(col)[target].agg(["mean", "count"])
+    smooth = (stats["mean"] * stats["count"] + prior * smoothing) / (stats["count"] + smoothing)
+    return train_enc, test[col].map(smooth).fillna(prior)</data>
+    </node>
+    <node id="Source:churn_v1/features.py::add_charge_ratio">
+      <data key="d0">Source</data>
+      <data key="d1">churn_v1/features.py::add_charge_ratio</data>
+      <data key="d4">code</data>
+      <data key="d20">churn_v1/features.py::add_charge_ratio</data>
+      <data key="d14">add_charge_ratio</data>
+    </node>
+    <node id="Operator:ChargeRatioFeatureGenerator@1">
+      <data key="d0">Operator</data>
+      <data key="d1">ChargeRatioFeatureGenerator@1</data>
+      <data key="d2">ChargeRatioFeatureGenerator</data>
+      <data key="d3">1</data>
+      <data key="d4">feature</data>
+      <data key="d5">["tabular"]</data>
+      <data key="d6">构造历史月均消费与当前月费的比值特征，用于衡量用户近期资费变动趋势。</data>
+      <data key="d7">包含月消费、总消费和在网时长字段的 DataFrame</data>
+      <data key="d8">新增 charge_ratio 特征列的 DataFrame</data>
+      <data key="d9">{"monthly": "monthly_charges", "total": "total_charges", "tenure": "tenure"}</data>
+      <data key="d10">extracted</data>
+      <data key="d11">False</data>
+      <data key="d12">def add_charge_ratio(df, monthly="monthly_charges", total="total_charges", tenure="tenure"):
+    """构造消费相关比值特征：月均消费 / 当前月费，衡量近期资费是否上涨。
+
+    要求 total_charges 已为数值；tenure 为 0 时比值记为 1。
+    """
+    out = df.copy()
+    avg = out[total] / out[tenure].replace(0, np.nan)
+    out["charge_ratio"] = (avg / out[monthly]).replace([np.inf, -np.inf], np.nan).fillna(1.0)
+    return out</data>
+    </node>
+    <node id="Condition:time_tenure">
+      <data key="d0">Condition</data>
+      <data key="d1">time_tenure</data>
+      <data key="d6">存在在网时长等时间长度字段</data>
+    </node>
+    <node id="Dependency:numpy">
+      <data key="d0">Dependency</data>
+      <data key="d1">numpy</data>
+      <data key="d13">numpy</data>
+    </node>
+    <node id="Source:churn_v1/features.py::add_tenure_bucket">
+      <data key="d0">Source</data>
+      <data key="d1">churn_v1/features.py::add_tenure_bucket</data>
+      <data key="d4">code</data>
+      <data key="d20">churn_v1/features.py::add_tenure_bucket</data>
+      <data key="d14">add_tenure_bucket</data>
+    </node>
+    <node id="Operator:TenureBucketizer@1">
+      <data key="d0">Operator</data>
+      <data key="d1">TenureBucketizer@1</data>
+      <data key="d2">TenureBucketizer</data>
+      <data key="d3">1</data>
+      <data key="d4">feature</data>
+      <data key="d5">["tabular"]</data>
+      <data key="d6">将连续的在网时长字段（tenure）按照业务经验分箱为离散的区间段，以提升线性模型的表现并增强可解释性。</data>
+      <data key="d7">pandas.DataFrame containing tenure column</data>
+      <data key="d8">pandas.DataFrame with an additional tenure_bucket column</data>
+      <data key="d9">{"col": "tenure"}</data>
+      <data key="d10">extracted</data>
+      <data key="d11">False</data>
+      <data key="d12">def add_tenure_bucket(df, col="tenure"):
+    """按在网时长分段：0-6、6-12、12-24、24-48、48+ 个月。
+
+    业务经验：前 6 个月是流失高发期，分段后对线性模型更友好，也便于向业务方解释。
+    """
+    out = df.copy()
+    bins = [-1, 6, 12, 24, 48, np.inf]
+    labels = ["0-6", "6-12", "12-24", "24-48", "48+"]
+    out[col + "_bucket"] = pd.cut(out[col], bins=bins, labels=labels).astype(str)
+    return out</data>
+    </node>
+    <node id="Source:churn_v1/features.py::count_services">
+      <data key="d0">Source</data>
+      <data key="d1">churn_v1/features.py::count_services</data>
+      <data key="d4">code</data>
+      <data key="d20">churn_v1/features.py::count_services</data>
+      <data key="d14">count_services</data>
+    </node>
+    <node id="Operator:ServiceCountFeature@1">
+      <data key="d0">Operator</data>
+      <data key="d1">ServiceCountFeature@1</data>
+      <data key="d2">ServiceCountFeature</data>
+      <data key="d3">1</data>
+      <data key="d4">feature</data>
+      <data key="d5">["tabular"]</data>
+      <data key="d6">统计客户订购的增值服务总数，反映客户业务粘性与迁移成本以辅助流失预测</data>
+      <data key="d7">包含各增值服务开通状态（如'是'）列的 DataFrame</data>
+      <data key="d8">新增 n_services 统计列的 DataFrame</data>
+      <data key="d9">{"service_cols": ["online_security", "tech_support", "streaming_tv"]}</data>
+      <data key="d10">extracted</data>
+      <data key="d11">False</data>
+      <data key="d12">def count_services(df, service_cols=("online_security", "tech_support", "streaming_tv")):
+    """统计客户订购的增值服务数量；订购越多，迁移成本越高，流失率越低。"""
+    out = df.copy()
+    out["n_services"] = sum((out[c] == "是").astype(int) for c in service_cols if c in out.columns)
+    return out</data>
+    </node>
+    <node id="Source:churn_v1/modeling.py::recall_at_top_k">
+      <data key="d0">Source</data>
+      <data key="d1">churn_v1/modeling.py::recall_at_top_k</data>
+      <data key="d4">code</data>
+      <data key="d20">churn_v1/modeling.py::recall_at_top_k</data>
+      <data key="d14">recall_at_top_k</data>
+    </node>
+    <node id="Metric:recall_at_top_k">
+      <data key="d0">Metric</data>
+      <data key="d1">recall_at_top_k</data>
+      <data key="d2">recall_at_top_k</data>
+      <data key="d6">按预测概率降序排序后计算前 k 比例样本中真实正例的覆盖率，用于触达资源受限场景下的业务召回评估。</data>
+    </node>
+    <node id="Source:churn_v1/modeling.py::train_lgbm_balanced">
+      <data key="d0">Source</data>
+      <data key="d1">churn_v1/modeling.py::train_lgbm_balanced</data>
+      <data key="d4">code</data>
+      <data key="d20">churn_v1/modeling.py::train_lgbm_balanced</data>
+      <data key="d14">train_lgbm_balanced</data>
+    </node>
+    <node id="Operator:BalancedLightGBMClassifier@1">
+      <data key="d0">Operator</data>
+      <data key="d1">BalancedLightGBMClassifier@1</data>
+      <data key="d2">BalancedLightGBMClassifier</data>
+      <data key="d3">1</data>
+      <data key="d4">model</data>
+      <data key="d5">["tabular"]</data>
+      <data key="d6">使用 LightGBM 训练分类模型，通过设置 class_weight='balanced' 自动平衡正负样本权重，适用于类别不平衡的流失预测等场景。</data>
+      <data key="d7">X: 特征矩阵 (DataFrame 或 Array-like), y: 目标变量标签 (Series 或 Array-like)</data>
+      <data key="d8">model: 训练好的 LGBMClassifier 模型实例</data>
+      <data key="d9">{"params": null}</data>
+      <data key="d10">extracted</data>
+      <data key="d11">False</data>
+      <data key="d12">def train_lgbm_balanced(X, y, params=None):
+    """训练类别不平衡场景下的 LightGBM 流失模型。
+
+    经验参数：num_leaves 15~63，learning_rate 0.03~0.1，用 scale_pos_weight
+    或 class_weight="balanced" 处理正负样本约 1:3 的不平衡。
+    """
+    default = {"n_estimators": 400, "learning_rate": 0.05, "num_leaves": 31, "class_weight": "balanced", "verbose": -1}
+    model = lgb.LGBMClassifier(**{**default, **(params or {})})
+    model.fit(X, y)
+    return model</data>
+    </node>
+    <node id="Source:churn_v1/modeling.py::tune_threshold_for_recall">
+      <data key="d0">Source</data>
+      <data key="d1">churn_v1/modeling.py::tune_threshold_for_recall</data>
+      <data key="d4">code</data>
+      <data key="d20">churn_v1/modeling.py::tune_threshold_for_recall</data>
+      <data key="d14">tune_threshold_for_recall</data>
+    </node>
+    <node id="Source:docs/business_requirements.md">
+      <data key="d0">Source</data>
+      <data key="d1">docs/business_requirements.md</data>
+      <data key="d4">doc</data>
+      <data key="d20">docs/business_requirements.md</data>
+      <data key="d14">requirement</data>
+    </node>
+    <node id="Metric:recall">
+      <data key="d0">Metric</data>
+      <data key="d1">recall</data>
+      <data key="d2">recall</data>
+    </node>
+    <node id="Metric:roc_auc">
+      <data key="d0">Metric</data>
+      <data key="d1">roc_auc</data>
+      <data key="d2">roc_auc</data>
+    </node>
+    <node id="Metric:recall_at_20">
+      <data key="d0">Metric</data>
+      <data key="d1">recall_at_20</data>
+      <data key="d2">recall_at_20</data>
+    </node>
+    <node id="Source:docs/experiment_log.md">
+      <data key="d0">Source</data>
+      <data key="d1">docs/experiment_log.md</data>
+      <data key="d4">doc</data>
+      <data key="d20">docs/experiment_log.md</data>
+      <data key="d14">experiment</data>
+    </node>
+    <node id="ValidationRun:e11ba947">
+      <data key="d0">ValidationRun</data>
+      <data key="d1">e11ba947</data>
+      <data key="d21">{"roc_auc": 0.82, "recall": 0.71}</data>
+      <data key="d22">True</data>
+      <data key="d10">history</data>
+      <data key="d23">基线，可解释性好，召回略低于要求</data>
+      <data key="d24">["Operator:MissingValueImputer@1", "Operator:OneHotCategoricalEncoder@1", "Operator:StandardFeatureScaler@1", "Operator:LogisticRegressionModel@1"]</data>
+      <data key="d25">2026-10-22T04:00:21+00:00</data>
+    </node>
+    <node id="ValidationRun:e0d43fa3">
+      <data key="d0">ValidationRun</data>
+      <data key="d1">e0d43fa3</data>
+      <data key="d21">{"roc_auc": 0.83, "recall": 0.66}</data>
+      <data key="d22">True</data>
+      <data key="d10">history</data>
+      <data key="d23">默认阈值下召回偏低</data>
+      <data key="d24">["Operator:MissingValueImputer@1", "Operator:OneHotCategoricalEncoder@1", "Operator:RandomForestModel@1"]</data>
+      <data key="d25">2026-10-22T04:00:21+00:00</data>
+    </node>
+    <node id="ValidationRun:a7f163bc">
+      <data key="d0">ValidationRun</data>
+      <data key="d1">a7f163bc</data>
+      <data key="d21">{"roc_auc": 0.85, "recall": 0.78}</data>
+      <data key="d22">True</data>
+      <data key="d10">history</data>
+      <data key="d23">最优，满足召回要求，可输出特征重要性</data>
+      <data key="d24">["Operator:MissingValueImputer@1", "Operator:OneHotCategoricalEncoder@1", "Operator:BalancedLightGBMClassifier@1"]</data>
+      <data key="d25">2026-10-22T04:00:21+00:00</data>
+    </node>
+    <node id="ValidationRun:10b300d0">
+      <data key="d0">ValidationRun</data>
+      <data key="d1">10b300d0</data>
+      <data key="d21">{"roc_auc": 0.97}</data>
+      <data key="d22">False</data>
+      <data key="d10">history</data>
+      <data key="d23">作废：全量数据目标编码泄漏标签，上线后 AUC 跌至 0.71</data>
+      <data key="d24">["Operator:KFoldTargetEncoder@1", "Operator:LightGBMModel@1"]</data>
+      <data key="d25">2026-10-22T04:00:21+00:00</data>
+    </node>
+    <node id="ValidationRun:f6e4284c">
+      <data key="d0">ValidationRun</data>
+      <data key="d1">f6e4284c</data>
+      <data key="d21">{"roc_auc": 0.86, "recall": 0.8}</data>
+      <data key="d22">True</data>
+      <data key="d10">history</data>
+      <data key="d23">特征工程带来小幅提升</data>
+      <data key="d24">["Operator:TenureBucketizer@1", "Operator:ChargeRatioFeatureGenerator@1", "Operator:LightGBMModel@1"]</data>
+      <data key="d25">2026-10-22T04:00:21+00:00</data>
+    </node>
+    <node id="Lesson:828ad675">
+      <data key="d0">Lesson</data>
+      <data key="d1">828ad675</data>
+      <data key="d14">避免全量数据目标编码导致标签泄漏</data>
+      <data key="d26">在全量数据集上进行目标编码后再做交叉验证或训练，验证集指标虚高（AUC 达 0.97），上线后大幅下跌至 0.71</data>
+      <data key="d27">必须使用按折目标编码（KFoldTargetEncoder）或严格在训练集/Fold内进行目标编码转换</data>
+      <data key="d28">M_UNSTABLE</data>
+      <data key="d29">0</data>
+    </node>
+    <node id="Condition:recall_first">
+      <data key="d0">Condition</data>
+      <data key="d1">recall_first</data>
+      <data key="d6">业务上召回优先</data>
+    </node>
+    <node id="Lesson:9e9e77d6">
+      <data key="d0">Lesson</data>
+      <data key="d1">9e9e77d6</data>
+      <data key="d14">样本不平衡导致默认模型召回率偏低</data>
+      <data key="d26">流失场景存在正负样本不平衡，模型默认阈值或未配置样本权重时召回率达不到业务要求</data>
+      <data key="d27">启用平衡类权重（如 class_weight='balanced' 或 BalancedLightGBMClassifier）以提升召回率</data>
+      <data key="d28">M_THRESHOLD</data>
+      <data key="d29">0</data>
+    </node>
+    <node id="Source:docs/failure_cases.md">
+      <data key="d0">Source</data>
+      <data key="d1">docs/failure_cases.md</data>
+      <data key="d4">doc</data>
+      <data key="d20">docs/failure_cases.md</data>
+      <data key="d14">failure</data>
+    </node>
+    <node id="Lesson:69d51358">
+      <data key="d0">Lesson</data>
+      <data key="d1">69d51358</data>
+      <data key="d14">数值列含空白字符导致类型转换失败</data>
+      <data key="d26">新入网客户累计消费为空白字符串，读取为 object 类型，转 float 时抛出 ValueError: could not convert string to float: ' '</data>
+      <data key="d27">先 str.strip()，再 pd.to_numeric(errors='coerce')，缺失值填补为 0</data>
+      <data key="d28">E_RUNTIME</data>
+      <data key="d29">0</data>
+    </node>
+    <node id="Lesson:88299a38">
+      <data key="d0">Lesson</data>
+      <data key="d1">88299a38</data>
+      <data key="d14">未剔除客户 ID 导致 One-Hot 编码后维度暴涨与内存溢出</data>
+      <data key="d26">customer_id 等标识列未剔除，直接进行 One-Hot 编码导致特征维度暴涨并引发内存溢出</data>
+      <data key="d27">建模前剔除 ID 等标识列，并在编码器中设置最大类别数</data>
+      <data key="d28">E_TIMEOUT</data>
+      <data key="d29">0</data>
+    </node>
+    <node id="Lesson:25484941">
+      <data key="d0">Lesson</data>
+      <data key="d1">25484941</data>
+      <data key="d14">样本不平衡导致默认阈值下召回率偏低</data>
+      <data key="d26">正负样本 1:3 不平衡，默认 0.5 阈值下 recall 仅约 0.55，模型偏向多数类</data>
+      <data key="d27">设置 class_weight='balanced' 或在验证集上调整分类阈值以提升召回率</data>
+      <data key="d28">M_THRESHOLD</data>
+      <data key="d29">0</data>
+    </node>
+    <node id="Lesson:0d5e3eb1">
+      <data key="d0">Lesson</data>
+      <data key="d1">0d5e3eb1</data>
+      <data key="d14">预测阶段出现未见类别导致编码报错</data>
+      <data key="d26">线上/测试集出现未见类别，OneHotEncoder 抛出 ValueError: Found unknown categories</data>
+      <data key="d27">编码器配置 handle_unknown='ignore' 或 infrequent_if_exist 忽略未知类别</data>
+      <data key="d28">E_RUNTIME</data>
+      <data key="d29">0</data>
+    </node>
+    <node id="Lesson:6a946c79">
+      <data key="d0">Lesson</data>
+      <data key="d1">6a946c79</data>
+      <data key="d14">特征工程函数原地修改 DataFrame 导致交叉验证列重复</data>
+      <data key="d26">函数内直接对入参 DataFrame 进行原地赋值修改，交叉验证多折运行时特征列重复</data>
+      <data key="d27">函数开头先执行 df = df.copy() 规避原地修改副作用</data>
+      <data key="d28">E_MUTATION</data>
+      <data key="d29">0</data>
+    </node>
+    <node id="Source:docs/tuning_notes.md">
+      <data key="d0">Source</data>
+      <data key="d1">docs/tuning_notes.md</data>
+      <data key="d4">doc</data>
+      <data key="d20">docs/tuning_notes.md</data>
+      <data key="d14">tuning</data>
+    </node>
+    <node id="Lesson:f2c1398b">
+      <data key="d0">Lesson</data>
+      <data key="d1">f2c1398b</data>
+      <data key="d14">LightGBM 调参及不平衡处理</data>
+      <data key="d26">数据量在 5k 到 10w 之间，或者样本不平衡时</data>
+      <data key="d27">设置 num_leaves 15~63, learning_rate 0.03~0.1, n_estimators 200~600；不平衡时设置 class_weight='balanced'；树模型无需标准化。</data>
+      <data key="d29">0</data>
+    </node>
+    <node id="Lesson:74e2da10">
+      <data key="d0">Lesson</data>
+      <data key="d1">74e2da10</data>
+      <data key="d14">逻辑回归标准化与可解释性</data>
+      <data key="d26">使用逻辑回归模型，或者需要模型具有高可解释性时</data>
+      <data key="d27">必须先进行特征标准化（如 StandardFeatureScaler），在 0.1~10 之间搜索正则化强度 C，可直接输出系数给业务方。</data>
+      <data key="d29">0</data>
+    </node>
+    <node id="Lesson:57718714">
+      <data key="d0">Lesson</data>
+      <data key="d1">57718714</data>
+      <data key="d14">随机森林防过拟合与召回优化</data>
+      <data key="d26">使用随机森林模型，面临过拟合风险，或业务要求召回优先时</data>
+      <data key="d27">设置 n_estimators 300 左右，限制 max_depth 在 8~16 防止过拟合；召回优先时需配合调整分类阈值。</data>
+      <data key="d29">0</data>
+    </node>
+    <node id="Lesson:631c1a72">
+      <data key="d0">Lesson</data>
+      <data key="d1">631c1a72</data>
+      <data key="d14">中文短文本字符级 TF-IDF 建模</data>
+      <data key="d26">处理中文短文本分类任务时</data>
+      <data key="d27">直接使用字符级 TF-IDF（char 1~2 gram）配合逻辑回归，无需分词。</data>
+      <data key="d29">0</data>
+    </node>
+    <edge source="Operator:LightGBMModel@1" target="Condition:nonlinear" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:LightGBMModel@1" target="Condition:large_tabular" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:LightGBMModel@1" target="Condition:imbalanced" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:LightGBMModel@1" target="Dependency:lightgbm" id="0">
+      <data key="d30">DEPENDS_ON</data>
+    </edge>
+    <edge source="Operator:LightGBMModel@1" target="ValidationRun:10b300d0" id="0">
+      <data key="d30">VALIDATED_BY</data>
+      <data key="d31">0.97</data>
+    </edge>
+    <edge source="Operator:LightGBMModel@1" target="ValidationRun:f6e4284c" id="0">
+      <data key="d30">VALIDATED_BY</data>
+      <data key="d31">0.86</data>
+      <data key="d32">0.8</data>
+    </edge>
+    <edge source="Operator:LogisticRegressionModel@1" target="Condition:interpretable" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:LogisticRegressionModel@1" target="Condition:scaled_features" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:LogisticRegressionModel@1" target="Condition:sparse_features" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:LogisticRegressionModel@1" target="Dependency:scikit-learn" id="0">
+      <data key="d30">DEPENDS_ON</data>
+    </edge>
+    <edge source="Operator:LogisticRegressionModel@1" target="ValidationRun:e11ba947" id="0">
+      <data key="d30">VALIDATED_BY</data>
+      <data key="d31">0.82</data>
+      <data key="d32">0.71</data>
+    </edge>
+    <edge source="Operator:MissingValueImputer@1" target="Condition:has_missing_values" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:MissingValueImputer@1" target="Dependency:pandas" id="0">
+      <data key="d30">DEPENDS_ON</data>
+    </edge>
+    <edge source="Operator:MissingValueImputer@1" target="ValidationRun:e11ba947" id="0">
+      <data key="d30">VALIDATED_BY</data>
+      <data key="d31">0.82</data>
+      <data key="d32">0.71</data>
+    </edge>
+    <edge source="Operator:MissingValueImputer@1" target="ValidationRun:e0d43fa3" id="0">
+      <data key="d30">VALIDATED_BY</data>
+      <data key="d31">0.83</data>
+      <data key="d32">0.66</data>
+    </edge>
+    <edge source="Operator:MissingValueImputer@1" target="ValidationRun:a7f163bc" id="0">
+      <data key="d30">VALIDATED_BY</data>
+      <data key="d31">0.85</data>
+      <data key="d32">0.78</data>
+    </edge>
+    <edge source="Operator:OneHotCategoricalEncoder@1" target="Condition:has_categorical_features" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:OneHotCategoricalEncoder@1" target="Condition:low_cardinality" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:OneHotCategoricalEncoder@1" target="Dependency:scikit-learn" id="0">
+      <data key="d30">DEPENDS_ON</data>
+    </edge>
+    <edge source="Operator:OneHotCategoricalEncoder@1" target="ValidationRun:e11ba947" id="0">
+      <data key="d30">VALIDATED_BY</data>
+      <data key="d31">0.82</data>
+      <data key="d32">0.71</data>
+    </edge>
+    <edge source="Operator:OneHotCategoricalEncoder@1" target="ValidationRun:e0d43fa3" id="0">
+      <data key="d30">VALIDATED_BY</data>
+      <data key="d31">0.83</data>
+      <data key="d32">0.66</data>
+    </edge>
+    <edge source="Operator:OneHotCategoricalEncoder@1" target="ValidationRun:a7f163bc" id="0">
+      <data key="d30">VALIDATED_BY</data>
+      <data key="d31">0.85</data>
+      <data key="d32">0.78</data>
+    </edge>
+    <edge source="Operator:RandomForestModel@1" target="Condition:nonlinear" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:RandomForestModel@1" target="Condition:mixed_features" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:RandomForestModel@1" target="Condition:feature_importance" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:RandomForestModel@1" target="Dependency:scikit-learn" id="0">
+      <data key="d30">DEPENDS_ON</data>
+    </edge>
+    <edge source="Operator:RandomForestModel@1" target="ValidationRun:e0d43fa3" id="0">
+      <data key="d30">VALIDATED_BY</data>
+      <data key="d31">0.83</data>
+      <data key="d32">0.66</data>
+    </edge>
+    <edge source="Operator:StandardFeatureScaler@1" target="Condition:linear_model" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:StandardFeatureScaler@1" target="Condition:numeric_features" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:StandardFeatureScaler@1" target="Dependency:scikit-learn" id="0">
+      <data key="d30">DEPENDS_ON</data>
+    </edge>
+    <edge source="Operator:StandardFeatureScaler@1" target="ValidationRun:e11ba947" id="0">
+      <data key="d30">VALIDATED_BY</data>
+      <data key="d31">0.82</data>
+      <data key="d32">0.71</data>
+    </edge>
+    <edge source="Operator:TfidfTextVectorizer@1" target="Condition:text_input" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:TfidfTextVectorizer@1" target="Dependency:scikit-learn" id="0">
+      <data key="d30">DEPENDS_ON</data>
+    </edge>
+    <edge source="Scenario:telecom_churn" target="Source:docs/business_requirements.md" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="Scenario:telecom_churn" target="Metric:recall" id="0">
+      <data key="d30">EVALUATED_BY</data>
+      <data key="d33">0.75</data>
+      <data key="d34">True</data>
+    </edge>
+    <edge source="Scenario:telecom_churn" target="Metric:roc_auc" id="0">
+      <data key="d30">EVALUATED_BY</data>
+      <data key="d33">0.8</data>
+      <data key="d34">False</data>
+    </edge>
+    <edge source="Scenario:telecom_churn" target="Metric:recall_at_20" id="0">
+      <data key="d30">EVALUATED_BY</data>
+      <data key="d34">False</data>
+    </edge>
+    <edge source="Scenario:telecom_churn" target="Source:docs/experiment_log.md" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="Scenario:telecom_churn" target="Source:docs/failure_cases.md" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="Scenario:telecom_churn" target="Source:docs/tuning_notes.md" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="Operator:TotalChargesCleaner@1" target="Condition:string_typed_numeric" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:TotalChargesCleaner@1" target="Condition:has_missing_values" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:TotalChargesCleaner@1" target="Condition:numeric_features" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:TotalChargesCleaner@1" target="Dependency:pandas" id="0">
+      <data key="d30">DEPENDS_ON</data>
+    </edge>
+    <edge source="Operator:TotalChargesCleaner@1" target="Source:churn_v1/cleaning.py::clean_total_charges" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="Operator:IdColumnDropper@1" target="Condition:id_columns" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:IdColumnDropper@1" target="Condition:high_cardinality" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:IdColumnDropper@1" target="Source:churn_v1/cleaning.py::drop_id_columns" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="Operator:KFoldTargetEncoder@1" target="Condition:has_categorical_features" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:KFoldTargetEncoder@1" target="Condition:high_cardinality" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:KFoldTargetEncoder@1" target="Dependency:pandas" id="0">
+      <data key="d30">DEPENDS_ON</data>
+    </edge>
+    <edge source="Operator:KFoldTargetEncoder@1" target="Dependency:scikit-learn" id="0">
+      <data key="d30">DEPENDS_ON</data>
+    </edge>
+    <edge source="Operator:KFoldTargetEncoder@1" target="Source:churn_v1/encoding.py::target_encode" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="Operator:KFoldTargetEncoder@1" target="ValidationRun:10b300d0" id="0">
+      <data key="d30">VALIDATED_BY</data>
+      <data key="d31">0.97</data>
+    </edge>
+    <edge source="Operator:ChargeRatioFeatureGenerator@1" target="Condition:numeric_features" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:ChargeRatioFeatureGenerator@1" target="Condition:time_tenure" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:ChargeRatioFeatureGenerator@1" target="Dependency:numpy" id="0">
+      <data key="d30">DEPENDS_ON</data>
+    </edge>
+    <edge source="Operator:ChargeRatioFeatureGenerator@1" target="Source:churn_v1/features.py::add_charge_ratio" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="Operator:ChargeRatioFeatureGenerator@1" target="ValidationRun:f6e4284c" id="0">
+      <data key="d30">VALIDATED_BY</data>
+      <data key="d31">0.86</data>
+      <data key="d32">0.8</data>
+    </edge>
+    <edge source="Operator:TenureBucketizer@1" target="Condition:time_tenure" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:TenureBucketizer@1" target="Condition:linear_model" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:TenureBucketizer@1" target="Condition:interpretable" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:TenureBucketizer@1" target="Condition:numeric_features" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:TenureBucketizer@1" target="Dependency:numpy" id="0">
+      <data key="d30">DEPENDS_ON</data>
+    </edge>
+    <edge source="Operator:TenureBucketizer@1" target="Dependency:pandas" id="0">
+      <data key="d30">DEPENDS_ON</data>
+    </edge>
+    <edge source="Operator:TenureBucketizer@1" target="Source:churn_v1/features.py::add_tenure_bucket" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="Operator:TenureBucketizer@1" target="ValidationRun:f6e4284c" id="0">
+      <data key="d30">VALIDATED_BY</data>
+      <data key="d31">0.86</data>
+      <data key="d32">0.8</data>
+    </edge>
+    <edge source="Operator:ServiceCountFeature@1" target="Condition:has_categorical_features" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:ServiceCountFeature@1" target="Source:churn_v1/features.py::count_services" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="Metric:recall_at_top_k" target="Source:churn_v1/modeling.py::recall_at_top_k" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="Operator:BalancedLightGBMClassifier@1" target="Condition:imbalanced" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:BalancedLightGBMClassifier@1" target="Condition:nonlinear" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:BalancedLightGBMClassifier@1" target="Condition:large_tabular" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:BalancedLightGBMClassifier@1" target="Condition:feature_importance" id="0">
+      <data key="d30">SUITABLE_WHEN</data>
+    </edge>
+    <edge source="Operator:BalancedLightGBMClassifier@1" target="Dependency:lightgbm" id="0">
+      <data key="d30">DEPENDS_ON</data>
+    </edge>
+    <edge source="Operator:BalancedLightGBMClassifier@1" target="Source:churn_v1/modeling.py::train_lgbm_balanced" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="Operator:BalancedLightGBMClassifier@1" target="ValidationRun:a7f163bc" id="0">
+      <data key="d30">VALIDATED_BY</data>
+      <data key="d31">0.85</data>
+      <data key="d32">0.78</data>
+    </edge>
+    <edge source="ValidationRun:e11ba947" target="Scenario:telecom_churn" id="0">
+      <data key="d30">RUN_ON</data>
+    </edge>
+    <edge source="ValidationRun:e11ba947" target="Source:docs/experiment_log.md" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="ValidationRun:e0d43fa3" target="Scenario:telecom_churn" id="0">
+      <data key="d30">RUN_ON</data>
+    </edge>
+    <edge source="ValidationRun:e0d43fa3" target="Source:docs/experiment_log.md" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="ValidationRun:a7f163bc" target="Scenario:telecom_churn" id="0">
+      <data key="d30">RUN_ON</data>
+    </edge>
+    <edge source="ValidationRun:a7f163bc" target="Source:docs/experiment_log.md" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="ValidationRun:10b300d0" target="Scenario:telecom_churn" id="0">
+      <data key="d30">RUN_ON</data>
+    </edge>
+    <edge source="ValidationRun:10b300d0" target="Source:docs/experiment_log.md" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="ValidationRun:f6e4284c" target="Scenario:telecom_churn" id="0">
+      <data key="d30">RUN_ON</data>
+    </edge>
+    <edge source="ValidationRun:f6e4284c" target="Source:docs/experiment_log.md" id="0">
+      <data key="d30">EXTRACTED_FROM</data>
+    </edge>
+    <edge source="Lesson:828ad675" target="Operator:KFoldTargetEncoder@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:828ad675" target="Condition:high_cardinality" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:828ad675" target="Source:docs/experiment_log.md" id="0">
+      <data key="d30">LEARNED_FROM</data>
+    </edge>
+    <edge source="Lesson:9e9e77d6" target="Operator:BalancedLightGBMClassifier@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:9e9e77d6" target="Operator:LogisticRegressionModel@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:9e9e77d6" target="Condition:imbalanced" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:9e9e77d6" target="Condition:recall_first" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:9e9e77d6" target="Source:docs/experiment_log.md" id="0">
+      <data key="d30">LEARNED_FROM</data>
+    </edge>
+    <edge source="Lesson:69d51358" target="Operator:TotalChargesCleaner@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:69d51358" target="Condition:string_typed_numeric" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:69d51358" target="Source:docs/failure_cases.md" id="0">
+      <data key="d30">LEARNED_FROM</data>
+    </edge>
+    <edge source="Lesson:88299a38" target="Operator:IdColumnDropper@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:88299a38" target="Operator:OneHotCategoricalEncoder@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:88299a38" target="Condition:id_columns" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:88299a38" target="Source:docs/failure_cases.md" id="0">
+      <data key="d30">LEARNED_FROM</data>
+    </edge>
+    <edge source="Lesson:25484941" target="Operator:BalancedLightGBMClassifier@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:25484941" target="Operator:LightGBMModel@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:25484941" target="Operator:LogisticRegressionModel@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:25484941" target="Condition:imbalanced" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:25484941" target="Condition:recall_first" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:25484941" target="Source:docs/failure_cases.md" id="0">
+      <data key="d30">LEARNED_FROM</data>
+    </edge>
+    <edge source="Lesson:0d5e3eb1" target="Operator:OneHotCategoricalEncoder@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:0d5e3eb1" target="Condition:has_categorical_features" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:0d5e3eb1" target="Source:docs/failure_cases.md" id="0">
+      <data key="d30">LEARNED_FROM</data>
+    </edge>
+    <edge source="Lesson:6a946c79" target="Operator:ChargeRatioFeatureGenerator@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:6a946c79" target="Operator:ServiceCountFeature@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:6a946c79" target="Operator:TenureBucketizer@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:6a946c79" target="Source:docs/failure_cases.md" id="0">
+      <data key="d30">LEARNED_FROM</data>
+    </edge>
+    <edge source="Lesson:f2c1398b" target="Operator:LightGBMModel@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:f2c1398b" target="Condition:large_tabular" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:f2c1398b" target="Condition:imbalanced" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:f2c1398b" target="Source:docs/tuning_notes.md" id="0">
+      <data key="d30">LEARNED_FROM</data>
+    </edge>
+    <edge source="Lesson:74e2da10" target="Operator:LogisticRegressionModel@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:74e2da10" target="Operator:StandardFeatureScaler@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:74e2da10" target="Condition:scaled_features" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:74e2da10" target="Condition:interpretable" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:74e2da10" target="Condition:linear_model" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:74e2da10" target="Source:docs/tuning_notes.md" id="0">
+      <data key="d30">LEARNED_FROM</data>
+    </edge>
+    <edge source="Lesson:57718714" target="Operator:RandomForestModel@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:57718714" target="Condition:recall_first" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:57718714" target="Source:docs/tuning_notes.md" id="0">
+      <data key="d30">LEARNED_FROM</data>
+    </edge>
+    <edge source="Lesson:631c1a72" target="Operator:TfidfTextVectorizer@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:631c1a72" target="Operator:LogisticRegressionModel@1" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:631c1a72" target="Condition:text_input" id="0">
+      <data key="d30">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:631c1a72" target="Source:docs/tuning_notes.md" id="0">
+      <data key="d30">LEARNED_FROM</data>
+    </edge>
+  </graph>
+</graphml>

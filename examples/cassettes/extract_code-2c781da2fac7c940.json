@@ -1,0 +1,19 @@
+{
+  "tag": "extract_code",
+  "model": "gemini-3.5-flash",
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是算法能力工厂的能力抽取专家。阅读一个历史项目中的 Python 函数，把它归纳为可复用的能力卡片。\nkind 可选值：['imputer', 'encoder', 'scaler', 'feature', 'vectorizer', 'model']。\nconditions 优先从以下标签中选择，确有必要时可新增 snake_case 标签：\n- has_missing_values: 数据存在缺失值\n- has_categorical_features: 存在类别型特征\n- low_cardinality: 类别基数较低（适合 one-hot）\n- high_cardinality: 类别基数较高（适合目标编码等）\n- numeric_features: 存在数值型特征\n- string_typed_numeric: 数值列被读成字符串（含空白等脏值）\n- id_columns: 数据含客户 ID 等标识列\n- linear_model: 下游为线性模型\n- scaled_features: 要求特征已标准化\n- nonlinear: 存在非线性关系\n- mixed_features: 数值与类别特征混合\n- large_tabular: 表格数据量较大\n- imbalanced: 正负样本不平衡\n- recall_first: 业务上召回优先\n- interpretable: 要求结果可解释\n- feature_importance: 需要输出特征重要性\n- sparse_features: 高维稀疏特征\n- text_input: 输入为文本\n- time_tenure: 存在在网时长等时间长度字段"
+    },
+    {
+      "role": "user",
+      "content": "仓库：churn_v1  模块：features\n签名：add_tenure_bucket(df, col='tenure')\n依赖：['numpy', 'pandas']\n源码：\n```python\ndef add_tenure_bucket(df, col=\"tenure\"):\n    \"\"\"按在网时长分段：0-6、6-12、12-24、24-48、48+ 个月。\n\n    业务经验：前 6 个月是流失高发期，分段后对线性模型更友好，也便于向业务方解释。\n    \"\"\"\n    out = df.copy()\n    bins = [-1, 6, 12, 24, 48, np.inf]\n    labels = [\"0-6\", \"6-12\", \"12-24\", \"24-48\", \"48+\"]\n    out[col + \"_bucket\"] = pd.cut(out[col], bins=bins, labels=labels).astype(str)\n    return out\n```"
+    },
+    {
+      "role": "system",
+      "content": "Respond with a single JSON object only, no prose, conforming to this JSON schema:\n{\"$defs\": {\"OperatorKind\": {\"enum\": [\"imputer\", \"encoder\", \"scaler\", \"feature\", \"vectorizer\", \"model\"], \"title\": \"OperatorKind\", \"type\": \"string\"}}, \"description\": \"LLM 对一个历史函数的能力归纳。\", \"properties\": {\"function\": {\"description\": \"原函数名\", \"title\": \"Function\", \"type\": \"string\"}, \"capability_type\": {\"description\": \"operator=可作为流水线步骤的数据变换/模型；metric=评价指标；utility=日志等辅助函数\", \"enum\": [\"operator\", \"metric\", \"utility\"], \"title\": \"Capability Type\", \"type\": \"string\"}, \"name\": {\"description\": \"CamelCase 英文能力名，例如 TotalChargesCleaner\", \"title\": \"Name\", \"type\": \"string\"}, \"kind\": {\"anyOf\": [{\"$ref\": \"#/$defs/OperatorKind\"}, {\"type\": \"null\"}], \"default\": null, \"description\": \"capability_type=operator 时必填\"}, \"description\": {\"description\": \"一句话中文描述，说明做什么、为什么\", \"title\": \"Description\", \"type\": \"string\"}, \"inputs\": {\"default\": \"\", \"title\": \"Inputs\", \"type\": \"string\"}, \"outputs\": {\"default\": \"\", \"title\": \"Outputs\", \"type\": \"string\"}, \"conditions\": {\"description\": \"适用条件标签，snake_case\", \"items\": {\"type\": \"string\"}, \"title\": \"Conditions\", \"type\": \"array\"}, \"params\": {\"additionalProperties\": true, \"description\": \"关键参数及默认值\", \"title\": \"Params\", \"type\": \"object\"}}, \"required\": [\"function\", \"capability_type\", \"name\", \"description\"], \"title\": \"CapabilityCard\", \"type\": \"object\"}"
+    }
+  ],
+  "response": "{\n  \"function\": \"add_tenure_bucket\",\n  \"capability_type\": \"operator\",\n  \"name\": \"TenureBucketizer\",\n  \"kind\": \"feature\",\n  \"description\": \"将连续的在网时长字段（tenure）按照业务经验分箱为离散的区间段，以提升线性模型的表现并增强可解释性。\",\n  \"inputs\": \"pandas.DataFrame containing tenure column\",\n  \"outputs\": \"pandas.DataFrame with an additional tenure_bucket column\",\n  \"conditions\": [\n    \"time_tenure\",\n    \"linear_model\",\n    \"interpretable\",\n    \"numeric_features\"\n  ],\n  \"params\": {\n    \"col\": \"tenure\"\n  }\n}"
+}

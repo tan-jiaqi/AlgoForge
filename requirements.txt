@@ -1,0 +1,20 @@
+# Core
+pydantic>=2.6
+pyyaml>=6.0
+python-dotenv>=1.0
+openai>=1.30
+# Data & ML
+numpy>=1.26
+pandas>=2.1
+scikit-learn>=1.4
+lightgbm>=4.3
+# Knowledge graph
+networkx>=3.2
+rank-bm25>=0.2.2
+pyvis>=0.3.2
+# Interface
+typer>=0.12
+rich>=13.7
+streamlit>=1.35
+# Testing
+pytest>=8.0

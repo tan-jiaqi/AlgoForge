@@ -1,0 +1,14 @@
+# 密钥 —— 绝不提交
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# 运行时产物
+.cache/
+runs/

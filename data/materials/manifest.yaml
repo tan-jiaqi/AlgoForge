@@ -1,0 +1,20 @@
+# 业务材料清单：能力抽取的输入。scenario 为本批材料所属的业务场景。
+scenario:
+  name: telecom_churn
+  title: 电信客户流失预测
+  task_type: binary_classification
+  modality: tabular
+  dataset: data/churn.csv
+  target_column: churn
+code_repos:
+  - path: legacy_repo
+    name: churn_v1
+docs:
+  - path: docs/business_requirements.md
+    kind: requirement
+  - path: docs/experiment_log.md
+    kind: experiment
+  - path: docs/failure_cases.md
+    kind: failure
+  - path: docs/tuning_notes.md
+    kind: tuning

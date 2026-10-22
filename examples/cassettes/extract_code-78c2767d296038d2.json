@@ -1,0 +1,19 @@
+{
+  "tag": "extract_code",
+  "model": "gemini-3.5-flash",
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是算法能力工厂的能力抽取专家。阅读一个历史项目中的 Python 函数，把它归纳为可复用的能力卡片。\nkind 可选值：['imputer', 'encoder', 'scaler', 'feature', 'vectorizer', 'model']。\nconditions 优先从以下标签中选择，确有必要时可新增 snake_case 标签：\n- has_missing_values: 数据存在缺失值\n- has_categorical_features: 存在类别型特征\n- low_cardinality: 类别基数较低（适合 one-hot）\n- high_cardinality: 类别基数较高（适合目标编码等）\n- numeric_features: 存在数值型特征\n- string_typed_numeric: 数值列被读成字符串（含空白等脏值）\n- id_columns: 数据含客户 ID 等标识列\n- linear_model: 下游为线性模型\n- scaled_features: 要求特征已标准化\n- nonlinear: 存在非线性关系\n- mixed_features: 数值与类别特征混合\n- large_tabular: 表格数据量较大\n- imbalanced: 正负样本不平衡\n- recall_first: 业务上召回优先\n- interpretable: 要求结果可解释\n- feature_importance: 需要输出特征重要性\n- sparse_features: 高维稀疏特征\n- text_input: 输入为文本\n- time_tenure: 存在在网时长等时间长度字段"
+    },
+    {
+      "role": "user",
+      "content": "仓库：churn_v1  模块：modeling\n签名：tune_threshold_for_recall(y_true, proba, min_recall=0.75)\n依赖：['numpy', 'scikit-learn']\n源码：\n```python\ndef tune_threshold_for_recall(y_true, proba, min_recall=0.75):\n    \"\"\"在验证集上选择满足最低召回率要求的最大阈值（召回优先场景）。\n\n    返回 (threshold, precision, recall)。默认 0.5 阈值下召回率往往只有 0.5 左右。\n    \"\"\"\n    precision, recall, thresholds = precision_recall_curve(y_true, proba)\n    ok = np.where(recall[:-1] >= min_recall)[0]\n    if len(ok) == 0:\n        return 0.0, precision[0], recall[0]\n    i = ok[-1]\n    return float(thresholds[i]), float(precision[i]), float(recall[i])\n```"
+    },
+    {
+      "role": "system",
+      "content": "Respond with a single JSON object only, no prose, conforming to this JSON schema:\n{\"$defs\": {\"OperatorKind\": {\"enum\": [\"imputer\", \"encoder\", \"scaler\", \"feature\", \"vectorizer\", \"model\"], \"title\": \"OperatorKind\", \"type\": \"string\"}}, \"description\": \"LLM 对一个历史函数的能力归纳。\", \"properties\": {\"function\": {\"description\": \"原函数名\", \"title\": \"Function\", \"type\": \"string\"}, \"capability_type\": {\"description\": \"operator=可作为流水线步骤的数据变换/模型；metric=评价指标；utility=日志等辅助函数\", \"enum\": [\"operator\", \"metric\", \"utility\"], \"title\": \"Capability Type\", \"type\": \"string\"}, \"name\": {\"description\": \"CamelCase 英文能力名，例如 TotalChargesCleaner\", \"title\": \"Name\", \"type\": \"string\"}, \"kind\": {\"anyOf\": [{\"$ref\": \"#/$defs/OperatorKind\"}, {\"type\": \"null\"}], \"default\": null, \"description\": \"capability_type=operator 时必填\"}, \"description\": {\"description\": \"一句话中文描述，说明做什么、为什么\", \"title\": \"Description\", \"type\": \"string\"}, \"inputs\": {\"default\": \"\", \"title\": \"Inputs\", \"type\": \"string\"}, \"outputs\": {\"default\": \"\", \"title\": \"Outputs\", \"type\": \"string\"}, \"conditions\": {\"description\": \"适用条件标签，snake_case\", \"items\": {\"type\": \"string\"}, \"title\": \"Conditions\", \"type\": \"array\"}, \"params\": {\"additionalProperties\": true, \"description\": \"关键参数及默认值\", \"title\": \"Params\", \"type\": \"object\"}}, \"required\": [\"function\", \"capability_type\", \"name\", \"description\"], \"title\": \"CapabilityCard\", \"type\": \"object\"}"
+    }
+  ],
+  "response": "{\n  \"function\": \"tune_threshold_for_recall\",\n  \"capability_type\": \"utility\",\n  \"name\": \"RecallThresholdTuner\",\n  \"kind\": null,\n  \"description\": \"在验证或测试集上寻找满足最低召回率约束的最大分类阈值，以在保证召回率的前提下最大化精确率，适用于召回优先的业务场景。\",\n  \"inputs\": \"y_true: 真实标签数组; proba: 预测正类概率数组\",\n  \"outputs\": \"tuple (threshold, precision, recall): 满足条件的最佳阈值及对应的精确率和召回率\",\n  \"conditions\": [\n    \"recall_first\",\n    \"imbalanced\"\n  ],\n  \"params\": {\n    \"min_recall\": 0.75\n  }\n}"
+}

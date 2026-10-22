@@ -1,0 +1,220 @@
+"""各 Agent 共享的结构化中间表示。
+
+用三层表示把"做什么""怎么做""代码"解耦：
+
+    TaskSpec（做什么）  ->  PipelinePlan（怎么做）  ->  代码
+
+LLM 的每次输出都要解析成其中一种模型，因此每一层都能单独校验和测试。
+验证结果以 ``Diagnostic`` 表示，带有固定的诊断码，工作流据此决定是修复代码还是重新规划。
+"""
+
+from __future__ import annotations
+
+from enum import Enum
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field, model_validator
+
+
+# ---------------------------------------------------------------------------
+# 第一层：TaskSpec —— 做什么
+# ---------------------------------------------------------------------------
+
+class TaskType(str, Enum):
+    BINARY_CLASSIFICATION = "binary_classification"
+    MULTICLASS_CLASSIFICATION = "multiclass_classification"
+
+
+class Modality(str, Enum):
+    TABULAR = "tabular"
+    TEXT = "text"
+
+
+class MetricTarget(BaseModel):
+    """优化指标及流水线必须达到的阈值。"""
+
+    name: str = Field(description="sklearn 风格的指标名，如 'recall'、'f1_macro'、'roc_auc'")
+    threshold: float = Field(ge=0.0, le=1.0)
+    primary: bool = True
+
+
+class TaskSpec(BaseModel):
+    """对自然语言能力需求的规范化理解。"""
+
+    description: str = Field(description="原始自然语言需求")
+    task_type: TaskType
+    modality: Modality
+    target_column: str
+    text_column: str | None = Field(default=None, description="modality 为 text 时必填")
+    metrics: list[MetricTarget] = Field(min_length=1)
+    constraints: list[str] = Field(
+        default_factory=list,
+        description="业务约束，如 'interpretable'、'recall_first'、'latency<50ms'",
+    )
+
+    @model_validator(mode="after")
+    def _check(self) -> "TaskSpec":
+        if self.modality == Modality.TEXT and not self.text_column:
+            raise ValueError("text_column is required for text tasks")
+        if sum(m.primary for m in self.metrics) != 1:
+            raise ValueError("exactly one metric must be primary")
+        return self
+
+    @property
+    def primary_metric(self) -> MetricTarget:
+        return next(m for m in self.metrics if m.primary)
+
+
+# ---------------------------------------------------------------------------
+# 第二层：PipelinePlan —— 怎么做
+# ---------------------------------------------------------------------------
+
+class OperatorKind(str, Enum):
+    IMPUTER = "imputer"
+    ENCODER = "encoder"
+    SCALER = "scaler"
+    FEATURE = "feature"          # 特征工程 / 特征生成
+    VECTORIZER = "vectorizer"    # 文本 -> 数值
+    MODEL = "model"              # 最终的预测模型
+
+
+class SynthSpec(BaseModel):
+    """尚不存在、需要生成的算子的规格说明。"""
+
+    name: str = Field(pattern=r"^[A-Z][A-Za-z0-9]*$", description="CamelCase 类名")
+    kind: OperatorKind
+    purpose: str
+    inputs: str = Field(description="期望输入，如 '含数值列的 DataFrame'")
+    outputs: str = Field(description="产出，如 '新增比值特征后的 DataFrame'")
+
+
+class Step(BaseModel):
+    """流水线中的一步：复用已注册算子，或生成新算子。"""
+
+    kind: OperatorKind
+    action: Literal["reuse", "synthesize"]
+    operator_ref: str | None = Field(default=None, description="注册表键，如 'MissingValueImputer@1'")
+    synth_spec: SynthSpec | None = None
+    params: dict[str, Any] = Field(default_factory=dict)
+    rationale: str = ""
+
+    @model_validator(mode="after")
+    def _check(self) -> "Step":
+        if self.action == "reuse" and not self.operator_ref:
+            raise ValueError("reuse step requires operator_ref")
+        if self.action == "synthesize" and not self.synth_spec:
+            raise ValueError("synthesize step requires synth_spec")
+        if self.synth_spec and self.synth_spec.kind != self.kind:
+            raise ValueError("synth_spec.kind must match step kind")
+        return self
+
+
+class PipelinePlan(BaseModel):
+    """有序的步骤列表，最后一步必须是模型。"""
+
+    name: str
+    steps: list[Step] = Field(min_length=1)
+    rationale: str = Field(default="", description="该方案为何适合此 TaskSpec")
+
+    @model_validator(mode="after")
+    def _check(self) -> "PipelinePlan":
+        kinds = [s.kind for s in self.steps]
+        if kinds[-1] != OperatorKind.MODEL:
+            raise ValueError("the last step must be a model")
+        if kinds.count(OperatorKind.MODEL) != 1:
+            raise ValueError("a plan must contain exactly one model step")
+        return self
+
+
+# ---------------------------------------------------------------------------
+# 第三层：代码产物与验证结果
+# ---------------------------------------------------------------------------
+
+class GeneratedOperator(BaseModel):
+    """Synthesizer 按 SynthSpec 生成的源码。"""
+
+    spec: SynthSpec
+    source: str
+    revision: int = 0
+
+
+class DiagnosticCode(str, Enum):
+    # 静态检查
+    SYNTAX_ERROR = "E_SYNTAX"
+    UNSAFE_CODE = "E_UNSAFE"
+    BAD_INTERFACE = "E_INTERFACE"
+    # 沙箱执行
+    RUNTIME_ERROR = "E_RUNTIME"
+    TIMEOUT = "E_TIMEOUT"
+    # 契约检查
+    BAD_SHAPE = "E_SHAPE"
+    BAD_PROBA = "E_PROBA"
+    INPUT_MUTATED = "E_MUTATION"
+    NAN_OUTPUT = "E_NAN"
+    # 指标检查
+    METRIC_BELOW_THRESHOLD = "M_THRESHOLD"
+    UNSTABLE = "M_UNSTABLE"
+
+    @property
+    def category(self) -> Literal["code", "metric"]:
+        """代码类错误就地修复；指标类问题触发重新规划。"""
+        return "metric" if self.value.startswith("M_") else "code"
+
+
+#: 诊断码说明，供抽取经验和修复代码时放入 prompt
+DIAGNOSTIC_DESCRIPTIONS: dict[DiagnosticCode, str] = {
+    DiagnosticCode.SYNTAX_ERROR: "代码语法错误",
+    DiagnosticCode.UNSAFE_CODE: "使用了禁止的模块或调用（subprocess、socket、eval、exec 等）",
+    DiagnosticCode.BAD_INTERFACE: "缺少 fit/transform/predict 等必需接口或元数据",
+    DiagnosticCode.RUNTIME_ERROR: "运行时异常（类型转换失败、未见类别、KeyError 等）",
+    DiagnosticCode.TIMEOUT: "执行超时或内存超限",
+    DiagnosticCode.BAD_SHAPE: "输出行数或维度不符合约定",
+    DiagnosticCode.BAD_PROBA: "预测概率不在 [0,1] 或各类之和不为 1",
+    DiagnosticCode.INPUT_MUTATED: "算子原地修改了输入数据",
+    DiagnosticCode.NAN_OUTPUT: "输出中出现 NaN/Inf",
+    DiagnosticCode.METRIC_BELOW_THRESHOLD: "指标未达到任务要求的阈值（如召回率不足）",
+    DiagnosticCode.UNSTABLE: "不同随机种子下指标波动过大，或疑似数据泄漏导致指标虚高",
+}
+
+
+class Diagnostic(BaseModel):
+    code: DiagnosticCode
+    stage: Literal["static", "sandbox", "contract", "metric"]
+    message: str
+    operator: str | None = Field(default=None, description="出错的算子（能定位时）")
+    hint: str = ""
+
+
+class ValidationReport(BaseModel):
+    """对一条组装好的流水线运行验证器的结果。"""
+
+    plan_name: str
+    passed: bool
+    diagnostics: list[Diagnostic] = Field(default_factory=list)
+    metrics: dict[str, float] = Field(default_factory=dict)
+    metric_std: dict[str, float] = Field(default_factory=dict)
+    fit_seconds: float | None = None
+
+
+# ---------------------------------------------------------------------------
+# 在各 Agent 之间传递的工作流状态
+# ---------------------------------------------------------------------------
+
+class RunState(BaseModel):
+    """各 Agent 读写的共享状态（黑板）。"""
+
+    request: str
+    data_path: str
+    task_config: str | None = None
+    spec: TaskSpec | None = None
+    candidates: list[PipelinePlan] = Field(default_factory=list)
+    generated: dict[str, GeneratedOperator] = Field(default_factory=dict)
+    reports: list[ValidationReport] = Field(default_factory=list)
+    best_plan: str | None = None
+    repair_rounds: int = 0
+    replans: int = 0
+    lessons_used: list[str] = Field(default_factory=list)
+    log: list[str] = Field(default_factory=list)
+
+    def note(self, message: str) -> None:
+        self.log.append(message)
