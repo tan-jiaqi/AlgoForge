@@ -28,9 +28,10 @@ from factory.llm import LLM
 from factory.operators import registry
 from factory.operators.synthesized import load_saved_operators
 from factory.profile import DataProfile, profile
-from factory.schemas import Diagnostic, GeneratedOperator, PipelinePlan, RepairRecord, RunState, ValidationReport
+from factory.report import write_report
+from factory.schemas import Diagnostic, GeneratedOperator, PipelinePlan, RepairRecord, RunState, TaskSpec, ValidationReport
 from factory.utils import ROOT, get_logger
-from factory.verify import Verifier, VerifyConfig
+from factory.verify import Verifier, VerifyConfig, load_verify_config
 
 log = get_logger(__name__)
 
@@ -85,7 +86,8 @@ class Workflow:
 
     def run(self, request: str, data_path: str, *, target: str | None = None) -> RunState:
         run_id = datetime.now().strftime("%Y%m%d-%H%M%S-") + short_hash(request + data_path)[:4]
-        state = RunState(run_id=run_id, request=request, data_path=str(data_path), target=target)
+        state = RunState(run_id=run_id, request=request, data_path=str(data_path), target=target,
+                         llm_model=getattr(self.llm, "model", None))
         ctx = _Ctx()
         handlers = {
             "PLAN": self._plan,
@@ -106,7 +108,9 @@ class Workflow:
                 state.note(f"[{step}] 出错：{type(exc).__name__}: {exc}")
                 state.status = "failed"
                 break
-            state.note(f"[{step}] 完成，用时 {time.perf_counter() - t0:.1f}s → {nxt}")
+            elapsed = time.perf_counter() - t0
+            state.timings[step] = round(state.timings.get(step, 0.0) + elapsed, 2)
+            state.note(f"[{step}] 完成，用时 {elapsed:.1f}s → {nxt}")
             step = nxt
         if step == "DONE":
             state.status = "succeeded"
@@ -129,6 +133,8 @@ class Workflow:
         state.note(f"[PLAN] TaskSpec：{state.spec.task_type.value}，目标 {state.spec.target_column}，"
                    f"主指标 {state.spec.primary_metric.name} >= {state.spec.primary_metric.threshold}")
         ctx.planning = self.planner.retrieve(state.spec, ctx.profile, scenario=ctx.scenario)
+        state.retrieval = {**ctx.planning.to_prompt(), "lesson_ids": [les["id"] for les in ctx.planning.lessons]}
+        state.verify_config = (self.cfg.verify or load_verify_config(state.spec.task_type)).model_dump()
         state.lessons_used = [les["id"] for les in ctx.planning.lessons]
         state.candidates = self.planner.propose(state.spec, ctx.profile, ctx.planning, n_candidates=self.cfg.n_candidates)
         state.note(f"[PLAN] 候选方案：{[_describe(p) for p in state.candidates]}")
@@ -167,15 +173,14 @@ class Workflow:
         ctx.repair_queue = self._repairable(state, ctx)
         if ctx.repair_queue:
             return "REPAIR"
-        passed = [r for r in state.reports if r.passed]
-        if passed:
-            state.best_plan = max(passed, key=lambda r: r.primary_value(state.spec)).plan_name
+        if any(r.passed for r in state.reports):
+            state.best_plan = rank_reports(state.reports, state.spec)[0].plan_name
             return "CURATE"
         metric_only = all(d.code.category == "metric" for r in state.reports for d in r.diagnostics)
         if state.replans < self.cfg.max_replans and (metric_only or self.cfg.allow_synthesis):
             return "REPLAN"
-        best = max(state.reports, key=lambda r: r.primary_value(state.spec), default=None)
-        state.best_plan = best.plan_name if best else None
+        ranked = rank_reports(state.reports, state.spec)
+        state.best_plan = ranked[0].plan_name if ranked else None
         state.note("[ROUTE] 没有方案通过验证")
         return "CURATE"
 
@@ -284,11 +289,21 @@ class Workflow:
             if state.status != "succeeded":
                 code = "# 警告：该方案未通过验证，仅为得分最高的候选，供人工参考。\n" + code
             (out / "pipeline.py").write_text(code, encoding="utf-8")
-            state.artifacts["pipeline"] = str(out / "pipeline.py")
+            state.artifacts["pipeline"] = _rel(out / "pipeline.py")
         for name, gen in state.generated.items():
             (out / f"{name}_v{gen.version}_r{gen.revision}.py").write_text(gen.source, encoding="utf-8")
-        state.artifacts["state"] = str(out / "state.json")
+        state.artifacts["state"] = _rel(out / "state.json")
+        state.artifacts.update({k: _rel(v) for k, v in write_report(state, out, kg=self.kg).items()})
         (out / "state.json").write_text(state.model_dump_json(indent=2), encoding="utf-8")
+
+
+def _rel(path: Path | str) -> str:
+    """仓库内的产物用相对路径记录，避免把本机绝对路径写进报告与 state.json。"""
+    path = Path(path).resolve()
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
 
 
 def _uses(plan: PipelinePlan, name: str) -> bool:
@@ -298,6 +313,17 @@ def _uses(plan: PipelinePlan, name: str) -> bool:
 def _describe(plan: PipelinePlan) -> str:
     parts = [(s.operator_ref or "").split("@")[0] if s.action == "reuse" else f"*{s.synth_spec.name}" for s in plan.steps]
     return f"{plan.name}({' → '.join(parts)})"
+
+
+def rank_reports(reports: list[ValidationReport], spec: TaskSpec) -> list[ValidationReport]:
+    """候选排序规则：先看是否通过，再比主指标，再比次要指标之和，最后训练耗时短者优先。"""
+    secondary = [m.name for m in spec.metrics if not m.primary]
+
+    def key(r: ValidationReport):
+        return (r.passed, r.primary_value(spec), sum(r.metrics.get(m, 0.0) for m in secondary),
+                -r.resources.get("fit_seconds", float("inf")))
+
+    return sorted(reports, key=key, reverse=True)
 
 
 def best_report(state: RunState) -> ValidationReport | None:

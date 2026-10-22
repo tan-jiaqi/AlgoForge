@@ -10,5 +10,5 @@ __pycache__/
 .pytest_cache/
 
 # 运行时产物
-.cache/
-runs/
+/.cache/
+/runs/

@@ -1,4 +1,4 @@
-"""命令行入口：llm-ping / operators / extract / kg / run。"""
+"""命令行入口：llm-ping / operators / extract / kg / run / report。"""
 
 from __future__ import annotations
 
@@ -54,17 +54,18 @@ def run(
     candidates: int = typer.Option(2, help="候选方案数"),
     max_replans: int = typer.Option(1, help="指标不达标时最多重新规划的次数"),
     kg: Path = typer.Option(None, help="知识图谱路径（默认 kg/capability_kg.json）"),
+    runs_dir: Path = typer.Option(None, help="运行产物目录（默认 runs/）"),
     no_writeback: bool = typer.Option(False, "--no-writeback", help="不把验证结果写回 KG"),
     no_synthesis: bool = typer.Option(False, "--no-synthesis", help="只复用能力库中已有算子，不生成新算子"),
     max_repairs: int = typer.Option(3, help="每个生成算子最多修复轮数"),
 ) -> None:
     """端到端：需求理解 → 知识检索 → 方案规划（复用/生成）→ 自动验证 → 修复优化 → 知识沉淀。"""
     from factory.kg import DEFAULT_KG_PATH
-    from factory.workflow import Workflow, WorkflowConfig, best_report
+    from factory.workflow import DEFAULT_RUNS_DIR, Workflow, WorkflowConfig
 
     cfg = WorkflowConfig(n_candidates=candidates, max_replans=max_replans, max_repairs=max_repairs,
                          allow_synthesis=not no_synthesis, writeback=not no_writeback)
-    wf = Workflow(make_llm(llm), kg_path=kg or DEFAULT_KG_PATH, config=cfg)
+    wf = Workflow(make_llm(llm), kg_path=kg or DEFAULT_KG_PATH, runs_dir=runs_dir or DEFAULT_RUNS_DIR, config=cfg)
     with console.status("运行中…"):
         state = wf.run(request, str(data), target=target)
 
@@ -111,9 +112,29 @@ def run(
     console.rule("运行记录")
     for line in state.log:
         console.print("  " + line)
-    console.print(f"状态：[bold]{state.status}[/bold]；产物：{state.artifacts}")
+    console.print(f"状态：[bold]{state.status}[/bold]")
+    for name, path in state.artifacts.items():
+        console.print(f"  {name}: {path}")
     if state.status != "succeeded":
         raise typer.Exit(1)
+
+
+@app.command()
+def report(
+    run_dir: Path = typer.Argument(..., help="运行目录（含 state.json），如 runs/20261022-120000-abcd"),
+    kg: Path = typer.Option(None, help="知识图谱路径，用于显示经验标题"),
+) -> None:
+    """根据 state.json 重新生成验证报告（report.md / report.html）。"""
+    from factory.kg import DEFAULT_KG_PATH, CapabilityKG
+    from factory.report import write_report
+    from factory.schemas import RunState
+
+    run_dir = run_dir.parent if run_dir.suffix == ".json" else run_dir
+    state = RunState.model_validate_json((run_dir / "state.json").read_text(encoding="utf-8"))
+    kg_path = kg or DEFAULT_KG_PATH
+    paths = write_report(state, run_dir, kg=CapabilityKG.load(kg_path) if kg_path.exists() else None)
+    for name, path in paths.items():
+        console.print(f"{name}: {path}")
 
 
 @app.command()

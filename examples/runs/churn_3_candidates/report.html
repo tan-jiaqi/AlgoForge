@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>AlgoForge 验证报告</title><style>
+:root { --fg:#1f2328; --muted:#59636e; --bg:#ffffff; --line:#d1d9e0; --code:#f6f8fa; --accent:#0969da; }
+@media (prefers-color-scheme: dark) {
+  :root { --fg:#e6edf3; --muted:#9198a1; --bg:#0d1117; --line:#3d444d; --code:#151b23; --accent:#4493f8; }
+}
+body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color:var(--fg);
+       background:var(--bg); max-width: 1100px; margin: 0 auto; padding: 24px 16px; line-height: 1.6; }
+h1 { border-bottom: 2px solid var(--line); padding-bottom: 8px; }
+h2 { border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-top: 32px; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+th { background: var(--code); }
+pre { background: var(--code); padding: 12px; overflow-x: auto; border-radius: 6px; font-size: 13px; }
+code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; }
+p code, li code, td code { background: var(--code); padding: 1px 4px; border-radius: 4px; }
+</style></head>
+<body>
+<h1>AlgoForge 验证报告</h1>
+<table><thead><tr><th>项目</th><th>内容</th></tr></thead><tbody><tr><td>需求</td><td>预测30天内可能流失的客户，需可解释，召回优先，并比较多种建模方案</td></tr><tr><td>数据</td><td>data/churn.csv</td></tr><tr><td>运行 ID</td><td>20261022-162139-7161</td></tr><tr><td>LLM</td><td>gemini-3.5-flash</td></tr><tr><td>状态</td><td>✅ 成功</td></tr><tr><td>最优方案</td><td>interpretable_logistic_regression</td></tr><tr><td>总耗时</td><td>162.2 s</td></tr></tbody></table>
+<p>共验证 3 个候选方案，1 个通过；重新规划 0 次，修复 0 轮。最优方案 <code>interpretable_logistic_regression</code> 的 recall = 0.778（要求 ≥ 0.75）。</p>
+<h2>1. 需求理解（TaskSpec）</h2>
+<table><thead><tr><th>字段</th><th>值</th></tr></thead><tbody><tr><td>任务类型</td><td>binary_classification</td></tr><tr><td>数据模态</td><td>tabular</td></tr><tr><td>目标列</td><td>churn</td></tr><tr><td>评价指标</td><td>recall ≥ 0.75（主）</td></tr><tr><td>业务约束</td><td>interpretable、recall_first</td></tr><tr><td>数据画像标签</td><td>has_missing_values、numeric_features、has_categorical_features、low_cardinality、string_typed_numeric、id_columns、imbalanced、time_tenure、mixed_features</td></tr></tbody></table>
+<h2>2. 知识检索（设计依据）</h2>
+<p>匹配场景：telecom_churn。每类步骤从知识图谱检索候选算子，得分 = 0.4 × 文本相关度 + 0.3 × 条件匹配 + 0.3 × 历史验证分。</p>
+<table><thead><tr><th>步骤</th><th>候选算子</th><th>可直接复用</th><th>得分</th><th>文本/条件/历史</th><th>证据</th></tr></thead><tbody><tr><td>imputer</td><td>MissingValueImputer@1</td><td>是</td><td>0.489</td><td>0.62 / 0.09 / 0.72</td><td>匹配条件：has_missing_values；历史验证 3 次，平均 recall 0.717</td></tr><tr><td>imputer</td><td>TotalChargesCleaner@1</td><td>否（历史实现，可参考生成）</td><td>0.482</td><td>1.00 / 0.27 / 0.00</td><td>匹配条件：has_missing_values、numeric_features、string_typed_numeric</td></tr><tr><td>feature</td><td>TenureBucketizer@1</td><td>否（历史实现，可参考生成）</td><td>0.722</td><td>1.00 / 0.27 / 0.80</td><td>匹配条件：interpretable、numeric_features、time_tenure；历史验证 1 次，平均 recall 0.800</td></tr><tr><td>feature</td><td>ChargeRatioFeatureGenerator@1</td><td>否（历史实现，可参考生成）</td><td>0.621</td><td>0.82 / 0.18 / 0.80</td><td>匹配条件：numeric_features、time_tenure；历史验证 1 次，平均 recall 0.800</td></tr><tr><td>feature</td><td>ServiceCountFeature@1</td><td>否（历史实现，可参考生成）</td><td>0.425</td><td>0.99 / 0.09 / 0.00</td><td>匹配条件：has_categorical_features</td></tr><tr><td>encoder</td><td>OneHotCategoricalEncoder@1</td><td>是</td><td>0.664</td><td>0.99 / 0.18 / 0.72</td><td>匹配条件：has_categorical_features、low_cardinality；历史验证 3 次，平均 recall 0.717</td></tr><tr><td>encoder</td><td>KFoldTargetEncoder@1</td><td>否（历史实现，可参考生成）</td><td>0.427</td><td>1.00 / 0.09 / 0.00</td><td>匹配条件：has_categorical_features</td></tr><tr><td>scaler</td><td>StandardFeatureScaler@1</td><td>是</td><td>0.640</td><td>1.00 / 0.09 / 0.71</td><td>匹配条件：numeric_features；历史验证 1 次，平均 recall 0.710</td></tr><tr><td>model</td><td>LogisticRegressionModel@1</td><td>是</td><td>0.640</td><td>1.00 / 0.09 / 0.71</td><td>匹配条件：interpretable；历史验证 1 次，平均 recall 0.710</td></tr><tr><td>model</td><td>BalancedLightGBMClassifier@1</td><td>否（历史实现，可参考生成）</td><td>0.607</td><td>0.86 / 0.09 / 0.78</td><td>匹配条件：imbalanced；历史验证 1 次，平均 recall 0.780</td></tr><tr><td>model</td><td>RandomForestModel@1</td><td>是</td><td>0.549</td><td>0.81 / 0.09 / 0.66</td><td>匹配条件：mixed_features；历史验证 1 次，平均 recall 0.660</td></tr></tbody></table>
+<h3>参考的历史经验</h3>
+<ul><li><strong>逻辑回归标准化与可解释性</strong>：必须先进行特征标准化（如 StandardFeatureScaler），在 0.1~10 之间搜索正则化强度 C，可直接输出系数给业务方。</li><li><strong>随机森林防过拟合与召回优化</strong>：设置 n_estimators 300 左右，限制 max_depth 在 8~16 防止过拟合；召回优先时需配合调整分类阈值。</li><li><strong>未剔除客户 ID 导致 One-Hot 编码后维度暴涨与内存溢出</strong>（E_TIMEOUT）：建模前剔除 ID 等标识列，并在编码器中设置最大类别数</li><li><strong>数值列含空白字符导致类型转换失败</strong>（E_RUNTIME）：先 str.strip()，再 pd.to_numeric(errors=&#x27;coerce&#x27;)，缺失值填补为 0</li><li><strong>样本不平衡导致默认模型召回率偏低</strong>（M_THRESHOLD）：启用平衡类权重（如 class_weight=&#x27;balanced&#x27; 或 BalancedLightGBMClassifier）以提升召回率</li></ul>
+<h2>3. 候选方案比较</h2>
+<p>排序规则：先看是否通过全部检查，再比主指标，再比次要指标之和，最后训练耗时短者优先。指标为多随机种子 × 分层 K 折交叉验证的均值 ± 种子间标准差。</p>
+<table><thead><tr><th>排名</th><th>方案</th><th>结果</th><th>recall</th><th>roc_auc</th><th>precision</th><th>f1</th><th>recall_at_20</th><th>单次训练 (s)</th><th>峰值内存 (MB)</th></tr></thead><tbody><tr><td>1</td><td>★ interpretable_logistic_regression</td><td>通过</td><td>0.778 ± 0.001</td><td>0.814 ± 0.001</td><td>0.483 ± 0.002</td><td>0.596 ± 0.002</td><td>0.457 ± 0.002</td><td>0.078</td><td>257</td></tr><tr><td>2</td><td>feature_engineered_random_forest</td><td>未通过</td><td>0.714 ± 0.003</td><td>0.804 ± 0.001</td><td>0.493 ± 0.002</td><td>0.583 ± 0.002</td><td>0.455 ± 0.001</td><td>0.637</td><td>270</td></tr><tr><td>3</td><td>balanced_lightgbm_churn</td><td>未通过</td><td>0.624 ± 0.007</td><td>0.783 ± 0.003</td><td>0.492 ± 0.002</td><td>0.550 ± 0.003</td><td>0.420 ± 0.006</td><td>0.252</td><td>267</td></tr></tbody></table>
+<pre><code>recall（| 为阈值 0.75）
+interpretable_logistic_regression    ■■■■■■■■■■■■■■■|···· 0.778
+feature_engineered_random_forest     ■■■■■■■■■■■■■■·|···· 0.714
+balanced_lightgbm_churn              ■■■■■■■■■■■■···|···· 0.624</code></pre>
+<h3>各方案的结构与诊断</h3>
+<ul><li><code>interpretable_logistic_regression</code>：生成:TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel。诊断：无</li><li><code>feature_engineered_random_forest</code>：生成:TotalChargesCleaner → MissingValueImputer → 生成:ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → RandomForestModel。诊断：<code>M_THRESHOLD</code> recall = 0.7143 低于阈值 0.75</li><li><code>balanced_lightgbm_churn</code>：生成:TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → 生成:BalancedLightGBMClassifier。诊断：<code>M_THRESHOLD</code> recall = 0.6243 低于阈值 0.75</li></ul>
+<h2>4. 最优方案：interpretable_logistic_regression</h2>
+<p>针对业务高可解释性及召回率诉求，首先安全清洗字符串数值列并填补缺失值，One-Hot编码后进行标准Z-Score缩放，最后采用平衡权重的逻辑回归模型输出线性可解释系数。</p>
+<table><thead><tr><th>#</th><th>步骤</th><th>算子</th><th>参数</th><th>选择理由</th></tr></thead><tbody><tr><td>1</td><td>imputer</td><td>生成 TotalChargesCleaner</td><td>-</td><td>根据 lessons，total_charges 包含空白字符直接转数值会报错，需先做清洗转换。</td></tr><tr><td>2</td><td>imputer</td><td>MissingValueImputer@1</td><td>-</td><td>数据中 monthly_charges 和 payment_method 仍有缺失值，需要中位数和众数填充。</td></tr><tr><td>3</td><td>encoder</td><td>OneHotCategoricalEncoder@1</td><td>max_categories=20</td><td>类别特征基数较低，适用 One-Hot 编码且需限制类别数防止维度发散。</td></tr><tr><td>4</td><td>scaler</td><td>StandardFeatureScaler@1</td><td>-</td><td>根据经验，逻辑回归对特征尺度敏感，必须先进行标准化。</td></tr><tr><td>5</td><td>model</td><td>LogisticRegressionModel@1</td><td>C=1.0, class_weight=balanced, max_iter=1000, random_state=42</td><td>逻辑回归具有高可解释性，配置 class_weight=&#x27;balanced&#x27; 应对样本不平衡以优先提升召回率。</td></tr></tbody></table>
+<h2>5. 能力生成与修复</h2>
+<table><thead><tr><th>生成算子</th><th>类型</th><th>用途</th><th>参考的历史实现</th><th>修复轮数</th><th>注册到能力库</th></tr></thead><tbody><tr><td>TotalChargesCleaner@2</td><td>imputer</td><td>将 total_charges 中的空白字符处理为缺失并转换为浮点型，填补为0.0</td><td>TotalChargesCleaner@1</td><td>0</td><td>是</td></tr><tr><td>BalancedLightGBMClassifier@2</td><td>model</td><td>训练带有 balanced 类权重的 LightGBM 二分类模型以强化召回率</td><td>BalancedLightGBMClassifier@1</td><td>0</td><td>否</td></tr><tr><td>ChargeRatioFeatureGenerator@2</td><td>feature</td><td>构建当前月费与在网期间月均消费的比值特征，反映资费变动压力</td><td>ChargeRatioFeatureGenerator@1</td><td>0</td><td>否</td></tr></tbody></table>
+<h2>6. 验证机制</h2>
+<table><thead><tr><th>级别</th><th>检查内容</th><th>本次配置</th></tr></thead><tbody><tr><td>1 静态检查</td><td>语法、import 白名单、禁止危险调用、接口与 meta 一致性</td><td>仅针对生成的算子</td></tr><tr><td>2 沙箱执行</td><td>独立子进程，限制超时与内存，清除含 KEY/TOKEN 的环境变量</td><td>超时 180 s，内存 8192 MB</td></tr><tr><td>3 契约检查</td><td>不修改输入、行数一致、不引入 NaN/Inf、概率合法、能处理未见类别与缺失值</td><td>冒烟样本 300 行</td></tr><tr><td>4 指标检查</td><td>阈值、种子间稳定性、疑似泄漏、耗时与内存</td><td>5 折 × 种子 [42, 7, 2024]；std 上限 0.03</td></tr></tbody></table>
+<p>最优方案资源消耗：单次训练 0.078 s，预测 38.5 ms / 千行，峰值内存 257 MB。</p>
+<h2>7. 知识沉淀</h2>
+<ul><li>回写验证记录 ValidationRun：3 条</li><li>注册到能力库的新算子：TotalChargesCleaner@2</li><li>新提炼的经验：无</li><li>本次使用的经验：9 条（命中次数已累计）</li></ul>
+<h2>附录 A. 生成的算法代码（pipeline.py）</h2>
+<pre><code>&quot;&quot;&quot;预测30天内可能流失的客户，需可解释，召回优先，并比较多种建模方案 —— 自动生成的算法流水线
+
+需求：预测30天内可能流失的客户，需可解释，召回优先，并比较多种建模方案
+方案：interpretable_logistic_regression
+设计依据：针对业务高可解释性及召回率诉求，首先安全清洗字符串数值列并填补缺失值，One-Hot编码后进行标准Z-Score缩放，最后采用平衡权重的逻辑回归模型输出线性可解释系数。
+主指标：recall &gt;= 0.75
+
+由 AlgoForge 自动生成。用法：
+    python pipeline.py --data &lt;train.csv&gt;                      # 训练并保存 model.joblib
+    python pipeline.py --predict &lt;new.csv&gt; --model model.joblib  # 预测
+&quot;&quot;&quot;
+
+import argparse
+
+import joblib
+import pandas as pd
+from sklearn.pipeline import Pipeline
+
+from factory.operators.models import LogisticRegressionModel
+from factory.operators.tabular import MissingValueImputer, OneHotCategoricalEncoder, StandardFeatureScaler
+
+
+import pandas as pd
+import numpy as np
+from sklearn.base import TransformerMixin
+from factory.operators.base import Operator, OperatorMeta
+from factory.schemas import OperatorKind
+
+class TotalChargesCleaner(TransformerMixin, Operator):
+    meta = OperatorMeta(
+        name=&quot;TotalChargesCleaner&quot;,
+        kind=OperatorKind.IMPUTER,
+        version=2,
+        origin=&quot;synthesized&quot;,
+        description=&quot;将 total_charges 中的空白字符处理为缺失并转换为浮点型，填补为0.0&quot;,
+        conditions=[&quot;string_typed_numeric&quot;],
+        dependencies=[],
+        params={&quot;col&quot;: &quot;total_charges&quot;},
+        parent=&quot;TotalChargesCleaner@1&quot;
+    )
+
+    def __init__(self, col=&quot;total_charges&quot;):
+        self.col = col
+
+    def fit(self, X, y=None):
+        self.is_fitted_ = True
+        return self
+
+    def transform(self, X):
+        X = X.copy()
+        if self.col in X.columns:
+            # 先将列转换为字符串并去除首尾空白字符，再转换为数值型（无法转换的变NaN），最后填补为0.0
+            X[self.col] = pd.to_numeric(X[self.col].astype(str).str.strip(), errors=&quot;coerce&quot;).fillna(0.0)
+        return X
+
+
+TARGET = &#x27;churn&#x27;
+
+
+def build_pipeline() -&gt; Pipeline:
+    return Pipeline([
+        (&quot;0_imputer&quot;, TotalChargesCleaner()),  # 根据 lessons，total_charges 包含空白字符直接转数值会报错，需先做清洗转换。
+        (&quot;1_imputer&quot;, MissingValueImputer()),  # 数据中 monthly_charges 和 payment_method 仍有缺失值，需要中位数和众数填充。
+        (&quot;2_encoder&quot;, OneHotCategoricalEncoder(max_categories=20)),  # 类别特征基数较低，适用 One-Hot 编码且需限制类别数防止维度发散。
+        (&quot;3_scaler&quot;, StandardFeatureScaler()),  # 根据经验，逻辑回归对特征尺度敏感，必须先进行标准化。
+        (&quot;4_model&quot;, LogisticRegressionModel(C=1.0, class_weight=&#x27;balanced&#x27;, max_iter=1000, random_state=42)),  # 逻辑回归具有高可解释性，配置 class_weight=&#x27;balanced&#x27; 应对样本不平衡以优先提升召回率。
+    ])
+
+
+def main() -&gt; None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(&quot;--data&quot;, help=&quot;训练数据 CSV&quot;)
+    parser.add_argument(&quot;--predict&quot;, help=&quot;待预测数据 CSV&quot;)
+    parser.add_argument(&quot;--model&quot;, default=&quot;model.joblib&quot;)
+    args = parser.parse_args()
+    if args.data:
+        df = pd.read_csv(args.data)
+        pipe = build_pipeline().fit(df.drop(columns=[TARGET]), df[TARGET])
+        joblib.dump(pipe, args.model)
+        print(f&quot;模型已保存到 {args.model}&quot;)
+    if args.predict:
+        pipe = joblib.load(args.model)
+        df = pd.read_csv(args.predict)
+        X = df.drop(columns=[TARGET], errors=&quot;ignore&quot;)
+        out = pd.DataFrame(pipe.predict_proba(X), columns=[f&quot;proba_{c}&quot; for c in pipe.classes_])
+        out[&quot;prediction&quot;] = pipe.predict(X)
+        print(out.head().to_string())
+
+
+if __name__ == &quot;__main__&quot;:
+    main()
+</code></pre>
+<h2>附录 B. 运行记录</h2>
+<p>各阶段耗时：PLAN 92.2s，BUILD 45.1s，VERIFY 24.9s，ROUTE 0.0s，CURATE 0.0s</p>
+<pre><code>[PLAN] 场景 telecom_churn；画像标签 [&#x27;has_missing_values&#x27;, &#x27;numeric_features&#x27;, &#x27;has_categorical_features&#x27;, &#x27;low_cardinality&#x27;, &#x27;string_typed_numeric&#x27;, &#x27;id_columns&#x27;, &#x27;imbalanced&#x27;, &#x27;time_tenure&#x27;, &#x27;mixed_features&#x27;]
+[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall &gt;= 0.75
+[PLAN] 候选方案：[&#x27;interpretable_logistic_regression(*TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)&#x27;, &#x27;balanced_lightgbm_churn(*TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → *BalancedLightGBMClassifier)&#x27;, &#x27;feature_engineered_random_forest(*TotalChargesCleaner → MissingValueImputer → *ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → RandomForestModel)&#x27;]
+[PLAN] 完成，用时 92.2s → BUILD
+[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将 total_charges 中的空白字符处理为缺失并转换为浮点型，填补为0.0
+[BUILD] 生成算子 BalancedLightGBMClassifier@2（参考 BalancedLightGBMClassifier@1）：训练带有 balanced 类权重的 LightGBM 二分类模型以强化召回率
+[BUILD] 生成算子 ChargeRatioFeatureGenerator@2（参考 ChargeRatioFeatureGenerator@1）：构建当前月费与在网期间月均消费的比值特征，反映资费变动压力
+[BUILD] 完成，用时 45.1s → VERIFY
+[VERIFY] interpretable_logistic_regression：通过，recall=0.7780
+[VERIFY] balanced_lightgbm_churn：未通过，recall=0.6243；M_THRESHOLD recall = 0.6243 低于阈值 0.75
+[VERIFY] feature_engineered_random_forest：未通过，recall=0.7143；M_THRESHOLD recall = 0.7143 低于阈值 0.75
+[VERIFY] 完成，用时 24.9s → ROUTE
+[ROUTE] 完成，用时 0.0s → CURATE
+[CURATE] 写入 KG：3 条 ValidationRun；注册新算子 [&#x27;TotalChargesCleaner@2&#x27;]；新增经验 0 条
+[CURATE] 完成，用时 0.0s → DONE</code></pre>
+</body></html>

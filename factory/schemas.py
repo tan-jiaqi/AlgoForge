@@ -245,6 +245,10 @@ class RunState(BaseModel):
     lessons_used: list[str] = Field(default_factory=list, description="规划/修复时放进 prompt 的 Lesson 节点 id")
     kg_writes: list[str] = Field(default_factory=list, description="回写到 KG 的 ValidationRun 节点 id")
     artifacts: dict[str, str] = Field(default_factory=dict)
+    llm_model: str | None = None
+    retrieval: dict[str, Any] = Field(default_factory=dict, description="Planner 检索到的候选算子与经验（设计依据）")
+    verify_config: dict[str, Any] = Field(default_factory=dict)
+    timings: dict[str, float] = Field(default_factory=dict, description="各阶段累计耗时（秒）")
     log: list[str] = Field(default_factory=list)
 
     def note(self, message: str) -> None:

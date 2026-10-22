@@ -27,7 +27,7 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 | 2 | 数据与能力抽取 | ✅ | `data/`、`factory/extract.py`、`factory/kg.py`、`kg/`、`docs/schema.md` |
 | 3 | 最小闭环 | ✅ | `factory/agents/{planner,rules,curator}.py`、`factory/verify/`、`factory/workflow.py`、`factory/profile.py`、`factory/codegen.py` |
 | 4 | 生成与修复 | ✅ | `factory/agents/synthesizer.py`、`factory/agents/curator.py`、`factory/operators/synthesized.py` |
-| 5 | 候选比较与报告 | ⏳ | `factory/report.py`、`examples/` |
+| 5 | 候选比较与报告 | ✅ | `factory/report.py`、`examples/runs/` |
 | 6 | 界面与跨场景迁移 | ⏳ | `factory/cli.py`、`app.py`、KG 可视化 |
 | 7 | 收尾 | ⏳ | `README.md`、录制回放数据、测试补全 |
 
@@ -76,10 +76,16 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 - 真实 LLM 修复：LLM 生成的 `BalancedLightGBMClassifier` 的 `predict_proba` 返回了 DataFrame，被契约检查判为 `E_SHAPE` 并定位到该算子；带诊断调用 `Synthesizer.repair` 一轮修好，剩下的只是指标不达标（交给重新规划）
 - mock 模式稳定复现完整闭环：生成 → `E_NAN` → 修复 → 通过 → 注册 → 提炼 Lesson；再次运行直接复用（见 `tests/test_synthesis.py`）
 
-### 5. 候选比较与报告 ⏳
+### 5. 候选比较与报告 ✅
 
 - Planner 每次产出 2–3 个候选方案，全部验证后按指标选出最优
 - 生成 Markdown / HTML 验证报告：各候选的指标对比、诊断记录、修复过程、设计依据
+
+实际结果：
+- 统一的候选排序规则 `rank_reports`：是否通过 → 主指标 → 次要指标之和 → 训练耗时
+- 每次 `run` 自动在运行目录生成 `report.md` 与 `report.html`（同一份内容结构渲染两种格式，HTML 自带深色模式）；`report` 命令可根据 `state.json` 重新生成
+- 报告包含：需求理解、知识检索的分项得分与证据（设计依据）、候选比较表与指标条形图、最优方案每一步的理由、生成算子与修复 diff、四级验证配置与资源消耗、知识沉淀情况、生成的代码与运行记录
+- 样例：`examples/runs/churn_3_candidates/`（真实 API，3 个候选：逻辑回归通过，随机森林与生成的 BalancedLightGBM 未达标）
 
 ### 6. 界面与跨场景迁移 ⏳
 

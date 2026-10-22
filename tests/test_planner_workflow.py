@@ -88,6 +88,7 @@ def test_workflow_end_to_end_mock(kg_path, churn_csv, fast_verify, tmp_path):
                           "--predict", str(churn_csv)], capture_output=True, text=True, cwd=tmp_path)
     assert out.returncode == 0, out.stderr
     assert "prediction" in out.stdout
+    assert {"report_md", "report_html"} <= set(state.artifacts)
 
 
 def test_workflow_replans_on_metric_failure(kg_path, churn_csv, fast_verify, tmp_path):
