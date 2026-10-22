@@ -2,7 +2,7 @@
 
 本文件记录 AlgoForge 的里程碑规划与完成情况，每完成一个里程碑同步更新。
 
-状态：✅ 已完成　⏳ 未开始
+状态：✅ 已完成　⏳ 未开始（全部里程碑已完成）
 
 ## 目标
 
@@ -27,9 +27,9 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 | 2 | 数据与能力抽取 | ✅ | `data/`、`factory/extract.py`、`factory/kg.py`、`kg/`、`docs/schema.md` |
 | 3 | 最小闭环 | ✅ | `factory/agents/{planner,rules,curator}.py`、`factory/verify/`、`factory/workflow.py`、`factory/profile.py`、`factory/codegen.py` |
 | 4 | 生成与修复 | ✅ | `factory/agents/synthesizer.py`、`factory/agents/curator.py`、`factory/operators/synthesized.py` |
-| 5 | 候选比较与报告 | ✅ | `factory/report.py`、`examples/runs/` |
-| 6 | 界面与跨场景迁移 | ✅ | `app.py`、`factory/kg_viz.py`、`examples/runs/tickets_text_transfer/` |
-| 7 | 收尾 | ⏳ | `README.md`、录制回放数据、测试补全 |
+| 5 | 候选比较与报告 | ✅ | `factory/report.py`、`examples/demo/runs/*/report.{md,html}` |
+| 6 | 界面与跨场景迁移 | ✅ | `app.py`、`factory/kg_viz.py`、`examples/demo/runs/01_tickets_transfer/` |
+| 7 | 收尾 | ✅ | `README.md`、`factory/demo.py`、`examples/demo/`、`examples/cassettes/` |
 
 ### 1. 骨架 ✅
 
@@ -85,7 +85,7 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 - 统一的候选排序规则 `rank_reports`：是否通过 → 主指标 → 次要指标之和 → 训练耗时
 - 每次 `run` 自动在运行目录生成 `report.md` 与 `report.html`（同一份内容结构渲染两种格式，HTML 自带深色模式）；`report` 命令可根据 `state.json` 重新生成
 - 报告包含：需求理解、知识检索的分项得分与证据（设计依据）、候选比较表与指标条形图、最优方案每一步的理由、生成算子与修复 diff、四级验证配置与资源消耗、知识沉淀情况、生成的代码与运行记录
-- 样例：`examples/runs/churn_3_candidates/`（真实 API，3 个候选：逻辑回归通过，随机森林与生成的 BalancedLightGBM 未达标）
+- 样例：`examples/demo/runs/02_churn_synthesize/`（真实 API，3 个候选：逻辑回归通过，随机森林与生成的 BalancedLightGBM 未达标；里程碑 7 重新录制）
 
 ### 6. 界面与跨场景迁移 ✅
 
@@ -102,12 +102,18 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 - 跨场景迁移（真实 API）：工单数据没有任何场景知识，系统自动识别为中文文本多分类、建立新场景；检索到调参笔记中"中文短文本用字符级 TF-IDF + 逻辑回归"的经验，最优方案 F1-macro 0.820 通过
 - 同一次运行中出现了真实的"失败 → 修复 → 通过"：LLM 生成的 `ChineseTextPreprocessor` 使用了 `getattr()`，被静态检查判为 `E_UNSAFE`；带诊断修复一轮后改用 `try/except AttributeError`，通过验证；Curator 将其提炼为经验"避免在安全沙箱环境中使用 getattr 获取动态属性"写入 KG。该方案随后因词级 TF-IDF 处理中文效果差（F1 0.42）未达标，被如实判为失败
 
-### 7. 收尾 ⏳
+### 7. 收尾 ✅
 
 - 录制全流程的 LLM 回放数据，保证离线可复现
 - README 覆盖题目要求的 10 项内容
 - `examples/` 放端到端产物：生成的代码和验证报告样例
 - 补全测试
+
+实际结果：
+- `python -m factory.cli demo`：在知识图谱副本上依次运行工单迁移（含真实修复）、客户流失（3 候选，生成并注册算子）、相似需求（复用），输出摘要 `SUMMARY.md`
+- 重新录制：只保留实际用到的 28 条 LLM 响应；`demo --llm replay` 离线回放，结果与 `examples/demo/` 逐项一致（测试 `test_demo_replay_matches_examples`）
+- 修复代码导出缺陷：参数中的 `float('inf')` 原来被写成 `inf`，导出的脚本无法运行；三个演示的 `pipeline.py` 都已验证可独立训练与预测
+- README 覆盖题目要求的 10 项；测试共 79 个（`pytest` 跑常规 78 个，`pytest -m slow` 跑完整演示回放）
 
 ## 验收方式
 

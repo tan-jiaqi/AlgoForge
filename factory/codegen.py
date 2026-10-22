@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import math
 import textwrap
 
 from factory.operators import registry
@@ -73,7 +74,7 @@ def render_pipeline(plan: PipelinePlan, spec: TaskSpec, generated: dict[str, Gen
     for i, step in enumerate(plan.steps):
         if step.action == "synthesize":
             # 本次生成的算子：源码内嵌，参数用其 __init__ 默认值
-            cls_name, args = step.synth_spec.name, ", ".join(f"{k}={v!r}" for k, v in step.params.items())
+            cls_name, args = step.synth_spec.name, ", ".join(f"{k}={literal(v)}" for k, v in step.params.items())
         else:
             cls = registry.get(step.operator_ref)
             cls_name = cls.__name__
@@ -83,7 +84,7 @@ def render_pipeline(plan: PipelinePlan, spec: TaskSpec, generated: dict[str, Gen
             else:
                 imports.setdefault(cls.__module__, set()).add(cls_name)
             params = {**cls.meta.params, **step.params}
-            args = ", ".join(f"{k}={v!r}" for k, v in params.items())
+            args = ", ".join(f"{k}={literal(v)}" for k, v in params.items())
         comment = f"  # {step.rationale}" if step.rationale else ""
         steps.append(f'        ("{i}_{step.kind.value}", {cls_name}({args})),{comment}')
     import_lines = "\n".join(f"from {mod} import {', '.join(sorted(names))}" for mod, names in sorted(imports.items()))
@@ -100,6 +101,18 @@ def render_pipeline(plan: PipelinePlan, spec: TaskSpec, generated: dict[str, Gen
         target=spec.target_column,
         steps="\n".join(steps),
     )
+
+
+def literal(v) -> str:
+    """把参数值写成合法的 Python 字面量（repr(float('inf')) 是 inf，不能直接写进代码）。"""
+    if isinstance(v, float) and (math.isinf(v) or math.isnan(v)):
+        return f"float({str(v)!r})"
+    if isinstance(v, (list, tuple)):
+        inner = ", ".join(literal(x) for x in v) + ("," if isinstance(v, tuple) and len(v) == 1 else "")
+        return f"[{inner}]" if isinstance(v, list) else f"({inner})"
+    if isinstance(v, dict):
+        return "{" + ", ".join(f"{literal(k)}: {literal(x)}" for k, x in v.items()) + "}"
+    return repr(v)
 
 
 def _strip_future(src: str) -> str:

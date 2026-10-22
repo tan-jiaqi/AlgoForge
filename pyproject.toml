@@ -1,6 +1,6 @@
 [project]
 name = "algoforge"
-version = "0.1.0"
+version = "1.0.0"
 description = "Agent-based algorithm capability factory: extract -> synthesize -> verify -> curate"
 requires-python = ">=3.11"
 
@@ -12,4 +12,5 @@ include = ["factory*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m 'not slow'"
+markers = ["slow: 完整演示回放等耗时测试，用 pytest -m slow 运行"]

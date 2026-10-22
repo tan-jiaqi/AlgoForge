@@ -109,3 +109,11 @@ def test_render_pipeline_uses_defaults_and_rationale():
     code = render_pipeline(plan, spec)
     assert "LightGBMModel(n_estimators=300" in code and "num_leaves=15" in code and "# 不平衡数据" in code
     compile(code, "pipeline.py", "exec")
+
+
+def test_literal_handles_special_floats():
+    from factory.codegen import literal
+
+    code = literal((-1, 6, float("inf"))) + literal({"a": [float("nan"), "x"]}) + literal((1,))
+    assert "float('inf')" in code and "float('nan')" in code and "(1,)" in code
+    assert eval(literal((-1, float("inf")))) == (-1, float("inf"))  # noqa: S307 - 测试字面量可还原

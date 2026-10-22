@@ -138,6 +138,19 @@ def report(
 
 
 @app.command()
+def demo(
+    llm: str = typer.Option("replay", help=LLM_MODE_HELP),
+    out: Path = typer.Option(Path("runs/demo"), help="输出目录（examples/demo 为提交到仓库的参考结果）"),
+) -> None:
+    """端到端演示：跨场景迁移与修复 → 生成并注册新算子 → 复用已沉淀的算子。"""
+    from factory.demo import run_demo
+
+    with console.status("运行演示（3 个任务）…"):
+        run_demo(make_llm(llm), out)
+    console.print((out / "SUMMARY.md").read_text(encoding="utf-8"))
+
+
+@app.command()
 def extract(
     llm: str = typer.Option("replay", help=LLM_MODE_HELP),
     materials: Path = typer.Option(None, help="业务材料目录（含 manifest.yaml）"),

@@ -87,8 +87,8 @@ class Workflow:
 
     # ------------------------------------------------------------------
 
-    def run(self, request: str, data_path: str, *, target: str | None = None) -> RunState:
-        run_id = datetime.now().strftime("%Y%m%d-%H%M%S-") + short_hash(request + data_path)[:4]
+    def run(self, request: str, data_path: str, *, target: str | None = None, run_id: str | None = None) -> RunState:
+        run_id = run_id or datetime.now().strftime("%Y%m%d-%H%M%S-") + short_hash(request + data_path)[:4]
         state = RunState(run_id=run_id, request=request, data_path=str(data_path), target=target,
                          llm_model=getattr(self.llm, "model", None))
         if self.on_event is not None:

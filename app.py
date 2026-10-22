@@ -3,7 +3,7 @@
 启动：streamlit run app.py
 - 运行：输入能力描述、选择数据与 LLM 模式，实时查看各 Agent 的进度，得到验证报告与生成代码；
 - 能力库：浏览算子与经验，交互式查看能力知识图谱；
-- 历史运行：查看以前的运行报告。
+- 历史运行：查看以前的运行报告（含 examples/demo 中的演示结果）。
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ EXAMPLES = {
     "客户流失（表格二分类）": ("预测30天内可能流失的客户，需可解释，召回优先", "data/churn.csv"),
     "工单分类（中文文本多分类）": ("把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低于 0.8", "data/tickets.csv"),
 }
-RUN_DIRS = [ROOT / "runs", ROOT / "examples" / "runs"]
+RUN_DIRS = [ROOT / "runs", ROOT / "runs" / "demo" / "runs", ROOT / "examples" / "demo" / "runs"]
 
 
 @st.cache_data(show_spinner=False)
