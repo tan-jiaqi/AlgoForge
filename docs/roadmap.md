@@ -25,7 +25,7 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 | --- | --- | --- | --- |
 | 1 | 骨架 | ✅ | `factory/schemas.py`、`factory/operators/`、`factory/llm.py` |
 | 2 | 数据与能力抽取 | ✅ | `data/`、`factory/extract.py`、`factory/kg.py`、`kg/`、`docs/schema.md` |
-| 3 | 最小闭环 | ⏳ | `factory/agents/planner.py`、`factory/verify/`、`factory/workflow.py` |
+| 3 | 最小闭环 | ✅ | `factory/agents/{planner,rules,curator}.py`、`factory/verify/`、`factory/workflow.py`、`factory/profile.py`、`factory/codegen.py` |
 | 4 | 生成与修复 | ⏳ | `factory/agents/synthesizer.py`、`factory/agents/curator.py` |
 | 5 | 候选比较与报告 | ⏳ | `factory/report.py`、`examples/` |
 | 6 | 界面与跨场景迁移 | ⏳ | `factory/cli.py`、`app.py`、KG 可视化 |
@@ -46,7 +46,7 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 - 抽取：AST 解析代码，LLM 归纳能力卡片；LLM 从文档抽取指标、约束、历史实验和经验
 - 知识图谱：8 类节点、9 类边，检索综合文本相关度、条件匹配和历史验证分
 
-### 3. 最小闭环 ⏳
+### 3. 最小闭环 ✅
 
 - Planner：自然语言需求 → `TaskSpec` → `PipelinePlan`，依据知识图谱检索结果决定复用哪些算子，并给出设计依据
 - Verifier：四级验证
@@ -55,8 +55,13 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
   3. 契约检查：输出形状、概率范围、不修改输入、能处理缺失值和未见类别
   4. 指标检查：是否达到阈值、多个随机种子下是否稳定、耗时
 - Curator：把验证结果（`ValidationRun`）回写知识图谱
-- 工作流状态机：plan → reuse → verify → curate
+- 工作流状态机：plan → build → verify → route →（replan →）curate；指标不达标时带着诊断反馈重新规划
 - 先用 Mock 跑通，再接真实 API 跑客户流失场景
+
+实际结果（真实 API，`gemini-3.5-flash`）：
+- 客户流失：LLM 解析出 recall ≥ 0.75（阈值来自 KG 中的需求文档）、可解释、召回优先；两个候选中逻辑回归通过（recall 0.777±0.002），随机森林未达标（0.724），结果写回 KG
+- 工单分类（迁移场景，宏召回 ≥ 0.85 的严格要求）：首轮两个方案均为 0.83，触发重新规划，LLM 根据反馈调整 n-gram 和正则化强度，仍为 0.833，判定失败并如实回写——这一差距留给里程碑 4 的 Synthesize 处理
+- 生成的 `runs/<run_id>/pipeline.py` 可独立训练与预测
 
 ### 4. 生成与修复 ⏳
 
@@ -98,3 +103,7 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 | 文本检索从 BM25 改为 BM25+ | 候选很少时，BM25 的 IDF 可能为 0 或负数，排序失效 |
 | 场景的指标阈值和业务约束只从需求文档抽取 | 实验记录、调参笔记里的描述会混入场景定义 |
 | 默认模型改为 `gemini-3.5-flash` | 原占位模型不在接口的可用模型列表中 |
+| 新增数据画像 `factory/profile.py` | 检索条件与 prompt 中的数据事实由确定性代码给出，不让 LLM 猜 |
+| 新增规则版 Planner `factory/agents/rules.py` | mock 模式解析与真实 LLM 相同的 prompt 上下文，离线也走完整链路 |
+| 沙箱子进程清除含 KEY/TOKEN/SECRET 的环境变量 | 防止生成的代码读取 API Key |
+| 工单数据加入跨类表述与 6% 标签噪声 | 原数据过于简单，F1 = 1.0，被泄漏检测判为异常 |

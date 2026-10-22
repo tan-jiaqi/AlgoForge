@@ -191,9 +191,13 @@ class ValidationReport(BaseModel):
     plan_name: str
     passed: bool
     diagnostics: list[Diagnostic] = Field(default_factory=list)
-    metrics: dict[str, float] = Field(default_factory=dict)
-    metric_std: dict[str, float] = Field(default_factory=dict)
-    fit_seconds: float | None = None
+    metrics: dict[str, float] = Field(default_factory=dict, description="各指标在多种子 × 多折上的均值")
+    metric_std: dict[str, float] = Field(default_factory=dict, description="各指标在不同种子间的标准差")
+    resources: dict[str, float] = Field(default_factory=dict, description="fit_seconds / predict_ms_per_1k / peak_rss_mb")
+    notes: list[str] = Field(default_factory=list)
+
+    def primary_value(self, spec: TaskSpec) -> float:
+        return self.metrics.get(spec.primary_metric.name, float("-inf"))
 
 
 # ---------------------------------------------------------------------------
@@ -203,17 +207,22 @@ class ValidationReport(BaseModel):
 class RunState(BaseModel):
     """各 Agent 读写的共享状态（黑板）。"""
 
+    run_id: str
     request: str
     data_path: str
-    task_config: str | None = None
+    target: str | None = Field(default=None, description="用户指定的目标列（可选，优先于 LLM 推断）")
+    status: Literal["running", "succeeded", "failed"] = "running"
     spec: TaskSpec | None = None
+    profile_tags: list[str] = Field(default_factory=list)
     candidates: list[PipelinePlan] = Field(default_factory=list)
     generated: dict[str, GeneratedOperator] = Field(default_factory=dict)
     reports: list[ValidationReport] = Field(default_factory=list)
     best_plan: str | None = None
     repair_rounds: int = 0
     replans: int = 0
-    lessons_used: list[str] = Field(default_factory=list)
+    lessons_used: list[str] = Field(default_factory=list, description="规划/修复时放进 prompt 的 Lesson 节点 id")
+    kg_writes: list[str] = Field(default_factory=list, description="回写到 KG 的 ValidationRun 节点 id")
+    artifacts: dict[str, str] = Field(default_factory=dict)
     log: list[str] = Field(default_factory=list)
 
     def note(self, message: str) -> None:

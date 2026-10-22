@@ -1,0 +1,267 @@
+"""第二到四级检查：在沙箱子进程内执行（由 ``python -m factory.verify`` 调用）。
+
+- 沙箱冒烟：小样本上逐步 fit/transform，出错时定位到具体算子；
+- 契约检查：不修改输入、行数一致、概率合法、能处理缺失值与未见类别；
+- 指标检查：多种子 × 分层 K 折交叉验证，判断阈值、稳定性与疑似泄漏，并记录耗时和内存。
+
+指标以插件方式注册：用 ``@metric("name")`` 装饰一个函数即可新增评估指标。
+"""
+
+from __future__ import annotations
+
+import resource
+import time
+import traceback
+from typing import Any, Callable
+
+import numpy as np
+import pandas as pd
+from sklearn import metrics as skm
+from sklearn.base import clone
+from sklearn.model_selection import StratifiedKFold, train_test_split
+
+from factory.operators import build_pipeline, registry
+from factory.operators.base import Operator
+from factory.profile import load_table
+from factory.schemas import Diagnostic, DiagnosticCode, OperatorKind, PipelinePlan, TaskSpec
+from factory.verify.config import VerifyConfig
+
+# ---------------------------------------------------------------------------
+# 指标注册表
+# ---------------------------------------------------------------------------
+
+MetricFn = Callable[[np.ndarray, np.ndarray, np.ndarray, list, Any], float]
+METRICS: dict[str, MetricFn] = {}
+
+
+def metric(name: str):
+    def deco(fn: MetricFn) -> MetricFn:
+        METRICS[name] = fn
+        return fn
+
+    return deco
+
+
+@metric("accuracy")
+def _accuracy(y, pred, proba, classes, pos):
+    return skm.accuracy_score(y, pred)
+
+
+for _name, _fn in (("precision", skm.precision_score), ("recall", skm.recall_score), ("f1", skm.f1_score)):
+    METRICS[_name] = lambda y, pred, proba, classes, pos, f=_fn: f(y, pred, pos_label=pos, zero_division=0)
+    METRICS[f"{_name}_macro"] = lambda y, pred, proba, classes, pos, f=_fn: f(y, pred, average="macro", zero_division=0)
+
+
+@metric("roc_auc")
+def _roc_auc(y, pred, proba, classes, pos):
+    if len(classes) == 2:
+        return skm.roc_auc_score(y == pos, proba[:, classes.index(pos)])
+    return skm.roc_auc_score(y, proba, multi_class="ovr", labels=classes)
+
+
+@metric("recall_at_20")
+def _recall_at_20(y, pred, proba, classes, pos):
+    """业务指标：按正类概率排序，前 20% 样本覆盖的正类比例。"""
+    score = proba[:, classes.index(pos)]
+    top = np.argsort(-score)[: max(1, int(len(score) * 0.2))]
+    return float((y[top] == pos).sum() / max((y == pos).sum(), 1))
+
+
+def resolve_metric(name: str, n_classes: int) -> str:
+    """多分类时把 recall/precision/f1 自动映射为 macro 版本。"""
+    name = {"auc": "roc_auc", "recall@20": "recall_at_20", "recall@20%": "recall_at_20"}.get(name, name)
+    if n_classes > 2 and name in ("precision", "recall", "f1"):
+        return f"{name}_macro"
+    return name
+
+
+# ---------------------------------------------------------------------------
+# 入口
+# ---------------------------------------------------------------------------
+
+def run_checks(job: dict) -> dict:
+    """执行冒烟、契约与指标检查，返回可 JSON 序列化的结果。"""
+    for src in job.get("sources", []):
+        _load_generated(src)
+    plan = PipelinePlan.model_validate(job["plan"])
+    spec = TaskSpec.model_validate(job["spec"])
+    cfg = VerifyConfig.model_validate(job["config"])
+
+    df = load_table(job["data_path"])
+    y = df[spec.target_column].to_numpy()
+    X = df.drop(columns=[spec.target_column])
+    classes = sorted(pd.unique(y).tolist(), key=str)
+    counts = pd.Series(y).value_counts()
+    pos = counts.idxmin() if len(classes) == 2 else None  # 二分类以少数类为正类（如 churn=1）
+
+    result: dict[str, Any] = {"diagnostics": [], "metrics": {}, "metric_std": {}, "resources": {}, "notes": []}
+    diags = smoke_and_contract(plan, X, y, classes, cfg)
+    if not diags:
+        diags = evaluate(plan, spec, X, y, classes, pos, cfg, result)
+    result["diagnostics"] = [d.model_dump(mode="json") for d in diags]
+    result["resources"]["peak_rss_mb"] = round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1)
+    return result
+
+
+def _load_generated(source: str) -> None:
+    """执行生成的算子源码并注册其中的 Operator 子类（源码已通过静态检查）。"""
+    ns: dict[str, Any] = {"__name__": "factory_generated"}
+    exec(compile(source, "<generated>", "exec"), ns)  # noqa: S102 - 仅在沙箱子进程内执行
+    for obj in list(ns.values()):
+        if isinstance(obj, type) and issubclass(obj, Operator) and obj is not Operator and hasattr(obj, "meta"):
+            if obj.meta.key not in registry:
+                registry.register(obj)
+
+
+# ---------------------------------------------------------------------------
+# 冒烟 + 契约
+# ---------------------------------------------------------------------------
+
+def _diag(code, stage, message, operator=None, hint="") -> Diagnostic:
+    return Diagnostic(code=code, stage=stage, message=message, operator=operator, hint=hint)
+
+
+def _short_exc(exc: BaseException) -> str:
+    frame = traceback.extract_tb(exc.__traceback__)[-1] if exc.__traceback__ else None
+    where = f" (at {frame.name}:{frame.lineno})" if frame else ""
+    return f"{type(exc).__name__}: {str(exc)[:300]}{where}"
+
+
+def _sample(X: pd.DataFrame, y: np.ndarray, n: int):
+    n = min(n, len(X))
+    strat = y if pd.Series(y).value_counts().min() >= 2 else None
+    return train_test_split(X, y, train_size=int(n * 0.7), test_size=n - int(n * 0.7), stratify=strat, random_state=0)
+
+
+def _perturb(X: pd.DataFrame) -> pd.DataFrame:
+    """构造健壮性样本：类别列填入未见取值，数值列置为缺失。"""
+    Xp = X.copy()
+    for i, c in enumerate(Xp.columns):
+        rows = Xp.index[i % 2 :: 2]
+        if pd.api.types.is_numeric_dtype(Xp[c]):
+            Xp.loc[rows, c] = np.nan
+        else:
+            Xp.loc[rows, c] = "__unseen__"
+    return Xp
+
+
+def smoke_and_contract(plan: PipelinePlan, X, y, classes, cfg: VerifyConfig) -> list[Diagnostic]:
+    Xtr, Xte, ytr, yte = _sample(X, y, cfg.smoke_rows)
+    try:
+        steps = build_pipeline(plan).steps
+    except Exception as exc:  # noqa: BLE001 - 未知算子、非法参数等
+        return [_diag(DiagnosticCode.BAD_INTERFACE, "sandbox", "组装 Pipeline 失败：" + _short_exc(exc))]
+    cur_tr, cur_te = Xtr, Xte
+    for _, op in steps[:-1]:
+        opname = type(op).meta.key
+        before_tr = cur_tr.copy() if isinstance(cur_tr, pd.DataFrame) else None
+        try:
+            out_tr = op.fit(cur_tr, ytr).transform(cur_tr)
+            out_te = op.transform(cur_te)
+        except Exception as exc:  # noqa: BLE001
+            return [_diag(DiagnosticCode.RUNTIME_ERROR, "sandbox", _short_exc(exc), opname)]
+        if before_tr is not None and not cur_tr.equals(before_tr):
+            return [_diag(DiagnosticCode.INPUT_MUTATED, "contract", "transform 原地修改了输入 DataFrame", opname,
+                          "在函数开头使用 X = X.copy()")]
+        if out_tr.shape[0] != cur_tr.shape[0] or out_te.shape[0] != cur_te.shape[0]:
+            return [_diag(DiagnosticCode.BAD_SHAPE, "contract",
+                          f"输出行数 {out_tr.shape[0]} 与输入 {cur_tr.shape[0]} 不一致", opname)]
+        cur_tr, cur_te = out_tr, out_te
+
+    model_name = type(steps[-1][1]).meta.key
+    try:
+        model = steps[-1][1].fit(cur_tr, ytr)
+        proba = np.asarray(model.predict_proba(cur_te))
+        pred = np.asarray(model.predict(cur_te))
+    except Exception as exc:  # noqa: BLE001
+        return [_diag(DiagnosticCode.RUNTIME_ERROR, "sandbox", _short_exc(exc), model_name)]
+    if proba.shape != (len(Xte), len(model.classes_)) or pred.shape[0] != len(Xte):
+        return [_diag(DiagnosticCode.BAD_SHAPE, "contract", f"predict_proba 形状 {proba.shape} 不符合预期", model_name)]
+    if not np.isfinite(proba).all():
+        return [_diag(DiagnosticCode.NAN_OUTPUT, "contract", "预测概率中出现 NaN/Inf", model_name)]
+    if (proba < -1e-6).any() or (proba > 1 + 1e-6).any() or not np.allclose(proba.sum(axis=1), 1, atol=1e-4):
+        return [_diag(DiagnosticCode.BAD_PROBA, "contract", "预测概率不在 [0,1] 或行和不为 1", model_name)]
+
+    # 健壮性：未见类别与缺失值
+    try:
+        cur = _perturb(Xte)
+        for _, op in steps[:-1]:
+            cur = op.transform(cur)
+        p2 = np.asarray(model.predict_proba(cur))
+        if not np.isfinite(p2).all():
+            raise ValueError("预测概率出现 NaN")
+    except Exception as exc:  # noqa: BLE001
+        return [_diag(DiagnosticCode.RUNTIME_ERROR, "contract", "未见类别/缺失值健壮性检查失败：" + _short_exc(exc),
+                      hint="编码器需忽略未见类别；预测前需处理缺失值")]
+    return []
+
+
+# ---------------------------------------------------------------------------
+# 指标
+# ---------------------------------------------------------------------------
+
+def _with_seed(plan: PipelinePlan, seed: int):
+    pipe = build_pipeline(plan)
+    for _, op in pipe.steps:
+        if "random_state" in op.get_params(deep=False):
+            op.set_params(random_state=seed)
+    return pipe
+
+
+def evaluate(plan, spec: TaskSpec, X, y, classes, pos, cfg: VerifyConfig, result: dict) -> list[Diagnostic]:
+    n_classes = len(classes)
+    wanted = [resolve_metric(m.name, n_classes) for m in spec.metrics]
+    names = list(dict.fromkeys(wanted + [resolve_metric(m, n_classes) for m in cfg.report_metrics]))
+    unknown = [m for m in names if m not in METRICS]
+    if unknown:
+        result["notes"].append(f"未注册的指标已跳过：{unknown}")
+    names = [m for m in names if m in METRICS]
+
+    per_seed: dict[str, list[float]] = {m: [] for m in names}
+    fit_s, pred_s, pred_rows = 0.0, 0.0, 0
+    model_name = plan.steps[-1].operator_ref or plan.steps[-1].kind.value
+    try:
+        for seed in cfg.seeds:
+            fold_vals: dict[str, list[float]] = {m: [] for m in names}
+            for tr, te in StratifiedKFold(cfg.cv_folds, shuffle=True, random_state=seed).split(X, y):
+                pipe = clone(_with_seed(plan, seed))
+                t0 = time.perf_counter()
+                pipe.fit(X.iloc[tr], y[tr])
+                t1 = time.perf_counter()
+                proba = pipe.predict_proba(X.iloc[te])
+                pred = pipe.classes_[np.argmax(proba, axis=1)]
+                pred_s += time.perf_counter() - t1
+                fit_s += t1 - t0
+                pred_rows += len(te)
+                order = [list(pipe.classes_).index(c) for c in classes]
+                for m in names:
+                    fold_vals[m].append(METRICS[m](y[te], pred, proba[:, order], classes, pos))
+            for m in names:
+                per_seed[m].append(float(np.mean(fold_vals[m])))
+    except Exception as exc:  # noqa: BLE001
+        return [_diag(DiagnosticCode.RUNTIME_ERROR, "sandbox", "交叉验证失败：" + _short_exc(exc), model_name)]
+
+    result["metrics"] = {m: round(float(np.mean(v)), 4) for m, v in per_seed.items()}
+    result["metric_std"] = {m: round(float(np.std(v)), 4) for m, v in per_seed.items()}
+    n_fits = len(cfg.seeds) * cfg.cv_folds
+    result["resources"] = {
+        "fit_seconds": round(fit_s / n_fits, 3),
+        "predict_ms_per_1k": round(pred_s / max(pred_rows, 1) * 1e6, 2),
+    }
+
+    diags = []
+    for target, name in zip(spec.metrics, wanted):
+        value = result["metrics"].get(name)
+        if value is not None and value < target.threshold:
+            diags.append(_diag(DiagnosticCode.METRIC_BELOW_THRESHOLD, "metric",
+                               f"{name} = {value:.4f} 低于阈值 {target.threshold}", model_name,
+                               "考虑 class_weight、换模型、调参或调整决策阈值"))
+    primary = resolve_metric(spec.primary_metric.name, n_classes)
+    if result["metric_std"].get(primary, 0) > cfg.max_metric_std:
+        diags.append(_diag(DiagnosticCode.UNSTABLE, "metric",
+                           f"{primary} 种子间标准差 {result['metric_std'][primary]:.4f} 超过 {cfg.max_metric_std}", model_name))
+    if result["metrics"].get(primary, 0) > cfg.leakage_ceiling:
+        diags.append(_diag(DiagnosticCode.UNSTABLE, "metric",
+                           f"{primary} = {result['metrics'][primary]:.4f} 过高，疑似数据泄漏", model_name,
+                           "检查是否有特征直接包含标签信息，或在全量数据上做了目标编码"))
+    return diags

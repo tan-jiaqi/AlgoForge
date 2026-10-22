@@ -1,0 +1,10 @@
+# 二分类任务的验证配置（插件式：新任务类型只需新增一个同名 yaml）
+cv_folds: 5
+seeds: [42, 7, 2024]          # 多种子检查稳定性
+smoke_rows: 300               # 沙箱冒烟测试的样本量
+timeout_seconds: 180
+memory_mb: 8192
+max_metric_std: 0.03          # 种子间标准差超过该值判为不稳定
+leakage_ceiling: 0.995        # 主指标高于该值疑似数据泄漏
+report_metrics: [roc_auc, recall, precision, f1, recall_at_20]
+n_threads: 4

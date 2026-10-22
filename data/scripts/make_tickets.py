@@ -1,6 +1,8 @@
 """生成模拟的电信客服工单文本分类数据集（跨场景迁移用，固定随机种子可复现）。
 
 每条工单由"类别模板 + 随机槽位 + 口语噪声"组成，类别分布不均衡。
+为贴近真实工单，约 25% 的工单混入其他类别的表述（例如"网速慢，想换套餐"），
+另有约 6% 的标签噪声（坐席分错类），使任务不至于被模板轻易记住。
 
 用法：python data/scripts/make_tickets.py [--rows 2000] [--out data/tickets.csv]
 """
@@ -55,16 +57,24 @@ NOISE = ["", "", "", "！", "，麻烦尽快处理", "，急！", "。谢谢", "
 
 def make_tickets(rows: int = 2000, seed: int = 7) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
-    labels = rng.choice(list(WEIGHTS), rows, p=list(WEIGHTS.values()))
+    names = list(WEIGHTS)
+    labels = rng.choice(names, rows, p=list(WEIGHTS.values()))
+
+    def fill(label: str) -> str:
+        return rng.choice(TEMPLATES[label]).format(
+            place=rng.choice(SLOTS["place"]), time=rng.choice(SLOTS["time"]), num=int(rng.integers(2, 300))
+        )
+
     texts = []
     for label in labels:
-        tpl = rng.choice(TEMPLATES[label])
-        text = tpl.format(
-            place=rng.choice(SLOTS["place"]),
-            time=rng.choice(SLOTS["time"]),
-            num=int(rng.integers(2, 300)),
-        )
+        text = fill(label)
+        if rng.random() < 0.25:  # 混入其他类别的表述，主诉仍是本类
+            other = rng.choice([n for n in names if n != label])
+            parts = [text, fill(other)]
+            text = "，".join(parts if rng.random() < 0.6 else parts[::-1])
         texts.append(text + rng.choice(NOISE))
+    flip = rng.random(rows) < 0.06  # 标签噪声
+    labels = np.where(flip, rng.choice(names, rows), labels)
     return pd.DataFrame({"ticket_id": [f"T{200000 + i}" for i in range(rows)], "text": texts, "label": labels})
 
 

@@ -6,3 +6,4 @@ dependencies:
   - pip
   - pip:
       - -r requirements.txt
+      - -e .   # 以可编辑方式安装 factory 包，生成的 pipeline.py 可在任意目录运行

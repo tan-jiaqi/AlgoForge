@@ -3,7 +3,7 @@
 | 路径 | 内容 | 用途 |
 | --- | --- | --- |
 | `churn.csv` | 5000 行模拟电信客户数据，流失率约 26.6% | 主场景：表格二分类 |
-| `tickets.csv` | 2000 条模拟客服工单，共 4 类，类别不均衡 | 迁移场景：中文文本分类 |
+| `tickets.csv` | 2000 条模拟客服工单，共 4 类，类别不均衡，含跨类表述与约 6% 标签噪声 | 迁移场景：中文文本分类 |
 | `scripts/make_churn.py`、`scripts/make_tickets.py` | 数据生成脚本，随机种子固定，可复现 | `python data/scripts/make_churn.py` |
 | `materials/manifest.yaml` | 业务材料清单：所属场景、代码仓库、文档 | 能力抽取的入口 |
 | `materials/legacy_repo/` | 模拟的历史代码仓库 `churn_v1`，含 9 个公开函数 | 抽取算子、依赖和参考源码 |

@@ -75,18 +75,32 @@ class LLM:
     def chat(self, messages: list[Message], *, tag: str = "", json_mode: bool = False) -> str:
         raise NotImplementedError
 
-    def structured(self, messages: list[Message], schema: type[T], *, tag: str = "") -> T:
-        """要求返回符合 ``schema`` 的 JSON；校验失败时带上错误信息重问一次。"""
+    def structured(
+        self,
+        messages: list[Message],
+        schema: type[T],
+        *,
+        tag: str = "",
+        check: Callable[[T], None] | None = None,
+        attempts: int = 2,
+    ) -> T:
+        """要求返回符合 ``schema`` 的 JSON；校验失败时带上错误信息重问，最多 ``attempts`` 次。
+
+        ``check`` 用于 schema 之外的语义校验（如算子是否存在），发现问题时抛出 ``ValueError``。
+        """
         instruction = (
             "Respond with a single JSON object only, no prose, conforming to this JSON schema:\n"
             + json.dumps(schema.model_json_schema(), ensure_ascii=False)
         )
         convo = [*messages, {"role": "system", "content": instruction}]
         last_error = ""
-        for attempt in range(2):
+        for attempt in range(attempts):
             raw = self.chat(convo, tag=tag, json_mode=True)
             try:
-                return schema.model_validate(extract_json(raw))
+                obj = schema.model_validate(extract_json(raw))
+                if check is not None:
+                    check(obj)
+                return obj
             except (ValueError, ValidationError) as exc:
                 last_error = str(exc)
                 log.warning("structured output for %s failed validation (attempt %d)", tag or schema.__name__, attempt + 1)
@@ -241,7 +255,9 @@ class MockLLM(LLM):
 
 def make_llm(mode: Mode = "live", *, settings: LLMSettings | None = None, cassette_dir: Path | None = None) -> LLM:
     if mode == "mock":
-        return MockLLM()
+        from factory.agents.rules import rule_based_mock  # 延迟导入，避免循环依赖
+
+        return rule_based_mock()
     settings = settings or LLMSettings.load()
     cassettes = cassette_dir or DEFAULT_CASSETTE_DIR
     if mode == "replay":

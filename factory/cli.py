@@ -1,4 +1,4 @@
-"""命令行入口：llm-ping / operators / extract / kg。run、report 在后续里程碑加入。"""
+"""命令行入口：llm-ping / operators / extract / kg / run。"""
 
 from __future__ import annotations
 
@@ -43,6 +43,63 @@ def list_operators() -> None:
     for meta in registry.list():
         table.add_row(meta.key, meta.kind.value, ",".join(m.value for m in meta.modalities), meta.description)
     console.print(table)
+
+
+@app.command()
+def run(
+    request: str = typer.Argument(..., help="自然语言能力描述，如：预测30天内可能流失的客户，需可解释，召回优先"),
+    data: Path = typer.Option(..., "--data", help="CSV 数据路径"),
+    target: str = typer.Option(None, help="目标列（不填则由 LLM 根据需求和数据推断）"),
+    llm: str = typer.Option("live", help=LLM_MODE_HELP),
+    candidates: int = typer.Option(2, help="候选方案数"),
+    max_replans: int = typer.Option(1, help="指标不达标时最多重新规划的次数"),
+    kg: Path = typer.Option(None, help="知识图谱路径（默认 kg/capability_kg.json）"),
+    no_writeback: bool = typer.Option(False, "--no-writeback", help="不把验证结果写回 KG"),
+) -> None:
+    """端到端：需求理解 → 知识检索 → 方案规划 → 自动验证 → 知识沉淀。"""
+    from factory.kg import DEFAULT_KG_PATH
+    from factory.workflow import Workflow, WorkflowConfig, best_report
+
+    cfg = WorkflowConfig(n_candidates=candidates, max_replans=max_replans, writeback=not no_writeback)
+    wf = Workflow(make_llm(llm), kg_path=kg or DEFAULT_KG_PATH, config=cfg)
+    with console.status("运行中…"):
+        state = wf.run(request, str(data), target=target)
+
+    spec = state.spec
+    if spec:
+        console.rule("TaskSpec")
+        console.print(f"{spec.task_type.value} / {spec.modality.value}，目标列 [bold]{spec.target_column}[/bold]，"
+                      f"指标 {[f'{m.name}>={m.threshold}' + ('*' if m.primary else '') for m in spec.metrics]}，"
+                      f"约束 {spec.constraints}")
+        console.print(f"画像标签：{state.profile_tags}")
+    if state.reports:
+        console.rule("候选方案验证结果")
+        names = [m.name for m in spec.metrics]
+        names += [k for k in state.reports[0].metrics if k not in names][: max(0, 3 - len(names))]
+        table = Table("方案", "结果", *names, "fit(s)")
+        for r in state.reports:
+            table.add_row(
+                ("★ " if r.plan_name == state.best_plan else "") + r.plan_name,
+                "[green]通过[/green]" if r.passed else "[red]未通过[/red]",
+                *[f"{r.metrics[k]:.3f}±{r.metric_std.get(k, 0):.3f}" if k in r.metrics else "-" for k in names],
+                str(r.resources.get("fit_seconds", "-")),
+            )
+        console.print(table)
+        for r in state.reports:
+            for d in r.diagnostics:
+                console.print(f"  [yellow]{r.plan_name}[/yellow] {d.code.value} {d.message}" + (f"（{d.hint}）" if d.hint else ""))
+    plan = next((p for p in state.candidates if p.name == state.best_plan), None)
+    if plan:
+        console.rule(f"最优方案：{plan.name}")
+        console.print(plan.rationale)
+        for i, step in enumerate(plan.steps):
+            console.print(f"  {i + 1}. [{step.kind.value}] {step.operator_ref} {step.params or ''} —— {step.rationale}")
+    console.rule("运行记录")
+    for line in state.log:
+        console.print("  " + line)
+    console.print(f"状态：[bold]{state.status}[/bold]；产物：{state.artifacts}")
+    if state.status != "succeeded":
+        raise typer.Exit(1)
 
 
 @app.command()
