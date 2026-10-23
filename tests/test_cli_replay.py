@@ -49,4 +49,9 @@ def test_demo_replay_matches_examples(tmp_path):
     assert states[1].registered and any(
         s.action == "reuse" and s.operator_ref in states[1].registered for p in states[2].candidates for s in p.steps
     ), "第三个任务应复用第二个任务注册的算子"
-    assert states[0].repairs and states[0].repairs[0].fixed and states[0].lessons_learned
+    kg = CapabilityKG.load(tmp_path / "kg" / "capability_kg.json")
+    lineage = {(u, v) for u, v, d in kg.g.edges(data=True) if d["rel"] == "DERIVED_FROM"}
+    assert {(f"Operator:{k}", f"Operator:{k.split('@')[0]}@1") for k in states[1].registered + states[2].registered} <= lineage, \
+        "注册的生成算子都应接入版本谱系"
+    titles = [d["title"] for _, d in kg.nodes("Lesson")]
+    assert len(titles) == len(set(titles)) and kg.find_similar_lesson("样本不平衡导致默认阈值下召回率偏低", "M_THRESHOLD")

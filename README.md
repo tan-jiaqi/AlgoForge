@@ -18,8 +18,8 @@ streamlit run app.py                # Web 界面
 
 | 运行（`examples/demo/`） | 演示内容 | 结果 |
 | --- | --- | --- |
-| [01 工单文本分类](examples/demo/runs/01_tickets_transfer/report.md) | 跨场景迁移；生成的算子被静态检查拦下（`E_UNSAFE`），LLM 带诊断修复一轮后通过，并提炼成新经验 | F1-macro 0.820 ✅ |
-| [02 客户流失（3 个候选）](examples/demo/runs/02_churn_synthesize/report.md) | 参考历史代码生成清洗与特征算子；3 个候选比较，最优方案通过后注册 `TotalChargesCleaner@2`、`TenureBucketizer@2` | recall 0.778 ✅ |
+| [01 工单文本分类](examples/demo/runs/01_tickets_transfer/report.md) | 跨场景迁移：无场景知识，靠通用经验（中文用字符级 TF-IDF）规划，两个候选都是纯文本流水线 | F1-macro 0.828 ✅ |
+| [02 客户流失（3 个候选）](examples/demo/runs/02_churn_synthesize/report.md) | 生成 4 个算子（清洗、分箱、比值特征、平衡 LightGBM）；3 个候选比较，最优方案通过后注册 `TotalChargesCleaner@2`、`TenureBucketizer@2` | recall 0.778 ✅ |
 | [03 客户流失（相似需求）](examples/demo/runs/03_churn_reuse/report.md) | 直接复用 02 注册的两个算子 | recall 0.778 ✅ |
 
 ---
@@ -103,7 +103,7 @@ flowchart LR
 ├── kg/                     # 抽取得到的知识图谱（JSON / GraphML / HTML）与原始抽取结果
 ├── examples/               # 录制的 LLM 响应（cassettes）与演示产物
 ├── docs/                   # schema.md、roadmap.md
-└── tests/                  # 79 个测试
+└── tests/                  # 90 个测试
 ```
 
 **技术选型与理由**
@@ -126,13 +126,13 @@ flowchart LR
 - **9 类边**：`SUITABLE_WHEN`、`DEPENDS_ON`、`EVALUATED_BY{threshold}`、`VALIDATED_BY{metric}`、`RUN_ON`、`LEARNED_FROM`、`APPLIES_TO`、`EXTRACTED_FROM`、`DERIVED_FROM`（版本谱系）
 - **检索**：结构化过滤（类型、模态、可执行） → `0.4 × BM25+ 文本 + 0.3 × 条件匹配 + 0.3 × 历史验证分`，每条结果带分项得分和证据；作废的历史实验（如数据泄漏）不计入历史分
 
-**可视化**：`python -m factory.cli kg viz` 默认生成**概览**，只画场景 / 指标 / 算子 / 经验四类主干节点。适用条件、依赖、出处折叠在节点的悬停信息里；验证记录汇总为"算子 → 场景"的一条边（线越粗，验证次数越多）。演示后的图谱在概览中是 36 个节点 / 41 条边，完整视图是 84 / 177。需要看全部关系时用 `--view full`，或用 `--focus <节点 id>` 只看某个节点的邻域。Web 界面里三种视图都可以切换。
+**可视化**：`python -m factory.cli kg viz` 默认生成**概览**，只画场景 / 指标 / 算子 / 经验四类主干节点。适用条件、依赖、出处折叠在节点的悬停信息里；验证记录汇总为"算子 → 场景"的一条边（线越粗，验证次数越多）。演示后的图谱在概览中是 33 个节点 / 39 条边，完整视图是 81 / 174。需要看全部关系时用 `--view full`，或用 `--focus <节点 id>` 只看某个节点的邻域。Web 界面里三种视图都可以切换。
 
 | 文件 | 内容 |
 | --- | --- |
-| [`kg/capability_kg.json`](kg/capability_kg.json) / `.graphml` / [`.html`](kg/capability_kg.html) | 抽取得到的基础知识图谱：14 个算子、11 条经验、5 条历史实验 |
+| [`kg/capability_kg.json`](kg/capability_kg.json) / `.graphml` / [`.html`](kg/capability_kg.html) | 抽取得到的基础知识图谱：14 个算子、10 条经验（已合并重复）、5 条历史实验 |
 | [`kg/extraction.json`](kg/extraction.json) | LLM 的原始抽取结果（能力卡片、文档知识） |
-| [`examples/demo/kg/`](examples/demo/kg/) | 演示 3 个任务后的知识图谱：算子 14 → 17、经验 11 → 12、验证记录 5 → 12、场景 1 → 2；`operators/` 下是沉淀的生成算子源码 |
+| [`examples/demo/kg/`](examples/demo/kg/) | 演示 3 个任务后的知识图谱：算子 14 → 17、验证记录 5 → 12、场景 1 → 2；`operators/` 下是沉淀的生成算子源码 |
 
 示例：从失败复盘中抽取的经验，以及演示中由修复过程提炼的新经验
 
@@ -140,9 +140,12 @@ flowchart LR
 {"type": "Lesson", "title": "数值列含空白字符导致类型转换失败", "error_code": "E_RUNTIME",
  "trigger": "新入网客户累计消费为空白字符串，转 float 时抛出 ValueError: could not convert string to float: ' '",
  "fix": "先 str.strip()，再 pd.to_numeric(errors='coerce')，缺失值填补为 0"}
-{"type": "Lesson", "title": "避免在安全沙箱环境中使用 getattr 获取动态属性", "error_code": "E_UNSAFE", "origin": "factory",
- "fix": "使用 try-except AttributeError 结构来安全地尝试访问属性 …"}
+{"type": "Lesson", "title": "样本不平衡导致默认模型召回率偏低", "error_code": "M_THRESHOLD",
+ "trigger": "默认 0.5 阈值下 recall 只有 0.55 左右，正负样本约 1:3", "fix": "class_weight='balanced'，或在验证集上调阈值以满足最低召回",
+ "aliases": ["样本不平衡导致默认阈值下召回率偏低"]}
 ```
+
+最后一条由两份文档分别抽取，内容重复，写入时自动合并为一条（`aliases` 保留被合并的标题，边合并到同一条经验上）。
 
 ## 4. Agent 工作流设计
 
@@ -213,7 +216,7 @@ API Key 只从 `.env` 读取（已加入 `.gitignore`），在报错中脱敏，
 | `python -m factory.cli report runs/<id>` | 根据 `state.json` 重新生成报告 |
 | `python -m factory.cli operators` | 列出已注册算子 |
 | `streamlit run app.py` | Web 界面：运行（实时进度、报告、代码下载）、能力库与可交互图谱、历史运行 |
-| `pytest` / `pytest -m slow` | 78 个常规测试（约 50 秒）/ 完整演示回放测试 |
+| `pytest` / `pytest -m slow` | 89 个常规测试（约 1 分钟）/ 完整演示回放测试 |
 
 > `run` 默认把结果写回 `kg/capability_kg.json`。只想试用时加 `--no-writeback`，或用 `--kg` 指向一份副本；Web 界面默认在副本上运行。
 
@@ -258,15 +261,12 @@ python examples/demo/runs/03_churn_reuse/pipeline.py --predict data/churn.csv   
 
 其中 `TotalChargesCleaner@2`、`TenureBucketizer@2` 是第 02 个任务由 LLM 参考历史代码生成、验证通过后注册的算子（源码在 [`examples/demo/kg/operators/`](examples/demo/kg/operators/)）。
 
-真实修复示例（任务 01，`ChineseTextPreprocessor`）：静态检查报 `E_UNSAFE 禁止调用 getattr()`，LLM 带诊断修复一轮：
+**修复示例**：录制好的演示中没有出现代码类错误，因此没有修复记录——多次真实运行中，LLM 有时会生成带缺陷的算子（下面两例），有时直接给出纯复用方案。修复闭环由 `tests/test_synthesis.py` 的 mock 用例完整覆盖（生成 → 失败 → 修复 → 通过 → 注册 → 提炼经验），其中的 LLM 响应是确定性的。真实的修复记录（`E_SHAPE`、`E_UNSAFE` 各一次）来自开发时的真实 API 运行，修复时 LLM 拿到的内容如下：
 
-```diff
--        cols = getattr(self, "text_columns_", [])
--        if not cols:
-+        try:
-+            cols = self.text_columns_
-+        except AttributeError:
-```
+| 诊断 | 修复 |
+| --- | --- |
+| `E_SHAPE` `BalancedLightGBMClassifier` 的 `predict_proba` 返回了 DataFrame | 改为返回 `numpy` 数组 |
+| `E_UNSAFE` 禁止调用 `getattr()` | `getattr(self, "x_", [])` → `try: self.x_ except AttributeError:` |
 
 ## 8. 验证结果和报告样例
 
@@ -287,7 +287,7 @@ rf_service_count_pipeline            ■■■■■■■■■■■■■■�
 lgb_balanced_pipeline                ■■■■■■■■■■■■···|···· 0.624
 ```
 
-全部演示结果见 [examples/demo/SUMMARY.md](examples/demo/SUMMARY.md)。测试覆盖：schema 校验、算子契约、验证器对各类坏代码给出正确诊断码（安全违规、崩溃、修改输入、行数错误、NaN、超时、指标不达标、泄漏）、知识图谱读写与检索、Planner 的语义校验与重试、生成 → 修复 → 注册 → 复用全流程、报告渲染与 HTML 转义、Web 界面、离线回放与录制结果一致。
+全部演示结果见 [examples/demo/SUMMARY.md](examples/demo/SUMMARY.md)。图谱写入时自动合并同一指标的不同名字与重复经验（`kg tidy` 可整理已有图谱）。测试覆盖：schema 校验、算子契约、验证器对各类坏代码给出正确诊断码（安全违规、崩溃、修改输入、行数错误、NaN、超时、指标不达标、泄漏）、知识图谱读写与检索、Planner 的语义校验与重试、生成 → 修复 → 注册 → 复用全流程、报告渲染与 HTML 转义、Web 界面、离线回放与录制结果一致。
 
 ## 9. 遇到的挑战和解决方案
 
@@ -300,6 +300,7 @@ lgb_balanced_pipeline                ■■■■■■■■■■■■···|
 | 评审复现依赖 LLM 与 API Key | 录制回放：请求哈希不含密钥与地址；`demo --llm replay` 离线复现，测试校验回放结果与仓库一致 |
 | 只靠模板的合成数据太容易，指标 = 1.0 被泄漏检测判为异常 | 工单数据加入跨类表述与标签噪声，使任务有真实难度 |
 | 64 核服务器上 LightGBM / OpenMP 线程与内存上限冲突 | 沙箱中限制线程数与 malloc arena |
+| 抽取带来的重复知识：两份文档抽出几乎相同的经验；旧代码的 `recall_at_top_k` 与需求的 `recall_at_20` 是同一指标 | 写入时按"诊断码相同 + 标题相似度"合并经验（保留别名），指标名按参数规范化（`RecallAtTopK(k=0.2)` → `recall_at_20`）；已有图谱可用 `kg tidy` 整理 |
 
 ## 10. 后续可扩展方向
 

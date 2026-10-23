@@ -1,10 +1,11 @@
 <?xml version='1.0' encoding='utf-8'?>
 <graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
-  <key id="d34" for="edge" attr.name="primary" attr.type="boolean" />
-  <key id="d33" for="edge" attr.name="threshold" attr.type="double" />
-  <key id="d32" for="edge" attr.name="recall" attr.type="double" />
-  <key id="d31" for="edge" attr.name="roc_auc" attr.type="double" />
-  <key id="d30" for="edge" attr.name="rel" attr.type="string" />
+  <key id="d35" for="edge" attr.name="primary" attr.type="boolean" />
+  <key id="d34" for="edge" attr.name="threshold" attr.type="double" />
+  <key id="d33" for="edge" attr.name="recall" attr.type="double" />
+  <key id="d32" for="edge" attr.name="roc_auc" attr.type="double" />
+  <key id="d31" for="edge" attr.name="rel" attr.type="string" />
+  <key id="d30" for="node" attr.name="aliases" attr.type="string" />
   <key id="d29" for="node" attr.name="hits" attr.type="long" />
   <key id="d28" for="node" attr.name="error_code" attr.type="string" />
   <key id="d27" for="node" attr.name="fix" attr.type="string" />
@@ -446,11 +447,12 @@
       <data key="d20">churn_v1/modeling.py::recall_at_top_k</data>
       <data key="d14">recall_at_top_k</data>
     </node>
-    <node id="Metric:recall_at_top_k">
+    <node id="Metric:recall_at_20">
       <data key="d0">Metric</data>
-      <data key="d1">recall_at_top_k</data>
-      <data key="d2">recall_at_top_k</data>
+      <data key="d1">recall_at_20</data>
+      <data key="d2">recall_at_20</data>
       <data key="d6">按预测概率降序排序后计算前 k 比例样本中真实正例的覆盖率，用于触达资源受限场景下的业务召回评估。</data>
+      <data key="d9">{"k": 0.2}</data>
     </node>
     <node id="Source:churn_v1/modeling.py::train_lgbm_balanced">
       <data key="d0">Source</data>
@@ -507,11 +509,6 @@
       <data key="d1">roc_auc</data>
       <data key="d2">roc_auc</data>
     </node>
-    <node id="Metric:recall_at_20">
-      <data key="d0">Metric</data>
-      <data key="d1">recall_at_20</data>
-      <data key="d2">recall_at_20</data>
-    </node>
     <node id="Source:docs/experiment_log.md">
       <data key="d0">Source</data>
       <data key="d1">docs/experiment_log.md</data>
@@ -527,7 +524,7 @@
       <data key="d10">history</data>
       <data key="d23">基线，可解释性好，召回略低于要求</data>
       <data key="d24">["Operator:MissingValueImputer@1", "Operator:OneHotCategoricalEncoder@1", "Operator:StandardFeatureScaler@1", "Operator:LogisticRegressionModel@1"]</data>
-      <data key="d25">2026-10-22T04:00:21+00:00</data>
+      <data key="d25">2026-10-23T11:06:03+00:00</data>
     </node>
     <node id="ValidationRun:e0d43fa3">
       <data key="d0">ValidationRun</data>
@@ -537,7 +534,7 @@
       <data key="d10">history</data>
       <data key="d23">默认阈值下召回偏低</data>
       <data key="d24">["Operator:MissingValueImputer@1", "Operator:OneHotCategoricalEncoder@1", "Operator:RandomForestModel@1"]</data>
-      <data key="d25">2026-10-22T04:00:21+00:00</data>
+      <data key="d25">2026-10-23T11:06:03+00:00</data>
     </node>
     <node id="ValidationRun:a7f163bc">
       <data key="d0">ValidationRun</data>
@@ -547,7 +544,7 @@
       <data key="d10">history</data>
       <data key="d23">最优，满足召回要求，可输出特征重要性</data>
       <data key="d24">["Operator:MissingValueImputer@1", "Operator:OneHotCategoricalEncoder@1", "Operator:BalancedLightGBMClassifier@1"]</data>
-      <data key="d25">2026-10-22T04:00:21+00:00</data>
+      <data key="d25">2026-10-23T11:06:03+00:00</data>
     </node>
     <node id="ValidationRun:10b300d0">
       <data key="d0">ValidationRun</data>
@@ -557,7 +554,7 @@
       <data key="d10">history</data>
       <data key="d23">作废：全量数据目标编码泄漏标签，上线后 AUC 跌至 0.71</data>
       <data key="d24">["Operator:KFoldTargetEncoder@1", "Operator:LightGBMModel@1"]</data>
-      <data key="d25">2026-10-22T04:00:21+00:00</data>
+      <data key="d25">2026-10-23T11:06:03+00:00</data>
     </node>
     <node id="ValidationRun:f6e4284c">
       <data key="d0">ValidationRun</data>
@@ -567,7 +564,7 @@
       <data key="d10">history</data>
       <data key="d23">特征工程带来小幅提升</data>
       <data key="d24">["Operator:TenureBucketizer@1", "Operator:ChargeRatioFeatureGenerator@1", "Operator:LightGBMModel@1"]</data>
-      <data key="d25">2026-10-22T04:00:21+00:00</data>
+      <data key="d25">2026-10-23T11:06:03+00:00</data>
     </node>
     <node id="Lesson:828ad675">
       <data key="d0">Lesson</data>
@@ -591,6 +588,7 @@
       <data key="d27">启用平衡类权重（如 class_weight='balanced' 或 BalancedLightGBMClassifier）以提升召回率</data>
       <data key="d28">M_THRESHOLD</data>
       <data key="d29">0</data>
+      <data key="d30">["样本不平衡导致默认阈值下召回率偏低"]</data>
     </node>
     <node id="Source:docs/failure_cases.md">
       <data key="d0">Source</data>
@@ -615,15 +613,6 @@
       <data key="d26">customer_id 等标识列未剔除，直接进行 One-Hot 编码导致特征维度暴涨并引发内存溢出</data>
       <data key="d27">建模前剔除 ID 等标识列，并在编码器中设置最大类别数</data>
       <data key="d28">E_TIMEOUT</data>
-      <data key="d29">0</data>
-    </node>
-    <node id="Lesson:25484941">
-      <data key="d0">Lesson</data>
-      <data key="d1">25484941</data>
-      <data key="d14">样本不平衡导致默认阈值下召回率偏低</data>
-      <data key="d26">正负样本 1:3 不平衡，默认 0.5 阈值下 recall 仅约 0.55，模型偏向多数类</data>
-      <data key="d27">设置 class_weight='balanced' 或在验证集上调整分类阈值以提升召回率</data>
-      <data key="d28">M_THRESHOLD</data>
       <data key="d29">0</data>
     </node>
     <node id="Lesson:0d5e3eb1">
@@ -684,433 +673,421 @@
       <data key="d29">0</data>
     </node>
     <edge source="Operator:LightGBMModel@1" target="Condition:nonlinear" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:LightGBMModel@1" target="Condition:large_tabular" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:LightGBMModel@1" target="Condition:imbalanced" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:LightGBMModel@1" target="Dependency:lightgbm" id="0">
-      <data key="d30">DEPENDS_ON</data>
+      <data key="d31">DEPENDS_ON</data>
     </edge>
     <edge source="Operator:LightGBMModel@1" target="ValidationRun:10b300d0" id="0">
-      <data key="d30">VALIDATED_BY</data>
-      <data key="d31">0.97</data>
+      <data key="d31">VALIDATED_BY</data>
+      <data key="d32">0.97</data>
     </edge>
     <edge source="Operator:LightGBMModel@1" target="ValidationRun:f6e4284c" id="0">
-      <data key="d30">VALIDATED_BY</data>
-      <data key="d31">0.86</data>
-      <data key="d32">0.8</data>
+      <data key="d31">VALIDATED_BY</data>
+      <data key="d32">0.86</data>
+      <data key="d33">0.8</data>
     </edge>
     <edge source="Operator:LogisticRegressionModel@1" target="Condition:interpretable" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:LogisticRegressionModel@1" target="Condition:scaled_features" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:LogisticRegressionModel@1" target="Condition:sparse_features" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:LogisticRegressionModel@1" target="Dependency:scikit-learn" id="0">
-      <data key="d30">DEPENDS_ON</data>
+      <data key="d31">DEPENDS_ON</data>
     </edge>
     <edge source="Operator:LogisticRegressionModel@1" target="ValidationRun:e11ba947" id="0">
-      <data key="d30">VALIDATED_BY</data>
-      <data key="d31">0.82</data>
-      <data key="d32">0.71</data>
+      <data key="d31">VALIDATED_BY</data>
+      <data key="d32">0.82</data>
+      <data key="d33">0.71</data>
     </edge>
     <edge source="Operator:MissingValueImputer@1" target="Condition:has_missing_values" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:MissingValueImputer@1" target="Dependency:pandas" id="0">
-      <data key="d30">DEPENDS_ON</data>
+      <data key="d31">DEPENDS_ON</data>
     </edge>
     <edge source="Operator:MissingValueImputer@1" target="ValidationRun:e11ba947" id="0">
-      <data key="d30">VALIDATED_BY</data>
-      <data key="d31">0.82</data>
-      <data key="d32">0.71</data>
+      <data key="d31">VALIDATED_BY</data>
+      <data key="d32">0.82</data>
+      <data key="d33">0.71</data>
     </edge>
     <edge source="Operator:MissingValueImputer@1" target="ValidationRun:e0d43fa3" id="0">
-      <data key="d30">VALIDATED_BY</data>
-      <data key="d31">0.83</data>
-      <data key="d32">0.66</data>
+      <data key="d31">VALIDATED_BY</data>
+      <data key="d32">0.83</data>
+      <data key="d33">0.66</data>
     </edge>
     <edge source="Operator:MissingValueImputer@1" target="ValidationRun:a7f163bc" id="0">
-      <data key="d30">VALIDATED_BY</data>
-      <data key="d31">0.85</data>
-      <data key="d32">0.78</data>
+      <data key="d31">VALIDATED_BY</data>
+      <data key="d32">0.85</data>
+      <data key="d33">0.78</data>
     </edge>
     <edge source="Operator:OneHotCategoricalEncoder@1" target="Condition:has_categorical_features" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:OneHotCategoricalEncoder@1" target="Condition:low_cardinality" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:OneHotCategoricalEncoder@1" target="Dependency:scikit-learn" id="0">
-      <data key="d30">DEPENDS_ON</data>
+      <data key="d31">DEPENDS_ON</data>
     </edge>
     <edge source="Operator:OneHotCategoricalEncoder@1" target="ValidationRun:e11ba947" id="0">
-      <data key="d30">VALIDATED_BY</data>
-      <data key="d31">0.82</data>
-      <data key="d32">0.71</data>
+      <data key="d31">VALIDATED_BY</data>
+      <data key="d32">0.82</data>
+      <data key="d33">0.71</data>
     </edge>
     <edge source="Operator:OneHotCategoricalEncoder@1" target="ValidationRun:e0d43fa3" id="0">
-      <data key="d30">VALIDATED_BY</data>
-      <data key="d31">0.83</data>
-      <data key="d32">0.66</data>
+      <data key="d31">VALIDATED_BY</data>
+      <data key="d32">0.83</data>
+      <data key="d33">0.66</data>
     </edge>
     <edge source="Operator:OneHotCategoricalEncoder@1" target="ValidationRun:a7f163bc" id="0">
-      <data key="d30">VALIDATED_BY</data>
-      <data key="d31">0.85</data>
-      <data key="d32">0.78</data>
+      <data key="d31">VALIDATED_BY</data>
+      <data key="d32">0.85</data>
+      <data key="d33">0.78</data>
     </edge>
     <edge source="Operator:RandomForestModel@1" target="Condition:nonlinear" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:RandomForestModel@1" target="Condition:mixed_features" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:RandomForestModel@1" target="Condition:feature_importance" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:RandomForestModel@1" target="Dependency:scikit-learn" id="0">
-      <data key="d30">DEPENDS_ON</data>
+      <data key="d31">DEPENDS_ON</data>
     </edge>
     <edge source="Operator:RandomForestModel@1" target="ValidationRun:e0d43fa3" id="0">
-      <data key="d30">VALIDATED_BY</data>
-      <data key="d31">0.83</data>
-      <data key="d32">0.66</data>
+      <data key="d31">VALIDATED_BY</data>
+      <data key="d32">0.83</data>
+      <data key="d33">0.66</data>
     </edge>
     <edge source="Operator:StandardFeatureScaler@1" target="Condition:linear_model" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:StandardFeatureScaler@1" target="Condition:numeric_features" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:StandardFeatureScaler@1" target="Dependency:scikit-learn" id="0">
-      <data key="d30">DEPENDS_ON</data>
+      <data key="d31">DEPENDS_ON</data>
     </edge>
     <edge source="Operator:StandardFeatureScaler@1" target="ValidationRun:e11ba947" id="0">
-      <data key="d30">VALIDATED_BY</data>
-      <data key="d31">0.82</data>
-      <data key="d32">0.71</data>
+      <data key="d31">VALIDATED_BY</data>
+      <data key="d32">0.82</data>
+      <data key="d33">0.71</data>
     </edge>
     <edge source="Operator:TfidfTextVectorizer@1" target="Condition:text_input" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:TfidfTextVectorizer@1" target="Dependency:scikit-learn" id="0">
-      <data key="d30">DEPENDS_ON</data>
+      <data key="d31">DEPENDS_ON</data>
     </edge>
     <edge source="Scenario:telecom_churn" target="Source:docs/business_requirements.md" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="Scenario:telecom_churn" target="Metric:recall" id="0">
-      <data key="d30">EVALUATED_BY</data>
-      <data key="d33">0.75</data>
-      <data key="d34">True</data>
+      <data key="d31">EVALUATED_BY</data>
+      <data key="d34">0.75</data>
+      <data key="d35">True</data>
     </edge>
     <edge source="Scenario:telecom_churn" target="Metric:roc_auc" id="0">
-      <data key="d30">EVALUATED_BY</data>
-      <data key="d33">0.8</data>
-      <data key="d34">False</data>
+      <data key="d31">EVALUATED_BY</data>
+      <data key="d34">0.8</data>
+      <data key="d35">False</data>
     </edge>
     <edge source="Scenario:telecom_churn" target="Metric:recall_at_20" id="0">
-      <data key="d30">EVALUATED_BY</data>
-      <data key="d34">False</data>
+      <data key="d31">EVALUATED_BY</data>
+      <data key="d35">False</data>
     </edge>
     <edge source="Scenario:telecom_churn" target="Source:docs/experiment_log.md" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="Scenario:telecom_churn" target="Source:docs/failure_cases.md" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="Scenario:telecom_churn" target="Source:docs/tuning_notes.md" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="Operator:TotalChargesCleaner@1" target="Condition:string_typed_numeric" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:TotalChargesCleaner@1" target="Condition:has_missing_values" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:TotalChargesCleaner@1" target="Condition:numeric_features" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:TotalChargesCleaner@1" target="Dependency:pandas" id="0">
-      <data key="d30">DEPENDS_ON</data>
+      <data key="d31">DEPENDS_ON</data>
     </edge>
     <edge source="Operator:TotalChargesCleaner@1" target="Source:churn_v1/cleaning.py::clean_total_charges" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="Operator:IdColumnDropper@1" target="Condition:id_columns" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:IdColumnDropper@1" target="Condition:high_cardinality" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:IdColumnDropper@1" target="Source:churn_v1/cleaning.py::drop_id_columns" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="Operator:KFoldTargetEncoder@1" target="Condition:has_categorical_features" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:KFoldTargetEncoder@1" target="Condition:high_cardinality" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:KFoldTargetEncoder@1" target="Dependency:pandas" id="0">
-      <data key="d30">DEPENDS_ON</data>
+      <data key="d31">DEPENDS_ON</data>
     </edge>
     <edge source="Operator:KFoldTargetEncoder@1" target="Dependency:scikit-learn" id="0">
-      <data key="d30">DEPENDS_ON</data>
+      <data key="d31">DEPENDS_ON</data>
     </edge>
     <edge source="Operator:KFoldTargetEncoder@1" target="Source:churn_v1/encoding.py::target_encode" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="Operator:KFoldTargetEncoder@1" target="ValidationRun:10b300d0" id="0">
-      <data key="d30">VALIDATED_BY</data>
-      <data key="d31">0.97</data>
+      <data key="d31">VALIDATED_BY</data>
+      <data key="d32">0.97</data>
     </edge>
     <edge source="Operator:ChargeRatioFeatureGenerator@1" target="Condition:numeric_features" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:ChargeRatioFeatureGenerator@1" target="Condition:time_tenure" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:ChargeRatioFeatureGenerator@1" target="Dependency:numpy" id="0">
-      <data key="d30">DEPENDS_ON</data>
+      <data key="d31">DEPENDS_ON</data>
     </edge>
     <edge source="Operator:ChargeRatioFeatureGenerator@1" target="Source:churn_v1/features.py::add_charge_ratio" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="Operator:ChargeRatioFeatureGenerator@1" target="ValidationRun:f6e4284c" id="0">
-      <data key="d30">VALIDATED_BY</data>
-      <data key="d31">0.86</data>
-      <data key="d32">0.8</data>
+      <data key="d31">VALIDATED_BY</data>
+      <data key="d32">0.86</data>
+      <data key="d33">0.8</data>
     </edge>
     <edge source="Operator:TenureBucketizer@1" target="Condition:time_tenure" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:TenureBucketizer@1" target="Condition:linear_model" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:TenureBucketizer@1" target="Condition:interpretable" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:TenureBucketizer@1" target="Condition:numeric_features" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:TenureBucketizer@1" target="Dependency:numpy" id="0">
-      <data key="d30">DEPENDS_ON</data>
+      <data key="d31">DEPENDS_ON</data>
     </edge>
     <edge source="Operator:TenureBucketizer@1" target="Dependency:pandas" id="0">
-      <data key="d30">DEPENDS_ON</data>
+      <data key="d31">DEPENDS_ON</data>
     </edge>
     <edge source="Operator:TenureBucketizer@1" target="Source:churn_v1/features.py::add_tenure_bucket" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="Operator:TenureBucketizer@1" target="ValidationRun:f6e4284c" id="0">
-      <data key="d30">VALIDATED_BY</data>
-      <data key="d31">0.86</data>
-      <data key="d32">0.8</data>
+      <data key="d31">VALIDATED_BY</data>
+      <data key="d32">0.86</data>
+      <data key="d33">0.8</data>
     </edge>
     <edge source="Operator:ServiceCountFeature@1" target="Condition:has_categorical_features" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:ServiceCountFeature@1" target="Source:churn_v1/features.py::count_services" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
-    <edge source="Metric:recall_at_top_k" target="Source:churn_v1/modeling.py::recall_at_top_k" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+    <edge source="Metric:recall_at_20" target="Source:churn_v1/modeling.py::recall_at_top_k" id="0">
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="Operator:BalancedLightGBMClassifier@1" target="Condition:imbalanced" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:BalancedLightGBMClassifier@1" target="Condition:nonlinear" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:BalancedLightGBMClassifier@1" target="Condition:large_tabular" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:BalancedLightGBMClassifier@1" target="Condition:feature_importance" id="0">
-      <data key="d30">SUITABLE_WHEN</data>
+      <data key="d31">SUITABLE_WHEN</data>
     </edge>
     <edge source="Operator:BalancedLightGBMClassifier@1" target="Dependency:lightgbm" id="0">
-      <data key="d30">DEPENDS_ON</data>
+      <data key="d31">DEPENDS_ON</data>
     </edge>
     <edge source="Operator:BalancedLightGBMClassifier@1" target="Source:churn_v1/modeling.py::train_lgbm_balanced" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="Operator:BalancedLightGBMClassifier@1" target="ValidationRun:a7f163bc" id="0">
-      <data key="d30">VALIDATED_BY</data>
-      <data key="d31">0.85</data>
-      <data key="d32">0.78</data>
+      <data key="d31">VALIDATED_BY</data>
+      <data key="d32">0.85</data>
+      <data key="d33">0.78</data>
     </edge>
     <edge source="ValidationRun:e11ba947" target="Scenario:telecom_churn" id="0">
-      <data key="d30">RUN_ON</data>
+      <data key="d31">RUN_ON</data>
     </edge>
     <edge source="ValidationRun:e11ba947" target="Source:docs/experiment_log.md" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="ValidationRun:e0d43fa3" target="Scenario:telecom_churn" id="0">
-      <data key="d30">RUN_ON</data>
+      <data key="d31">RUN_ON</data>
     </edge>
     <edge source="ValidationRun:e0d43fa3" target="Source:docs/experiment_log.md" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="ValidationRun:a7f163bc" target="Scenario:telecom_churn" id="0">
-      <data key="d30">RUN_ON</data>
+      <data key="d31">RUN_ON</data>
     </edge>
     <edge source="ValidationRun:a7f163bc" target="Source:docs/experiment_log.md" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="ValidationRun:10b300d0" target="Scenario:telecom_churn" id="0">
-      <data key="d30">RUN_ON</data>
+      <data key="d31">RUN_ON</data>
     </edge>
     <edge source="ValidationRun:10b300d0" target="Source:docs/experiment_log.md" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="ValidationRun:f6e4284c" target="Scenario:telecom_churn" id="0">
-      <data key="d30">RUN_ON</data>
+      <data key="d31">RUN_ON</data>
     </edge>
     <edge source="ValidationRun:f6e4284c" target="Source:docs/experiment_log.md" id="0">
-      <data key="d30">EXTRACTED_FROM</data>
+      <data key="d31">EXTRACTED_FROM</data>
     </edge>
     <edge source="Lesson:828ad675" target="Operator:KFoldTargetEncoder@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:828ad675" target="Condition:high_cardinality" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:828ad675" target="Source:docs/experiment_log.md" id="0">
-      <data key="d30">LEARNED_FROM</data>
+      <data key="d31">LEARNED_FROM</data>
     </edge>
     <edge source="Lesson:9e9e77d6" target="Operator:BalancedLightGBMClassifier@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:9e9e77d6" target="Operator:LogisticRegressionModel@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:9e9e77d6" target="Condition:imbalanced" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:9e9e77d6" target="Condition:recall_first" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:9e9e77d6" target="Source:docs/experiment_log.md" id="0">
-      <data key="d30">LEARNED_FROM</data>
+      <data key="d31">LEARNED_FROM</data>
+    </edge>
+    <edge source="Lesson:9e9e77d6" target="Operator:LightGBMModel@1" id="0">
+      <data key="d31">APPLIES_TO</data>
+    </edge>
+    <edge source="Lesson:9e9e77d6" target="Source:docs/failure_cases.md" id="0">
+      <data key="d31">LEARNED_FROM</data>
     </edge>
     <edge source="Lesson:69d51358" target="Operator:TotalChargesCleaner@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:69d51358" target="Condition:string_typed_numeric" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:69d51358" target="Source:docs/failure_cases.md" id="0">
-      <data key="d30">LEARNED_FROM</data>
+      <data key="d31">LEARNED_FROM</data>
     </edge>
     <edge source="Lesson:88299a38" target="Operator:IdColumnDropper@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:88299a38" target="Operator:OneHotCategoricalEncoder@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:88299a38" target="Condition:id_columns" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:88299a38" target="Source:docs/failure_cases.md" id="0">
-      <data key="d30">LEARNED_FROM</data>
-    </edge>
-    <edge source="Lesson:25484941" target="Operator:BalancedLightGBMClassifier@1" id="0">
-      <data key="d30">APPLIES_TO</data>
-    </edge>
-    <edge source="Lesson:25484941" target="Operator:LightGBMModel@1" id="0">
-      <data key="d30">APPLIES_TO</data>
-    </edge>
-    <edge source="Lesson:25484941" target="Operator:LogisticRegressionModel@1" id="0">
-      <data key="d30">APPLIES_TO</data>
-    </edge>
-    <edge source="Lesson:25484941" target="Condition:imbalanced" id="0">
-      <data key="d30">APPLIES_TO</data>
-    </edge>
-    <edge source="Lesson:25484941" target="Condition:recall_first" id="0">
-      <data key="d30">APPLIES_TO</data>
-    </edge>
-    <edge source="Lesson:25484941" target="Source:docs/failure_cases.md" id="0">
-      <data key="d30">LEARNED_FROM</data>
+      <data key="d31">LEARNED_FROM</data>
     </edge>
     <edge source="Lesson:0d5e3eb1" target="Operator:OneHotCategoricalEncoder@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:0d5e3eb1" target="Condition:has_categorical_features" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:0d5e3eb1" target="Source:docs/failure_cases.md" id="0">
-      <data key="d30">LEARNED_FROM</data>
+      <data key="d31">LEARNED_FROM</data>
     </edge>
     <edge source="Lesson:6a946c79" target="Operator:ChargeRatioFeatureGenerator@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:6a946c79" target="Operator:ServiceCountFeature@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:6a946c79" target="Operator:TenureBucketizer@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:6a946c79" target="Source:docs/failure_cases.md" id="0">
-      <data key="d30">LEARNED_FROM</data>
+      <data key="d31">LEARNED_FROM</data>
     </edge>
     <edge source="Lesson:f2c1398b" target="Operator:LightGBMModel@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:f2c1398b" target="Condition:large_tabular" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:f2c1398b" target="Condition:imbalanced" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:f2c1398b" target="Source:docs/tuning_notes.md" id="0">
-      <data key="d30">LEARNED_FROM</data>
+      <data key="d31">LEARNED_FROM</data>
     </edge>
     <edge source="Lesson:74e2da10" target="Operator:LogisticRegressionModel@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:74e2da10" target="Operator:StandardFeatureScaler@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:74e2da10" target="Condition:scaled_features" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:74e2da10" target="Condition:interpretable" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:74e2da10" target="Condition:linear_model" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:74e2da10" target="Source:docs/tuning_notes.md" id="0">
-      <data key="d30">LEARNED_FROM</data>
+      <data key="d31">LEARNED_FROM</data>
     </edge>
     <edge source="Lesson:57718714" target="Operator:RandomForestModel@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:57718714" target="Condition:recall_first" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:57718714" target="Source:docs/tuning_notes.md" id="0">
-      <data key="d30">LEARNED_FROM</data>
+      <data key="d31">LEARNED_FROM</data>
     </edge>
     <edge source="Lesson:631c1a72" target="Operator:TfidfTextVectorizer@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:631c1a72" target="Operator:LogisticRegressionModel@1" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:631c1a72" target="Condition:text_input" id="0">
-      <data key="d30">APPLIES_TO</data>
+      <data key="d31">APPLIES_TO</data>
     </edge>
     <edge source="Lesson:631c1a72" target="Source:docs/tuning_notes.md" id="0">
-      <data key="d30">LEARNED_FROM</data>
+      <data key="d31">LEARNED_FROM</data>
     </edge>
   </graph>
 </graphml>

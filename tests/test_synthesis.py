@@ -170,3 +170,19 @@ def test_synthesize_repair_register_then_reuse(kg_path, churn_csv, fast_verify, 
     first_step = next(p for p in s2.candidates if p.name == s2.best_plan).steps[0]
     assert (first_step.action, first_step.operator_ref) == ("reuse", "TotalChargesCleaner@2")
     assert not s2.generated and not s2.repairs and not s2.registered
+
+
+def test_synth_name_aligned_with_existing_lineage(kg_path):
+    """生成算子与图谱中的算子仅大小写不同：沿用原名，并以最新版本为 reference 接入版本谱系。"""
+    from factory.schemas import SynthSpec
+
+    planner = Planner(rule_based_mock(), CapabilityKG.load(kg_path))
+    spec = SynthSpec(name="TOTALChargesCleaner", kind=OperatorKind.IMPUTER, purpose="p", inputs="i", outputs="o")
+    aligned = planner._align_synth_spec(spec)
+    assert (aligned.name, aligned.reference) == ("TotalChargesCleaner", "TotalChargesCleaner@1")
+    exec_operator_source(FEATURE_SRC)  # 已注册 TenureX2@2
+    step = Step(kind=OperatorKind.FEATURE, action="synthesize", synth_spec=SynthSpec(
+        name="TENUREX2", kind=OperatorKind.FEATURE, purpose="p", inputs="i", outputs="o"))
+    model = Step(kind=OperatorKind.MODEL, action="reuse", operator_ref="LightGBMModel@1")
+    planner.kg.add_operator(registry.get("TenureX2@2").meta, executable=True)
+    assert "应使用 reuse" in " ".join(planner.plan_errors(PipelinePlan(name="x", steps=[step, model]), _spec()))

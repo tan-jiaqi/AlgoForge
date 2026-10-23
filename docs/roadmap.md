@@ -100,7 +100,7 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 - 报告与图谱以 `data:` URL 嵌入 iframe，与应用不同源（其中有 LLM 生成的文本）
 - `python -m factory.cli kg viz` 生成 `kg/capability_kg.html`
 - 跨场景迁移（真实 API）：工单数据没有任何场景知识，系统自动识别为中文文本多分类、建立新场景；检索到调参笔记中"中文短文本用字符级 TF-IDF + 逻辑回归"的经验，最优方案 F1-macro 0.820 通过
-- 同一次运行中出现了真实的"失败 → 修复 → 通过"：LLM 生成的 `ChineseTextPreprocessor` 使用了 `getattr()`，被静态检查判为 `E_UNSAFE`；带诊断修复一轮后改用 `try/except AttributeError`，通过验证；Curator 将其提炼为经验"避免在安全沙箱环境中使用 getattr 获取动态属性"写入 KG。该方案随后因词级 TF-IDF 处理中文效果差（F1 0.42）未达标，被如实判为失败
+- 开发时的一次真实运行中出现了"失败 → 修复 → 通过"：LLM 生成的 `ChineseTextPreprocessor` 使用了 `getattr()`，被静态检查判为 `E_UNSAFE`；带诊断修复一轮后改用 `try/except AttributeError`，通过验证，Curator 将其提炼为新经验。里程碑 7 因知识合并重新录制后，LLM 对同一任务改为给出纯 TF-IDF 方案（又试了 3 次均如此），该修复示例不再出现在录制结果中；修复闭环由 `tests/test_synthesis.py` 的确定性 mock 用例覆盖
 
 ### 7. 收尾 ✅
 
@@ -113,7 +113,7 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 - `python -m factory.cli demo`：在知识图谱副本上依次运行工单迁移（含真实修复）、客户流失（3 候选，生成并注册算子）、相似需求（复用），输出摘要 `SUMMARY.md`
 - 重新录制：只保留实际用到的 28 条 LLM 响应；`demo --llm replay` 离线回放，结果与 `examples/demo/` 逐项一致（测试 `test_demo_replay_matches_examples`）
 - 修复代码导出缺陷：参数中的 `float('inf')` 原来被写成 `inf`，导出的脚本无法运行；三个演示的 `pipeline.py` 都已验证可独立训练与预测
-- README 覆盖题目要求的 10 项；测试共 79 个（`pytest` 跑常规 78 个，`pytest -m slow` 跑完整演示回放）
+- README 覆盖题目要求的 10 项；测试共 90 个（`pytest` 跑常规 89 个，`pytest -m slow` 跑完整演示回放）
 
 ## 验收方式
 
@@ -141,4 +141,6 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 | 修复与选优的顺序：先修复所有可修复的候选，再比较 | 保证候选之间比较公平 |
 | 静态检查的 `E_UNSAFE` 诊断带上修复提示 | 修复时 LLM 能直接看到可用的替代写法 |
 | Lesson 的 `LEARNED_FROM` 指向用了该算子的方案 | 原来固定连到第一条验证记录，可能指错 |
+| 经验写入时按"诊断码 + 标题相似度"去重；指标名按参数规范化；`kg tidy` 整理已有图谱 | 两份文档抽出重复经验、同一指标出现多个名字；`recall_at_top_k` 与 `recall_at_20` 合并 |
+| 生成算子与图谱中已有算子仅大小写不同时，沿用原名并以最新版本为 `reference` | 修复了 `IdColumnDropper@2` 没有接入版本谱系的问题 |
 | 沙箱支持原生 Windows：无 `resource` 时改用 psutil 看门狗限制内存，峰值内存改用 psutil 统计 | 原实现依赖 Linux 的 `resource` 与 `preexec_fn`，Windows 上无法导入 |

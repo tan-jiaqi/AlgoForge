@@ -25,7 +25,7 @@ from factory.kg import CONDITION_TAGS, DEFAULT_KG_PATH, CapabilityKG, node_id
 from factory.llm import LLM
 from factory.operators import registry
 from factory.operators.base import OperatorMeta
-from factory.schemas import DIAGNOSTIC_DESCRIPTIONS, DiagnosticCode, OperatorKind
+from factory.schemas import DIAGNOSTIC_DESCRIPTIONS, DiagnosticCode, OperatorKind, canonical_metric
 from factory.utils import ROOT, get_logger
 
 log = get_logger(__name__)
@@ -275,7 +275,10 @@ def build_kg(result: ExtractionResult, manifest: dict, functions: list[CodeFunct
     for path, card in result.cards.items():
         src = kg.add_source("code", path, title=card.function)
         if card.capability_type == "metric":
-            kg.add_edge(kg.add_node("Metric", _snake(card.name), name=_snake(card.name), description=card.description), "EXTRACTED_FROM", src)
+            # 用参数规范化名字：RecallAtTopK(k=0.2) 与需求文档中的 recall_at_20 是同一指标
+            name = canonical_metric(_snake(card.name), card.params)
+            mid = kg.add_node("Metric", name, name=name, description=card.description, params=card.params)
+            kg.add_edge(mid, "EXTRACTED_FROM", src)
             continue
         if card.capability_type != "operator" or card.kind is None:
             continue

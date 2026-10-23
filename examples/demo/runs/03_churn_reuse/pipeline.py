@@ -1,8 +1,8 @@
 """预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户 —— 自动生成的算法流水线
 
 需求：预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户
-方案：interpretable_logistic_regression
-设计依据：针对电信客户流失预测任务的高可解释性与召回率优先（recall>=0.75）需求，首先清洗脏数据并剔除高基数ID列，通过在网时长分箱与One-Hot编码提升线性表达能力，经标准化后输入配置样本均衡权重的逻辑回归模型，系数直观透明且能有效捕捉流失客户。
+方案：linear_interpretable_lr
+设计依据：针对流失预测的高召回与高解释性要求，先清洗数据与分箱增强特征表达，再通过类别均衡的逻辑回归直观输出各特征权重系数。
 主指标：recall >= 0.75
 
 由 AlgoForge 自动生成。用法：
@@ -20,8 +20,7 @@ from factory.operators.models import LogisticRegressionModel
 from factory.operators.tabular import MissingValueImputer, OneHotCategoricalEncoder, StandardFeatureScaler
 
 
-import re
-from typing import List, Optional
+from typing import Sequence
 import pandas as pd
 from sklearn.base import TransformerMixin
 
@@ -35,73 +34,32 @@ class IdColumnDropper(TransformerMixin, Operator):
         kind=OperatorKind.FEATURE,
         version=2,
         origin="synthesized",
-        description="剔除客户ID等标识列以防止特征维度暴涨与过拟合",
+        description="移除客户ID等无业务预测意义的标识列，防止编码维度暴涨和过拟合",
         conditions=["id_columns"],
         dependencies=[],
-        params={
-            "columns": None,
-            "auto_detect": True,
-            "pattern": r"(?i)(?:^|_)(?:id|uuid|guid|code|no)(?:$|_)|^customer_id$|^user_id$",
-            "high_cardinality_threshold": 0.98,
-        },
+        params={"id_cols": ("customer_id",)},
+        parent="IdColumnDropper@1",
     )
 
-    def __init__(
-        self,
-        columns: Optional[List[str]] = None,
-        auto_detect: bool = True,
-        pattern: str = r"(?i)(?:^|_)(?:id|uuid|guid|code|no)(?:$|_)|^customer_id$|^user_id$",
-        high_cardinality_threshold: float = 0.98,
-    ):
-        self.columns = columns
-        self.auto_detect = auto_detect
-        self.pattern = pattern
-        self.high_cardinality_threshold = high_cardinality_threshold
+    def __init__(self, id_cols: Sequence[str] = ("customer_id",)):
+        self.id_cols = id_cols
 
     def fit(self, X: pd.DataFrame, y=None):
-        cols_to_drop = set()
-
-        if self.columns:
-            for col in self.columns:
-                if col in X.columns:
-                    cols_to_drop.add(col)
-
-        if self.auto_detect and len(X) > 0:
-            regex = re.compile(self.pattern)
-            for col in X.columns:
-                col_str = str(col)
-                # 检查列名是否匹配 ID 命名模式
-                is_name_match = bool(regex.search(col_str))
-
-                # 计算非空值的唯一值比例
-                non_null_series = X[col].dropna()
-                n_count = len(non_null_series)
-                ratio = (non_null_series.nunique() / n_count) if n_count > 0 else 0.0
-
-                # 若命中了名称规则，或者属于高基数字符串/对象标识列且唯一率极高
-                if is_name_match:
-                    cols_to_drop.add(col)
-                elif pd.api.types.is_object_dtype(X[col]) or pd.api.types.is_string_dtype(X[col]):
-                    if ratio >= self.high_cardinality_threshold and n_count > 30:
-                        # 辅以简单判断，避免误删长文本描述（均长较短更可能是标识符）
-                        avg_len = non_null_series.astype(str).str.len().mean()
-                        if avg_len <= 64:
-                            cols_to_drop.add(col)
-
-        self.dropped_columns_ = sorted(list(cols_to_drop))
+        cols_to_check = set(self.id_cols) if self.id_cols is not None else set()
+        self.drop_cols_ = [col for col in X.columns if col in cols_to_check]
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         X = X.copy()
-        if hasattr(self, "dropped_columns_") and self.dropped_columns_:
-            existing_cols = [c for c in self.dropped_columns_ if c in X.columns]
-            if existing_cols:
-                X = X.drop(columns=existing_cols)
+        cols_to_drop = [c for c in self.drop_cols_ if c in X.columns]
+        if cols_to_drop:
+            X = X.drop(columns=cols_to_drop)
         return X
 
 import numpy as np
 import pandas as pd
 from sklearn.base import TransformerMixin
+
 from factory.operators.base import Operator, OperatorMeta
 from factory.schemas import OperatorKind
 
@@ -112,37 +70,39 @@ class TotalChargesCleaner(TransformerMixin, Operator):
         kind=OperatorKind.IMPUTER,
         version=2,
         origin="synthesized",
-        description="清洗包含空白字符串的数值列并转换为浮点型，缺失值填充为指定值",
+        description="安全清洗并转换含空白字符串的累计消费等数值列为浮点型，并填充缺失值为指定默认值",
         conditions=["string_typed_numeric", "has_missing_values"],
         dependencies=[],
-        params={"column": "total_charges", "fill_value": 0.0},
+        params={"col": "total_charges", "fill_value": 0.0},
         parent="TotalChargesCleaner@1",
     )
 
-    def __init__(self, column: str = "total_charges", fill_value: float = 0.0):
-        self.column = column
+    def __init__(self, col: str = "total_charges", fill_value: float = 0.0):
+        self.col = col
         self.fill_value = fill_value
 
     def fit(self, X: pd.DataFrame, y=None):
-        self.feature_names_in_ = list(X.columns)
-        self.column_present_ = self.column in X.columns
+        self.is_fitted_ = True
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         X = X.copy()
-        if self.column in X.columns:
-            cleaned = pd.to_numeric(
-                X[self.column].astype(str).str.strip(),
-                errors="coerce"
-            ).fillna(self.fill_value)
-            X[self.column] = cleaned.astype(float)
+        if self.col in X.columns:
+            cleaned_series = (
+                pd.to_numeric(X[self.col].astype(str).str.strip(), errors="coerce")
+                .replace([np.inf, -np.inf], np.nan)
+                .fillna(self.fill_value)
+                .astype(float)
+            )
+            X[self.col] = cleaned_series
         return X
 
 import numpy as np
 import pandas as pd
 from sklearn.base import TransformerMixin
+
 from factory.operators.base import Operator, OperatorMeta
-from factory.schemas import OperatorKind, Modality
+from factory.schemas import OperatorKind
 
 
 class TenureBucketizer(TransformerMixin, Operator):
@@ -151,64 +111,57 @@ class TenureBucketizer(TransformerMixin, Operator):
         kind=OperatorKind.FEATURE,
         version=2,
         origin="synthesized",
-        description="将在网时长tenure字段按业务经验分箱为离散区间段，增强模型表现与可解释性",
+        description="将在网时长字段分箱为离散区间特征以增强线性模型的表达能力与业务可解释性",
         conditions=["time_tenure", "numeric_features"],
-        dependencies=[],
+        dependencies=["pandas", "numpy"],
         params={
-            "input_col": "tenure",
-            "output_col": "tenure_bucket",
-            "bins": (-1, 6, 12, 24, 48, float("inf")),
+            "col": "tenure",
+            "bins": (-float("inf"), 6.0, 12.0, 24.0, 48.0, float("inf")),
             "labels": ("0-6", "6-12", "12-24", "24-48", "48+"),
-            "fill_missing": "Unknown",
+            "drop_original": False,
         },
         parent="TenureBucketizer@1",
     )
 
     def __init__(
         self,
-        input_col="tenure",
-        output_col="tenure_bucket",
-        bins=(-1, 6, 12, 24, 48, float("inf")),
-        labels=("0-6", "6-12", "12-24", "24-48", "48+"),
-        fill_missing="Unknown",
+        col: str = "tenure",
+        bins: tuple = (-float("inf"), 6.0, 12.0, 24.0, 48.0, float("inf")),
+        labels: tuple = ("0-6", "6-12", "12-24", "24-48", "48+"),
+        drop_original: bool = False,
     ):
-        self.input_col = input_col
-        self.output_col = output_col
+        self.col = col
         self.bins = bins
         self.labels = labels
-        self.fill_missing = fill_missing
+        self.drop_original = drop_original
 
-    def fit(self, X, y=None):
-        self.bins_ = list(self.bins) if self.bins is not None else [-1, 6, 12, 24, 48, float("inf")]
+    def fit(self, X: pd.DataFrame, y=None):
+        self.feature_name_ = f"{self.col}_bucket"
+        self.bins_ = list(self.bins) if self.bins is not None else [-float("inf"), 6.0, 12.0, 24.0, 48.0, float("inf")]
         self.labels_ = list(self.labels) if self.labels is not None else ["0-6", "6-12", "12-24", "24-48", "48+"]
-        self.is_fitted_ = True
         return self
 
-    def transform(self, X):
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         X = X.copy()
-        out_col = self.output_col if self.output_col else f"{self.input_col}_bucket"
-
-        try:
-            bins = self.bins_
-        except AttributeError:
-            bins = list(self.bins) if self.bins is not None else [-1, 6, 12, 24, 48, float("inf")]
-
-        try:
-            labels = self.labels_
-        except AttributeError:
-            labels = list(self.labels) if self.labels is not None else ["0-6", "6-12", "12-24", "24-48", "48+"]
-
-        if self.input_col not in X.columns:
-            X[out_col] = str(self.fill_missing)
+        if self.col not in X.columns:
             return X
 
-        s = pd.to_numeric(X[self.input_col], errors="coerce")
-        cut_res = pd.cut(s, bins=bins, labels=labels)
+        # 安全数值转换，兼顾脏数据、空白字符串与缺失值
+        tenure_series = X[self.col]
+        if tenure_series.dtype == object:
+            tenure_series = tenure_series.astype(str).str.strip()
+        numeric_tenure = pd.to_numeric(tenure_series, errors="coerce")
 
-        bucket_s = cut_res.astype(str)
-        bucket_s = bucket_s.replace({"nan": str(self.fill_missing), "NaN": str(self.fill_missing), "<NA>": str(self.fill_missing)})
+        # 分箱并处理缺失区间
+        bucketed = pd.cut(numeric_tenure, bins=self.bins_, labels=self.labels_)
+        bucketed_str = bucketed.astype(str)
+        bucketed_str = bucketed_str.replace("nan", "unknown").fillna("unknown")
 
-        X[out_col] = bucket_s
+        X[self.feature_name_] = bucketed_str
+
+        if self.drop_original:
+            X = X.drop(columns=[self.col])
+
         return X
 
 
@@ -217,13 +170,13 @@ TARGET = 'churn'
 
 def build_pipeline() -> Pipeline:
     return Pipeline([
-        ("0_feature", IdColumnDropper()),  # 根据经验提示，customer_id基数过高，直接编码会导致维度暴涨与内存溢出，需在预处理前剔除。
-        ("1_imputer", TotalChargesCleaner(column='total_charges', fill_value=0.0)),  # 根据经验提示，total_charges列存在空白字符脏数据，需先清洗并安全转换为浮点数值。
-        ("2_imputer", MissingValueImputer()),  # 处理 monthly_charges 与 payment_method 列的缺失值，保证数据完整性。
-        ("3_feature", TenureBucketizer(input_col='tenure', output_col='tenure_bucket', bins=(-1, 6, 12, 24, 48, float('inf')), labels=('0-6', '6-12', '12-24', '24-48', '48+'), fill_missing='Unknown')),  # 将在网时长 tenure 字段按生命周期分箱离散化，增强线性模型的表达能力与业务可解释性。
-        ("4_encoder", OneHotCategoricalEncoder(max_categories=20)),  # 对低基数类别特征进行 One-Hot 编码，转换为线性分类器可学习的稀疏向量。
-        ("5_scaler", StandardFeatureScaler()),  # 逻辑回归对特征尺度敏感，必须对数值特征进行 Z-score 标准化以保证权重可解释与收敛。
-        ("6_model", LogisticRegressionModel(C=1.0, class_weight='balanced', max_iter=1000, random_state=42)),  # 满足任务严格的可解释性约束，配置 class_weight='balanced' 应对样本不平衡以确保召回率达标。
+        ("0_feature", IdColumnDropper()),  # 根据经验必须在编码前剔除 customer_id 等标识列，避免 One-Hot 导致特征维度爆炸与内存溢出。
+        ("1_imputer", TotalChargesCleaner(col='total_charges', fill_value=0.0)),  # 解决数值列含空白字符导致类型转换失败的问题，安全转换 total_charges 为浮点型并填补缺省值。
+        ("2_imputer", MissingValueImputer()),  # 对 monthly_charges 与 payment_method 的缺失值分别采用中位数与众数进行填补，确保数据完整性。
+        ("3_feature", TenureBucketizer(col='tenure', bins=(float('-inf'), 6.0, 12.0, 24.0, 48.0, float('inf')), labels=('0-6', '6-12', '12-24', '24-48', '48+'), drop_original=False)),  # 将在网时长离散化分箱，提升线性模型的非线性拟合能力并增强业务分群解释性。
+        ("4_encoder", OneHotCategoricalEncoder(max_categories=20)),  # 对低基数类别特征进行 One-Hot 编码，转换成适合线性模型计算的稀疏特征。
+        ("5_scaler", StandardFeatureScaler()),  # 根据经验使用逻辑回归前必须先对数值特征进行 Z-score 标准化，保证收敛与权重可比。
+        ("6_model", LogisticRegressionModel(C=1.0, class_weight='balanced', max_iter=1000, random_state=42)),  # 配置 class_weight='balanced' 解决流失样本不平衡以达成高召回率要求，且回归系数直观可解释。
     ])
 
 

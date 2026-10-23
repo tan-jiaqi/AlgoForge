@@ -20,6 +20,8 @@
 | `Lesson` | 标题哈希 | `title` `trigger` `fix` `error_code` `hits` | 可复用经验。`error_code` 对应验证器的诊断码，`hits` 记录被检索使用的次数 |
 | `Source` | 路径 | `kind`（code/doc） `path` `title` | 知识出处，用于溯源 |
 
+去重规则：写入经验时，若已存在**同一诊断码且标题相似度 ≥ 0.5**（词元 Jaccard）的经验，则不新建节点，而是把适用对象、来源合并过去，被合并的标题记入 `aliases`；指标名统一经 `canonical_metric` 规范化（`RecallAtTopK(k=0.2)`、`recall@20%`、`recall_at_20` 是同一节点）。对已有图谱执行 `python -m factory.cli kg tidy` 可按同样规则整理（幂等）。
+
 `origin=synthesized` 的算子由 Synthesizer 生成、通过四级验证后注册，源码同时保存在 `kg/operators/<Name>_v<版本>.py`，并用 `DERIVED_FROM` 指向参考的历史实现。由修复过程提炼出的 Lesson 带有 `origin=factory`。
 
 `executable` 区分两类算子：

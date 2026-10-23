@@ -40,7 +40,7 @@
   ],
   "candidates": [
     {
-      "name": "interpretable_logistic_regression",
+      "name": "linear_interpretable_lr",
       "steps": [
         {
           "kind": "feature",
@@ -49,21 +49,23 @@
           "synth_spec": {
             "name": "IdColumnDropper",
             "kind": "feature",
-            "purpose": "剔除客户ID等标识列，防止One-Hot编码时维度暴涨引发内存溢出",
-            "inputs": "包含 customer_id 等标识列的原始 DataFrame",
+            "purpose": "移除无业务预测意义的客户ID标识列，防止维度暴涨及过拟合",
+            "inputs": "含 customer_id 等标识列的原始 DataFrame",
             "outputs": "剔除标识列后的 DataFrame",
-            "reference": null
+            "reference": "IdColumnDropper@1"
           },
           "params": {},
-          "rationale": "根据经验提示，customer_id基数过高，直接编码会导致维度暴涨与内存溢出，需在预处理前剔除。"
+          "rationale": "根据经验必须在编码前剔除 customer_id 等标识列，避免 One-Hot 导致特征维度爆炸与内存溢出。"
         },
         {
           "kind": "imputer",
           "action": "reuse",
           "operator_ref": "TotalChargesCleaner@2",
           "synth_spec": null,
-          "params": {},
-          "rationale": "根据经验提示，total_charges列存在空白字符脏数据，需先清洗并安全转换为浮点数值。"
+          "params": {
+            "col": "total_charges"
+          },
+          "rationale": "解决数值列含空白字符导致类型转换失败的问题，安全转换 total_charges 为浮点型并填补缺省值。"
         },
         {
           "kind": "imputer",
@@ -71,7 +73,7 @@
           "operator_ref": "MissingValueImputer@1",
           "synth_spec": null,
           "params": {},
-          "rationale": "处理 monthly_charges 与 payment_method 列的缺失值，保证数据完整性。"
+          "rationale": "对 monthly_charges 与 payment_method 的缺失值分别采用中位数与众数进行填补，确保数据完整性。"
         },
         {
           "kind": "feature",
@@ -79,15 +81,17 @@
           "operator_ref": "TenureBucketizer@2",
           "synth_spec": null,
           "params": {},
-          "rationale": "将在网时长 tenure 字段按生命周期分箱离散化，增强线性模型的表达能力与业务可解释性。"
+          "rationale": "将在网时长离散化分箱，提升线性模型的非线性拟合能力并增强业务分群解释性。"
         },
         {
           "kind": "encoder",
           "action": "reuse",
           "operator_ref": "OneHotCategoricalEncoder@1",
           "synth_spec": null,
-          "params": {},
-          "rationale": "对低基数类别特征进行 One-Hot 编码，转换为线性分类器可学习的稀疏向量。"
+          "params": {
+            "max_categories": 20
+          },
+          "rationale": "对低基数类别特征进行 One-Hot 编码，转换成适合线性模型计算的稀疏特征。"
         },
         {
           "kind": "scaler",
@@ -95,7 +99,7 @@
           "operator_ref": "StandardFeatureScaler@1",
           "synth_spec": null,
           "params": {},
-          "rationale": "逻辑回归对特征尺度敏感，必须对数值特征进行 Z-score 标准化以保证权重可解释与收敛。"
+          "rationale": "根据经验使用逻辑回归前必须先对数值特征进行 Z-score 标准化，保证收敛与权重可比。"
         },
         {
           "kind": "model",
@@ -103,16 +107,15 @@
           "operator_ref": "LogisticRegressionModel@1",
           "synth_spec": null,
           "params": {
-            "class_weight": "balanced",
-            "C": 1.0
+            "class_weight": "balanced"
           },
-          "rationale": "满足任务严格的可解释性约束，配置 class_weight='balanced' 应对样本不平衡以确保召回率达标。"
+          "rationale": "配置 class_weight='balanced' 解决流失样本不平衡以达成高召回率要求，且回归系数直观可解释。"
         }
       ],
-      "rationale": "针对电信客户流失预测任务的高可解释性与召回率优先（recall>=0.75）需求，首先清洗脏数据并剔除高基数ID列，通过在网时长分箱与One-Hot编码提升线性表达能力，经标准化后输入配置样本均衡权重的逻辑回归模型，系数直观透明且能有效捕捉流失客户。"
+      "rationale": "针对流失预测的高召回与高解释性要求，先清洗数据与分箱增强特征表达，再通过类别均衡的逻辑回归直观输出各特征权重系数。"
     },
     {
-      "name": "balanced_lightgbm",
+      "name": "balanced_lgbm_tree",
       "steps": [
         {
           "kind": "feature",
@@ -121,21 +124,23 @@
           "synth_spec": {
             "name": "IdColumnDropper",
             "kind": "feature",
-            "purpose": "剔除客户ID标识列，避免高基数字段进入特征编码流程",
-            "inputs": "包含标识列的原始 DataFrame",
+            "purpose": "剔除 customer_id 等标识列，避免污染特征空间和产生过拟合",
+            "inputs": "含 customer_id 标识列的 DataFrame",
             "outputs": "剔除标识列后的 DataFrame",
-            "reference": null
+            "reference": "IdColumnDropper@1"
           },
           "params": {},
-          "rationale": "遵循经验避免 customer_id 等标识列引起维度灾难与过拟合。"
+          "rationale": "防止高唯一值的客户标识列参与后续特征编码造成维度发散与训练超时。"
         },
         {
           "kind": "imputer",
           "action": "reuse",
           "operator_ref": "TotalChargesCleaner@2",
           "synth_spec": null,
-          "params": {},
-          "rationale": "清洗 total_charges 中含空白字符的字符串脏值并转换为浮点型。"
+          "params": {
+            "col": "total_charges"
+          },
+          "rationale": "针对 string_typed_numeric 标签清洗累计消费中的空白字符串并转为浮点型，防止类型转换异常。"
         },
         {
           "kind": "imputer",
@@ -143,15 +148,17 @@
           "operator_ref": "MissingValueImputer@1",
           "synth_spec": null,
           "params": {},
-          "rationale": "填补剩余数值特征与类别特征中的缺失值。"
+          "rationale": "使用中位数和众数统一补全月消费及支付方式等列的缺失值。"
         },
         {
           "kind": "encoder",
           "action": "reuse",
           "operator_ref": "OneHotCategoricalEncoder@1",
           "synth_spec": null,
-          "params": {},
-          "rationale": "对低基数类别特征进行 One-Hot 编码供树模型训练。"
+          "params": {
+            "max_categories": 20
+          },
+          "rationale": "类别特征基数较低，通过 One-Hot 编码转换为树模型易于切分的离散特征。"
         },
         {
           "kind": "model",
@@ -160,16 +167,16 @@
           "synth_spec": {
             "name": "BalancedLightGBMClassifier",
             "kind": "model",
-            "purpose": "使用 LightGBM 训练二分类模型，设置 class_weight='balanced' 自动平衡正负样本权重以提升召回率，并输出特征重要性",
-            "inputs": "编码处理后的特征矩阵与目标标签",
-            "outputs": "拟合好的 LightGBM 模型对象",
+            "purpose": "基于 LightGBM 训练二分类模型并自动平衡正负样本权重，用于高召回流失预测场景并提供特征重要性",
+            "inputs": "预处理后的特征矩阵及标签",
+            "outputs": "训练好的分类模型及预测结果",
             "reference": "BalancedLightGBMClassifier@1"
           },
           "params": {},
-          "rationale": "历史验证召回率达到 0.780，天然支持 class_weight='balanced' 解决不平衡问题，并能输出特征重要性满足可解释性要求。"
+          "rationale": "根据历史验证该算子平均召回率达到 0.780，高于 0.75 阈值，且原生支持样本平衡权重与特征重要性解释。"
         }
       ],
-      "rationale": "针对数据类别不平衡与复杂的非线性特征交互，利用梯度提升树模型在流失预测中的高召回表现，剔除 ID 列并完成缺失清洗后直接进行类别编码，采用平衡权重的 LightGBM 兼顾高召回率与特征重要性输出。"
+      "rationale": "采用带样本平衡权重的非线性梯度提升树，历史验证召回率达 0.780，具备强特征交互拟合能力且可输出特征重要性归因。"
     }
   ],
   "generated": {
@@ -177,12 +184,12 @@
       "spec": {
         "name": "IdColumnDropper",
         "kind": "feature",
-        "purpose": "剔除客户ID等标识列，防止One-Hot编码时维度暴涨引发内存溢出",
-        "inputs": "包含 customer_id 等标识列的原始 DataFrame",
+        "purpose": "移除无业务预测意义的客户ID标识列，防止维度暴涨及过拟合",
+        "inputs": "含 customer_id 等标识列的原始 DataFrame",
         "outputs": "剔除标识列后的 DataFrame",
-        "reference": null
+        "reference": "IdColumnDropper@1"
       },
-      "source": "import re\nfrom typing import List, Optional\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\n\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\n\nclass IdColumnDropper(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"IdColumnDropper\",\n        kind=OperatorKind.FEATURE,\n        version=2,\n        origin=\"synthesized\",\n        description=\"剔除客户ID等标识列以防止特征维度暴涨与过拟合\",\n        conditions=[\"id_columns\"],\n        dependencies=[],\n        params={\n            \"columns\": None,\n            \"auto_detect\": True,\n            \"pattern\": r\"(?i)(?:^|_)(?:id|uuid|guid|code|no)(?:$|_)|^customer_id$|^user_id$\",\n            \"high_cardinality_threshold\": 0.98,\n        },\n    )\n\n    def __init__(\n        self,\n        columns: Optional[List[str]] = None,\n        auto_detect: bool = True,\n        pattern: str = r\"(?i)(?:^|_)(?:id|uuid|guid|code|no)(?:$|_)|^customer_id$|^user_id$\",\n        high_cardinality_threshold: float = 0.98,\n    ):\n        self.columns = columns\n        self.auto_detect = auto_detect\n        self.pattern = pattern\n        self.high_cardinality_threshold = high_cardinality_threshold\n\n    def fit(self, X: pd.DataFrame, y=None):\n        cols_to_drop = set()\n\n        if self.columns:\n            for col in self.columns:\n                if col in X.columns:\n                    cols_to_drop.add(col)\n\n        if self.auto_detect and len(X) > 0:\n            regex = re.compile(self.pattern)\n            for col in X.columns:\n                col_str = str(col)\n                # 检查列名是否匹配 ID 命名模式\n                is_name_match = bool(regex.search(col_str))\n\n                # 计算非空值的唯一值比例\n                non_null_series = X[col].dropna()\n                n_count = len(non_null_series)\n                ratio = (non_null_series.nunique() / n_count) if n_count > 0 else 0.0\n\n                # 若命中了名称规则，或者属于高基数字符串/对象标识列且唯一率极高\n                if is_name_match:\n                    cols_to_drop.add(col)\n                elif pd.api.types.is_object_dtype(X[col]) or pd.api.types.is_string_dtype(X[col]):\n                    if ratio >= self.high_cardinality_threshold and n_count > 30:\n                        # 辅以简单判断，避免误删长文本描述（均长较短更可能是标识符）\n                        avg_len = non_null_series.astype(str).str.len().mean()\n                        if avg_len <= 64:\n                            cols_to_drop.add(col)\n\n        self.dropped_columns_ = sorted(list(cols_to_drop))\n        return self\n\n    def transform(self, X: pd.DataFrame) -> pd.DataFrame:\n        X = X.copy()\n        if hasattr(self, \"dropped_columns_\") and self.dropped_columns_:\n            existing_cols = [c for c in self.dropped_columns_ if c in X.columns]\n            if existing_cols:\n                X = X.drop(columns=existing_cols)\n        return X\n",
+      "source": "from typing import Sequence\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\n\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\n\nclass IdColumnDropper(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"IdColumnDropper\",\n        kind=OperatorKind.FEATURE,\n        version=2,\n        origin=\"synthesized\",\n        description=\"移除客户ID等无业务预测意义的标识列，防止编码维度暴涨和过拟合\",\n        conditions=[\"id_columns\"],\n        dependencies=[],\n        params={\"id_cols\": (\"customer_id\",)},\n        parent=\"IdColumnDropper@1\",\n    )\n\n    def __init__(self, id_cols: Sequence[str] = (\"customer_id\",)):\n        self.id_cols = id_cols\n\n    def fit(self, X: pd.DataFrame, y=None):\n        cols_to_check = set(self.id_cols) if self.id_cols is not None else set()\n        self.drop_cols_ = [col for col in X.columns if col in cols_to_check]\n        return self\n\n    def transform(self, X: pd.DataFrame) -> pd.DataFrame:\n        X = X.copy()\n        cols_to_drop = [c for c in self.drop_cols_ if c in X.columns]\n        if cols_to_drop:\n            X = X.drop(columns=cols_to_drop)\n        return X\n",
       "version": 2,
       "revision": 0
     },
@@ -190,19 +197,19 @@
       "spec": {
         "name": "BalancedLightGBMClassifier",
         "kind": "model",
-        "purpose": "使用 LightGBM 训练二分类模型，设置 class_weight='balanced' 自动平衡正负样本权重以提升召回率，并输出特征重要性",
-        "inputs": "编码处理后的特征矩阵与目标标签",
-        "outputs": "拟合好的 LightGBM 模型对象",
+        "purpose": "基于 LightGBM 训练二分类模型并自动平衡正负样本权重，用于高召回流失预测场景并提供特征重要性",
+        "inputs": "预处理后的特征矩阵及标签",
+        "outputs": "训练好的分类模型及预测结果",
         "reference": "BalancedLightGBMClassifier@1"
       },
-      "source": "from factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind, Modality\nfrom sklearn.base import ClassifierMixin\nimport numpy as np\nimport pandas as pd\nimport lightgbm as lgb\n\n\nclass BalancedLightGBMClassifier(ClassifierMixin, Operator):\n    meta = OperatorMeta(\n        name=\"BalancedLightGBMClassifier\",\n        kind=OperatorKind.MODEL,\n        version=2,\n        origin=\"synthesized\",\n        description=\"基于LightGBM的平衡二分类模型，通过样本类别加权提升不平衡数据下的召回率并提供特征重要性\",\n        conditions=[\"imbalanced\", \"classification\", \"tabular\"],\n        dependencies=[\"lightgbm\", \"numpy\", \"pandas\", \"scikit-learn\"],\n        params={\n            \"n_estimators\": 400,\n            \"learning_rate\": 0.05,\n            \"num_leaves\": 31,\n            \"max_depth\": -1,\n            \"min_child_samples\": 20,\n            \"subsample\": 1.0,\n            \"colsample_bytree\": 1.0,\n            \"reg_alpha\": 0.0,\n            \"reg_lambda\": 0.0,\n            \"class_weight\": \"balanced\",\n            \"random_state\": 42,\n            \"n_jobs\": -1,\n            \"verbose\": -1,\n        },\n        parent=\"BalancedLightGBMClassifier@1\",\n    )\n\n    def __init__(\n        self,\n        n_estimators: int = 400,\n        learning_rate: float = 0.05,\n        num_leaves: int = 31,\n        max_depth: int = -1,\n        min_child_samples: int = 20,\n        subsample: float = 1.0,\n        colsample_bytree: float = 1.0,\n        reg_alpha: float = 0.0,\n        reg_lambda: float = 0.0,\n        class_weight: str = \"balanced\",\n        random_state: int = 42,\n        n_jobs: int = -1,\n        verbose: int = -1,\n    ):\n        self.n_estimators = n_estimators\n        self.learning_rate = learning_rate\n        self.num_leaves = num_leaves\n        self.max_depth = max_depth\n        self.min_child_samples = min_child_samples\n        self.subsample = subsample\n        self.colsample_bytree = colsample_bytree\n        self.reg_alpha = reg_alpha\n        self.reg_lambda = reg_lambda\n        self.class_weight = class_weight\n        self.random_state = random_state\n        self.n_jobs = n_jobs\n        self.verbose = verbose\n\n    def _prepare_data(self, X: pd.DataFrame) -> pd.DataFrame:\n        X_out = X.copy()\n        for col in X_out.columns:\n            if X_out[col].dtype == \"object\":\n                X_out[col] = X_out[col].astype(\"category\")\n        return X_out\n\n    def fit(self, X: pd.DataFrame, y: pd.Series):\n        X_proc = self._prepare_data(X)\n        y_proc = np.asarray(y)\n\n        self.feature_names_in_ = np.array(X_proc.columns, dtype=str)\n        self.n_features_in_ = X_proc.shape[1]\n\n        self.model_ = lgb.LGBMClassifier(\n            n_estimators=self.n_estimators,\n            learning_rate=self.learning_rate,\n            num_leaves=self.num_leaves,\n            max_depth=self.max_depth,\n            min_child_samples=self.min_child_samples,\n            subsample=self.subsample,\n            colsample_bytree=self.colsample_bytree,\n            reg_alpha=self.reg_alpha,\n            reg_lambda=self.reg_lambda,\n            class_weight=self.class_weight,\n            random_state=self.random_state,\n            n_jobs=self.n_jobs,\n            verbose=self.verbose,\n        )\n        self.model_.fit(X_proc, y_proc)\n\n        self.classes_ = np.asarray(self.model_.classes_)\n        self.feature_importances_ = np.asarray(self.model_.feature_importances_)\n        return self\n\n    def predict_proba(self, X: pd.DataFrame) -> np.ndarray:\n        X_proc = self._prepare_data(X)\n        proba = self.model_.predict_proba(X_proc)\n        return np.asarray(proba, dtype=np.float64)\n\n    def predict(self, X: pd.DataFrame) -> np.ndarray:\n        X_proc = self._prepare_data(X)\n        preds = self.model_.predict(X_proc)\n        return np.asarray(preds)\n",
+      "source": "import numpy as np\nimport pandas as pd\nimport lightgbm as lgb\nfrom sklearn.base import ClassifierMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind, Modality\n\n\nclass BalancedLightGBMClassifier(ClassifierMixin, Operator):\n    meta = OperatorMeta(\n        name=\"BalancedLightGBMClassifier\",\n        kind=OperatorKind.MODEL,\n        version=2,\n        origin=\"synthesized\",\n        description=\"基于LightGBM的平衡分类器，支持正负样本权重自动平衡与特征重要性输出\",\n        conditions=[\"imbalanced\", \"classification\", \"tabular\"],\n        dependencies=[\"lightgbm\", \"scikit-learn\"],\n        params={\n            \"n_estimators\": 400,\n            \"learning_rate\": 0.05,\n            \"num_leaves\": 31,\n            \"max_depth\": -1,\n            \"class_weight\": \"balanced\",\n            \"subsample\": 0.8,\n            \"colsample_bytree\": 0.8,\n            \"random_state\": 42,\n            \"verbose\": -1,\n        },\n        parent=\"BalancedLightGBMClassifier@1\",\n    )\n\n    def __init__(\n        self,\n        n_estimators=400,\n        learning_rate=0.05,\n        num_leaves=31,\n        max_depth=-1,\n        class_weight=\"balanced\",\n        subsample=0.8,\n        colsample_bytree=0.8,\n        random_state=42,\n        verbose=-1,\n    ):\n        self.n_estimators = n_estimators\n        self.learning_rate = learning_rate\n        self.num_leaves = num_leaves\n        self.max_depth = max_depth\n        self.class_weight = class_weight\n        self.subsample = subsample\n        self.colsample_bytree = colsample_bytree\n        self.random_state = random_state\n        self.verbose = verbose\n\n    def fit(self, X, y):\n        X_df = pd.DataFrame(X).copy()\n        y_arr = np.asarray(y)\n\n        self.classes_ = np.unique(y_arr)\n        self.feature_names_in_ = np.array(X_df.columns, dtype=str)\n        self.n_features_in_ = X_df.shape[1]\n\n        # 确保列名无特殊 JSON 字符干扰 LightGBM\n        clean_cols = [str(c).replace(\":\", \"_\").replace(\" \", \"_\") for c in X_df.columns]\n        X_df.columns = clean_cols\n        self.cleaned_feature_names_ = clean_cols\n\n        self.model_ = lgb.LGBMClassifier(\n            n_estimators=self.n_estimators,\n            learning_rate=self.learning_rate,\n            num_leaves=self.num_leaves,\n            max_depth=self.max_depth,\n            class_weight=self.class_weight,\n            subsample=self.subsample,\n            colsample_bytree=self.colsample_bytree,\n            random_state=self.random_state,\n            verbose=self.verbose,\n        )\n\n        self.model_.fit(X_df, y_arr)\n        self.feature_importances_ = self.model_.feature_importances_\n        return self\n\n    def _prepare_input(self, X):\n        X_df = pd.DataFrame(X).copy()\n        if hasattr(self, \"cleaned_feature_names_\"):\n            X_df.columns = self.cleaned_feature_names_\n        return X_df\n\n    def predict_proba(self, X):\n        X_df = self._prepare_input(X)\n        proba = self.model_.predict_proba(X_df)\n        return np.asarray(proba, dtype=np.float64)\n\n    def predict(self, X):\n        X_df = self._prepare_input(X)\n        pred = self.model_.predict(X_df)\n        return np.asarray(pred)\n",
       "version": 2,
       "revision": 0
     }
   },
   "reports": [
     {
-      "plan_name": "interpretable_logistic_regression",
+      "plan_name": "linear_interpretable_lr",
       "passed": true,
       "diagnostics": [],
       "metrics": {
@@ -220,54 +227,54 @@
         "recall_at_20": 0.0013
       },
       "resources": {
-        "fit_seconds": 0.08,
-        "predict_ms_per_1k": 35.8,
-        "peak_rss_mb": 256.5
+        "fit_seconds": 0.073,
+        "predict_ms_per_1k": 33.06,
+        "peak_rss_mb": 252.4
       },
       "notes": []
     },
     {
-      "plan_name": "balanced_lightgbm",
+      "plan_name": "balanced_lgbm_tree",
       "passed": false,
       "diagnostics": [
         {
           "code": "M_THRESHOLD",
           "stage": "metric",
-          "message": "recall = 0.6243 低于阈值 0.75",
+          "message": "recall = 0.6298 低于阈值 0.75",
           "operator": "BalancedLightGBMClassifier@2",
           "hint": "考虑 class_weight、换模型、调参或调整决策阈值"
         },
         {
           "code": "M_THRESHOLD",
           "stage": "metric",
-          "message": "roc_auc = 0.7835 低于阈值 0.8",
+          "message": "roc_auc = 0.7830 低于阈值 0.8",
           "operator": "BalancedLightGBMClassifier@2",
           "hint": "考虑 class_weight、换模型、调参或调整决策阈值"
         }
       ],
       "metrics": {
-        "recall": 0.6243,
-        "roc_auc": 0.7835,
-        "precision": 0.4923,
-        "f1": 0.5502,
-        "recall_at_20": 0.4204
+        "recall": 0.6298,
+        "roc_auc": 0.783,
+        "precision": 0.4901,
+        "f1": 0.5511,
+        "recall_at_20": 0.4199
       },
       "metric_std": {
-        "recall": 0.0073,
-        "roc_auc": 0.0027,
-        "precision": 0.002,
-        "f1": 0.003,
-        "recall_at_20": 0.0057
+        "recall": 0.0031,
+        "roc_auc": 0.0036,
+        "precision": 0.0011,
+        "f1": 0.0016,
+        "recall_at_20": 0.008
       },
       "resources": {
-        "fit_seconds": 0.265,
-        "predict_ms_per_1k": 53.21,
-        "peak_rss_mb": 263.2
+        "fit_seconds": 0.229,
+        "predict_ms_per_1k": 43.74,
+        "peak_rss_mb": 260.2
       },
       "notes": []
     }
   ],
-  "best_plan": "interpretable_logistic_regression",
+  "best_plan": "linear_interpretable_lr",
   "repair_rounds": 0,
   "replans": 0,
   "history": [],
@@ -281,15 +288,15 @@
     "Lesson:9e9e77d6",
     "Lesson:74e2da10",
     "Lesson:88299a38",
-    "Lesson:0752c76e",
+    "Lesson:0d5e3eb1",
+    "Lesson:57718714",
     "Lesson:6a946c79",
-    "Lesson:828ad675",
-    "Lesson:25484941",
-    "Lesson:f2c1398b"
+    "Lesson:f2c1398b",
+    "Lesson:828ad675"
   ],
   "kg_writes": [
-    "ValidationRun:03_churn_reuse-interpretable_logistic_regression",
-    "ValidationRun:03_churn_reuse-balanced_lightgbm"
+    "ValidationRun:03_churn_reuse-linear_interpretable_lr",
+    "ValidationRun:03_churn_reuse-balanced_lgbm_tree"
   ],
   "artifacts": {
     "pipeline": "examples/demo/runs/03_churn_reuse/pipeline.py",
@@ -323,22 +330,22 @@
           "ref": "TotalChargesCleaner@2",
           "executable": true,
           "origin": "synthesized",
-          "description": "清洗包含空白字符串的数值列并转换为浮点型，缺失值填充为指定值",
+          "description": "安全清洗并转换含空白字符串的累计消费等数值列为浮点型，并填充缺失值为指定默认值",
           "conditions": [
             "has_missing_values",
             "string_typed_numeric"
           ],
           "params": [
-            "column",
+            "col",
             "fill_value"
           ],
           "defaults": {
-            "column": "total_charges",
+            "col": "total_charges",
             "fill_value": 0.0
           },
-          "score": 0.5992,
+          "score": 0.5849,
           "breakdown": {
-            "text": 0.778,
+            "text": 0.743,
             "condition": 0.182,
             "history": 0.778
           },
@@ -360,9 +367,9 @@
             "kwargs"
           ],
           "defaults": {},
-          "score": 0.4966,
+          "score": 0.4926,
           "breakdown": {
-            "text": 0.624,
+            "text": 0.614,
             "condition": 0.091,
             "history": 0.732
           },
@@ -412,15 +419,60 @@
           "defaults": {
             "col": "tenure"
           },
-          "score": 0.6158,
+          "score": 0.619,
           "breakdown": {
-            "text": 0.735,
+            "text": 0.743,
             "condition": 0.273,
             "history": 0.8
           },
           "evidence": [
             "匹配条件：interpretable、numeric_features、time_tenure",
             "历史验证 1 次，平均 recall 0.800"
+          ]
+        },
+        {
+          "ref": "TenureBucketizer@2",
+          "executable": true,
+          "origin": "synthesized",
+          "description": "将在网时长字段分箱为离散区间特征以增强线性模型的表达能力与业务可解释性",
+          "conditions": [
+            "numeric_features",
+            "time_tenure"
+          ],
+          "params": [
+            "col",
+            "bins",
+            "labels",
+            "drop_original"
+          ],
+          "defaults": {
+            "col": "tenure",
+            "bins": [
+              null,
+              6.0,
+              12.0,
+              24.0,
+              48.0,
+              null
+            ],
+            "labels": [
+              "0-6",
+              "6-12",
+              "12-24",
+              "24-48",
+              "48+"
+            ],
+            "drop_original": false
+          },
+          "score": 0.5975,
+          "breakdown": {
+            "text": 0.774,
+            "condition": 0.182,
+            "history": 0.778
+          },
+          "evidence": [
+            "匹配条件：numeric_features、time_tenure",
+            "历史验证 1 次，平均 recall 0.778"
           ]
         },
         {
@@ -438,62 +490,15 @@
             "total": "total_charges",
             "tenure": "tenure"
           },
-          "score": 0.5887,
+          "score": 0.5923,
           "breakdown": {
-            "text": 0.735,
+            "text": 0.744,
             "condition": 0.182,
             "history": 0.8
           },
           "evidence": [
             "匹配条件：numeric_features、time_tenure",
             "历史验证 1 次，平均 recall 0.800"
-          ]
-        },
-        {
-          "ref": "TenureBucketizer@2",
-          "executable": true,
-          "origin": "synthesized",
-          "description": "将在网时长tenure字段按业务经验分箱为离散区间段，增强模型表现与可解释性",
-          "conditions": [
-            "numeric_features",
-            "time_tenure"
-          ],
-          "params": [
-            "input_col",
-            "output_col",
-            "bins",
-            "labels",
-            "fill_missing"
-          ],
-          "defaults": {
-            "input_col": "tenure",
-            "output_col": "tenure_bucket",
-            "bins": [
-              -1,
-              6,
-              12,
-              24,
-              48,
-              null
-            ],
-            "labels": [
-              "0-6",
-              "6-12",
-              "12-24",
-              "24-48",
-              "48+"
-            ],
-            "fill_missing": "Unknown"
-          },
-          "score": 0.5761,
-          "breakdown": {
-            "text": 0.72,
-            "condition": 0.182,
-            "history": 0.778
-          },
-          "evidence": [
-            "匹配条件：numeric_features、time_tenure",
-            "历史验证 1 次，平均 recall 0.778"
           ]
         }
       ],
@@ -698,10 +703,10 @@
         "error_code": "E_TIMEOUT"
       },
       {
-        "title": "避免在沙箱中使用 getattr 等受限反射函数，访问可选属性应使用 try/except AttributeError",
-        "trigger": "静态安全检查拦截（E_UNSAFE），提示“禁止调用 getattr()”或其它沙箱禁用的内置函数",
-        "fix": "避免使用 getattr、setattr 等受限反射函数；获取可能未初始化的属性时，改用直接属性访问并配合 try/except AttributeError 来提供默认值",
-        "error_code": "E_UNSAFE"
+        "title": "预测阶段出现未见类别导致编码报错",
+        "trigger": "线上/测试集出现未见类别，OneHotEncoder 抛出 ValueError: Found unknown categories",
+        "fix": "编码器配置 handle_unknown='ignore' 或 infrequent_if_exist 忽略未知类别",
+        "error_code": "E_RUNTIME"
       }
     ],
     "lesson_ids": [
@@ -709,7 +714,7 @@
       "Lesson:9e9e77d6",
       "Lesson:74e2da10",
       "Lesson:88299a38",
-      "Lesson:0752c76e"
+      "Lesson:0d5e3eb1"
     ]
   },
   "verify_config": {
@@ -734,23 +739,23 @@
     "n_threads": 4
   },
   "timings": {
-    "PLAN": 0.16,
-    "BUILD": 0.0,
-    "VERIFY": 10.21,
+    "PLAN": 17.38,
+    "BUILD": 9.74,
+    "VERIFY": 9.18,
     "ROUTE": 0.0,
-    "CURATE": 0.02
+    "CURATE": 0.01
   },
   "log": [
     "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
     "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
-    "[PLAN] 候选方案：['interpretable_logistic_regression(*IdColumnDropper → TotalChargesCleaner → MissingValueImputer → TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)', 'balanced_lightgbm(*IdColumnDropper → TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → *BalancedLightGBMClassifier)']",
-    "[PLAN] 完成，用时 0.2s → BUILD",
-    "[BUILD] 生成算子 IdColumnDropper@2：剔除客户ID等标识列，防止One-Hot编码时维度暴涨引发内存溢出",
-    "[BUILD] 生成算子 BalancedLightGBMClassifier@2（参考 BalancedLightGBMClassifier@1）：使用 LightGBM 训练二分类模型，设置 class_weight='balanced' 自动平衡正负样本权重以提升召回率，并输出特征重要性",
-    "[BUILD] 完成，用时 0.0s → VERIFY",
-    "[VERIFY] interpretable_logistic_regression：通过，recall=0.7785",
-    "[VERIFY] balanced_lightgbm：未通过，recall=0.6243；M_THRESHOLD recall = 0.6243 低于阈值 0.75；M_THRESHOLD roc_auc = 0.7835 低于阈值 0.8",
-    "[VERIFY] 完成，用时 10.2s → ROUTE",
+    "[PLAN] 候选方案：['linear_interpretable_lr(*IdColumnDropper → TotalChargesCleaner → MissingValueImputer → TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)', 'balanced_lgbm_tree(*IdColumnDropper → TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → *BalancedLightGBMClassifier)']",
+    "[PLAN] 完成，用时 17.4s → BUILD",
+    "[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：移除无业务预测意义的客户ID标识列，防止维度暴涨及过拟合",
+    "[BUILD] 生成算子 BalancedLightGBMClassifier@2（参考 BalancedLightGBMClassifier@1）：基于 LightGBM 训练二分类模型并自动平衡正负样本权重，用于高召回流失预测场景并提供特征重要性",
+    "[BUILD] 完成，用时 9.7s → VERIFY",
+    "[VERIFY] linear_interpretable_lr：通过，recall=0.7785",
+    "[VERIFY] balanced_lgbm_tree：未通过，recall=0.6298；M_THRESHOLD recall = 0.6298 低于阈值 0.75；M_THRESHOLD roc_auc = 0.7830 低于阈值 0.8",
+    "[VERIFY] 完成，用时 9.2s → ROUTE",
     "[ROUTE] 完成，用时 0.0s → CURATE",
     "[CURATE] 写入 KG：2 条 ValidationRun；注册新算子 ['IdColumnDropper@2']；新增经验 0 条",
     "[CURATE] 完成，用时 0.0s → DONE"

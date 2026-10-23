@@ -21,7 +21,7 @@ import networkx as nx
 from rank_bm25 import BM25Plus
 
 from factory.operators.base import OperatorMeta, OperatorRegistry
-from factory.schemas import DiagnosticCode, Modality, OperatorKind
+from factory.schemas import DiagnosticCode, Modality, OperatorKind, canonical_metric
 from factory.utils import ROOT, get_logger
 
 log = get_logger(__name__)
@@ -72,6 +72,9 @@ CONDITION_TAGS: dict[str, str] = {
 # 文本检索、条件重合、历史表现三项的权重
 W_TEXT, W_COND, W_HIST = 0.4, 0.3, 0.3
 
+# 诊断码相同、且标题相似度不低于该值的经验视为重复（实测重复对约 0.63，其余各对不超过 0.13）
+LESSON_DUP_THRESHOLD = 0.5
+
 
 def node_id(ntype: str, key: str) -> str:
     return f"{ntype}:{key}"
@@ -89,6 +92,13 @@ def tokenize(text: str) -> list[str]:
         tokens.extend(run)
         tokens.extend(run[i : i + 2] for i in range(len(run) - 1))
     return tokens
+
+
+def text_similarity(a: str, b: str) -> float:
+    """标题相似度：词元集合的 Jaccard 系数（忽略单个汉字，避免"的""导致"等字造成误判）。"""
+    ta = {t for t in tokenize(a) if len(t) > 1 or t.isascii()}
+    tb = {t for t in tokenize(b) if len(t) > 1 or t.isascii()}
+    return len(ta & tb) / len(ta | tb) if ta and tb else 0.0
 
 
 @dataclass
@@ -193,6 +203,7 @@ class CapabilityKG:
         return self.add_node("Scenario", name, title=title, task_type=task_type, modality=modality, **attrs)
 
     def add_metric(self, scenario: str, metric: str, threshold: float | None = None, primary: bool = False) -> str:
+        metric = canonical_metric(metric)
         mid = self.add_node("Metric", metric, name=metric)
         self.add_edge(scenario, "EVALUATED_BY", mid, threshold=threshold, primary=primary)
         return mid
@@ -239,22 +250,78 @@ class CapabilityKG:
         applies_to: Iterable[str] = (),
         learned_from: str | None = None,
     ) -> str:
-        """写入一条可复用经验。applies_to 为已存在的节点 id。"""
-        lid = self.add_node(
-            "Lesson",
-            short_hash(title),
-            title=title,
-            trigger=trigger,
-            fix=fix,
-            error_code=error_code.value if error_code else None,
-            hits=0,
-        )
+        """写入一条可复用经验。applies_to 为已存在的节点 id。
+
+        与已有经验重复（诊断码相同、标题相似）时不新建节点，而是合并到已有经验：
+        补充适用对象与来源，并在 aliases 中记录被合并的标题。返回实际写入的节点 id。
+        """
+        code = error_code.value if error_code else None
+        lid = self.find_similar_lesson(title, code)
+        if lid is None:
+            lid = self.add_node("Lesson", short_hash(title), title=title, trigger=trigger, fix=fix, error_code=code, hits=0)
+        elif title != self.g.nodes[lid]["title"]:
+            aliases = self.g.nodes[lid].setdefault("aliases", [])
+            if title not in aliases:
+                aliases.append(title)
         for target in applies_to:
             if target in self.g:
                 self.add_edge(lid, "APPLIES_TO", target)
         if learned_from:
             self.add_edge(lid, "LEARNED_FROM", learned_from)
         return lid
+
+    # ------------------------------------------------------------------
+    # 去重与整理
+    # ------------------------------------------------------------------
+
+    def find_similar_lesson(self, title: str, error_code: str | None) -> str | None:
+        best, best_sim = None, LESSON_DUP_THRESHOLD
+        for nid, d in self.nodes("Lesson"):
+            if d.get("error_code") != error_code:
+                continue
+            sim = max(text_similarity(title, t) for t in [d["title"], *d.get("aliases", [])])
+            if sim >= best_sim:
+                best, best_sim = nid, sim
+        return best
+
+    def merge_nodes(self, keep: str, drop: str) -> None:
+        """把 drop 的所有边转移到 keep，然后删除 drop。"""
+        for u, _, d in list(self.g.in_edges(drop, data=True)):
+            if u != keep:
+                self.add_edge(u, d["rel"], keep, **{k: v for k, v in d.items() if k != "rel"})
+        for _, v, d in list(self.g.out_edges(drop, data=True)):
+            if v != keep:
+                self.add_edge(keep, d["rel"], v, **{k: v2 for k, v2 in d.items() if k != "rel"})
+        kd, dd = self.g.nodes[keep], self.g.nodes[drop]
+        if dd["type"] == "Lesson":
+            kd["aliases"] = list(dict.fromkeys([*kd.get("aliases", []), dd["title"], *dd.get("aliases", [])]))
+            kd["hits"] = kd.get("hits", 0) + dd.get("hits", 0)
+        for k, v in dd.items():  # 补充 keep 缺少的属性（如抽取得到的指标说明）
+            kd.setdefault(k, v)
+        self.g.remove_node(drop)
+
+    def tidy(self) -> list[str]:
+        """整理已有图谱：合并同一指标的不同名字、合并重复经验。返回整理记录。"""
+        log = []
+        for mid, d in list(self.nodes("Metric")):
+            canon = canonical_metric(d["name"], d.get("params"))
+            if canon != d["key"]:
+                target = node_id("Metric", canon)
+                if target not in self.g:
+                    self.add_node("Metric", canon, name=canon)
+                self.merge_nodes(target, mid)
+                self.g.nodes[target]["name"] = canon
+                log.append(f"指标 {d['key']} → {canon}")
+        lessons = sorted(self.nodes("Lesson"), key=lambda x: x[0])
+        for i, (a, da) in enumerate(lessons):
+            if a not in self.g:
+                continue
+            for b, db in lessons[i + 1 :]:
+                if b in self.g and da.get("error_code") == db.get("error_code") \
+                        and text_similarity(da["title"], db["title"]) >= LESSON_DUP_THRESHOLD:
+                    self.merge_nodes(a, b)
+                    log.append(f"经验「{db['title']}」并入「{da['title']}」")
+        return log
 
     # ------------------------------------------------------------------
     # 检索

@@ -10,6 +10,7 @@ LLM 的每次输出都要解析成其中一种模型，因此每一层都能单�
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import Any, Literal
 
@@ -165,6 +166,26 @@ class DiagnosticCode(str, Enum):
     def category(self) -> Literal["code", "metric"]:
         """代码类错误就地修复；指标类问题触发重新规划。"""
         return "metric" if self.value.startswith("M_") else "code"
+
+
+def canonical_metric(name: str, params: dict | None = None) -> str:
+    """把指标名规范化，避免同一指标在图谱中出现多个名字。
+
+    例：auc → roc_auc；recall@20% / recall_at_20 / RecallAtTopK(k=0.2) → recall_at_20。
+    """
+    n = re.sub(r"(?<=[a-z])(?=[A-Z])", "_", name.strip()).lower().replace("-", "_").replace(" ", "_")
+    n = {"auc": "roc_auc", "roc": "roc_auc", "f1_score": "f1", "accuracy_score": "accuracy"}.get(n, n)
+    m = re.fullmatch(r"recall(?:_at_|@)(top_k|k|\d+%?)", n)
+    if not m:
+        return n
+    k = m.group(1)
+    if k in ("top_k", "k"):
+        value = (params or {}).get("k")
+        if value is None:
+            return n
+        value = float(value)
+        return f"recall_at_{round(value * 100) if value <= 1 else round(value)}"
+    return f"recall_at_{int(k.rstrip('%'))}"
 
 
 #: 诊断码说明，供抽取经验和修复代码时放入 prompt

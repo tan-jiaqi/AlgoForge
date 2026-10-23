@@ -246,6 +246,25 @@ class Planner:
         ).plans
         return [self.bind(p, spec) for p in plans[:n_candidates]]
 
+    def _known_name(self, name: str) -> str:
+        """返回知识图谱中与 name 仅大小写不同的算子名（没有则原样返回）。"""
+        for _, d in self.kg.nodes("Operator"):
+            if d["name"].lower() == name.lower():
+                return d["name"]
+        return name
+
+    def _align_synth_spec(self, spec):
+        """生成算子与图谱中已有算子同名（忽略大小写）时：沿用已有名字，并把最新版本记为 reference，
+        这样新版本会通过 DERIVED_FROM 接入原有的版本谱系，而不是变成一个孤立的"新"算子。"""
+        name = self._known_name(spec.name)
+        ref = spec.reference
+        if ref and "@" not in ref:
+            ref = self._known_name(ref)
+        versions = [d["key"] for _, d in self.kg.nodes("Operator") if d["name"] == (ref if ref and "@" not in ref else name)]
+        if (ref is None or "@" not in ref) and versions:
+            ref = max(versions, key=lambda k: int(k.split("@")[1]))
+        return spec.model_copy(update={"name": name, "reference": ref})
+
     def plan_errors(self, plan: PipelinePlan, spec: TaskSpec, *, allow_synthesis: bool = False) -> list[str]:
         """语义校验：算子存在、类型与模态匹配、参数合法。"""
         allow_synthesis = allow_synthesis or self.allow_synthesis
@@ -259,8 +278,9 @@ class Planner:
                     errors.append(f"第 {i + 1} 步：当前只允许 reuse")
                     continue
                 name = step.synth_spec.name
-                if name in self.reg and self.reg.get(name).meta.origin != "extracted":
-                    errors.append(f"第 {i + 1} 步：能力库已有可执行算子 {self.reg.get(name).meta.key}，应使用 reuse")
+                existing = self._known_name(name)  # 名字大小写不同也算同一个算子
+                if existing in self.reg and self.reg.get(existing).meta.origin != "extracted":
+                    errors.append(f"第 {i + 1} 步：能力库已有可执行算子 {self.reg.get(existing).meta.key}，应使用 reuse")
                 ref = step.synth_spec.reference
                 if ref and node_id("Operator", ref) not in self.kg.g:
                     errors.append(f"第 {i + 1} 步：reference {ref} 不在知识图谱中")
@@ -283,10 +303,8 @@ class Planner:
         steps = []
         for step in plan.steps:
             update: dict = {}
-            if step.action == "synthesize" and step.synth_spec.reference and "@" not in step.synth_spec.reference:
-                hit = [d["key"] for _, d in self.kg.nodes("Operator") if d["name"] == step.synth_spec.reference]
-                ref = max(hit, default=None, key=lambda k: int(k.split("@")[1]))
-                update["synth_spec"] = step.synth_spec.model_copy(update={"reference": ref})
+            if step.action == "synthesize":
+                update["synth_spec"] = self._align_synth_spec(step.synth_spec)
             if step.action == "reuse" and step.operator_ref:
                 meta = self.reg.get(step.operator_ref).meta
                 update["operator_ref"] = meta.key

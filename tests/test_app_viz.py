@@ -21,9 +21,17 @@ def test_overview_folds_details():
     edge = next(d for d in g.get_edge_data("Operator:TotalChargesCleaner@2", "Scenario:telecom_churn").values())
     assert edge["rel"] == "VALIDATED_ON" and edge["runs"] >= 1
     assert any(d["rel"] == "DERIVED_FROM" for *_, d in g.edges(data=True))
-    # 只关联到条件的经验（演示中由修复提炼的那条）应连到所属场景，而不是孤立
-    lesson = next(n for n, d in g.nodes(data=True) if d["type"] == "Lesson" and d.get("error_code") == "E_UNSAFE")
-    assert list(g.successors(lesson)) == ["Scenario:tickets"]
+
+
+def test_overview_links_condition_only_lesson_to_scenario():
+    """只关联到条件的经验在概览中应连到它来源所属的场景，而不是成为孤立点。"""
+    from factory.kg_viz import overview_graph
+
+    kg = CapabilityKG.load(DEFAULT_KG_PATH)
+    lid = kg.add_lesson(title="仅关联条件的测试经验", trigger="t", fix="f", applies_to=["Condition:text_input"],
+                        learned_from="Source:docs/tuning_notes.md")
+    g = overview_graph(kg)
+    assert list(g.successors(lid)) == ["Scenario:telecom_churn"]
 
 
 def test_render_full_and_focus(tmp_path):

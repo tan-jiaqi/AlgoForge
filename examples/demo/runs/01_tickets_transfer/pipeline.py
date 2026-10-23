@@ -1,8 +1,8 @@
 """把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低 —— 自动生成的算法流水线
 
 需求：把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低于 0.8
-方案：char_ngram_tfidf_lr_tuned
-设计依据：方案二避免了显式分词，通过扩大字符级 n-gram 范围至 [1, 3] 并增加最大特征数来捕捉更细粒度的文本模式，同时微调正则化参数以优化泛化性能。
+方案：tfidf_ngram3_lr_tuned
+设计依据：通过扩大 n-gram 窗口提升特征表现力，结合微调后的正则化强度，力求达到 F1-macro 0.8 以上目标。
 主指标：f1_macro >= 0.8
 
 由 AlgoForge 自动生成。用法：
@@ -25,8 +25,8 @@ TARGET = 'label'
 
 def build_pipeline() -> Pipeline:
     return Pipeline([
-        ("0_vectorizer", TfidfTextVectorizer(column='text', analyzer='char_wb', ngram_range=(1, 3), max_features=30000)),  # 采用字符级 n-gram（1-3元），无需分词即可捕获丰富的局部文本结构，对拼写变体和中文词组边界更稳健。
-        ("1_model", LogisticRegressionModel(C=0.5, class_weight='balanced', max_iter=1000, random_state=42)),  # 使用逻辑回归，微调正则化强度 C=0.5 以防止高维特征过拟合，并保持 class_weight='balanced'。
+        ("0_vectorizer", TfidfTextVectorizer(column='text', analyzer='char_wb', ngram_range=(1, 3), max_features=30000)),  # 扩展 n-gram 范围至 1-3 gram 并增加特征维度，更好捕捉工单特定词组与长搭配语义。
+        ("1_model", LogisticRegressionModel(C=2.0, class_weight='balanced', max_iter=1000, random_state=42)),  # 适度减小 L2 正则化约束（增大 C 值）配合更高维文本特征，同时保留平衡权重处理不平衡数据。
     ])
 
 

@@ -61,3 +61,41 @@ def test_lessons_filtered_by_code(kg):
     kg.add_lesson(title="召回不足", trigger="recall 低", fix="class_weight", error_code=DiagnosticCode.METRIC_BELOW_THRESHOLD)
     found = kg.search_lessons("convert string", error_code=DiagnosticCode.RUNTIME_ERROR)
     assert [x["title"] for x in found] == ["空白字符串"]
+
+
+def test_canonical_metric():
+    from factory.schemas import canonical_metric
+
+    assert canonical_metric("RecallAtTopK", {"k": 0.2}) == canonical_metric("recall@20%") == "recall_at_20"
+    assert canonical_metric("AUC") == "roc_auc" and canonical_metric("f1_macro") == "f1_macro"
+    assert canonical_metric("recall_at_top_k") == "recall_at_top_k", "缺少 k 时不能猜"
+
+
+def test_duplicate_lessons_merge_on_insert(kg):
+    a = kg.add_lesson(title="样本不平衡导致默认阈值下召回率偏低", trigger="t1", fix="f1",
+                      error_code=DiagnosticCode.METRIC_BELOW_THRESHOLD, applies_to=["Operator:LightGBMModel@1"])
+    b = kg.add_lesson(title="样本不平衡导致默认模型召回率偏低", trigger="t2", fix="f2",
+                      error_code=DiagnosticCode.METRIC_BELOW_THRESHOLD, applies_to=["Operator:RandomForestModel@1"])
+    assert a == b, "诊断码相同且标题相似的经验应合并"
+    assert kg.g.nodes[a]["aliases"] == ["样本不平衡导致默认模型召回率偏低"]
+    assert set(kg.neighbors(a, "APPLIES_TO")) == {"Operator:LightGBMModel@1", "Operator:RandomForestModel@1"}
+    other_code = kg.add_lesson(title="样本不平衡导致默认模型召回率偏低", trigger="t", fix="f",
+                               error_code=DiagnosticCode.UNSTABLE)
+    distinct = kg.add_lesson(title="预测阶段出现未见类别导致编码报错", trigger="t", fix="f",
+                             error_code=DiagnosticCode.METRIC_BELOW_THRESHOLD)
+    assert len({a, other_code, distinct}) == 3, "诊断码不同或内容不同的经验不能合并"
+
+
+def test_tidy_existing_graph(kg):
+    # 模拟旧图谱：两条重复经验各自成节点，同一指标有两个名字
+    for i, title in enumerate(["样本不平衡导致默认阈值下召回率偏低", "样本不平衡导致默认模型召回率偏低"]):
+        kg.add_node("Lesson", f"l{i}", title=title, trigger="t", fix="f", error_code="M_THRESHOLD", hits=i + 1)
+    kg.add_edge("Lesson:l1", "APPLIES_TO", "Operator:LightGBMModel@1")
+    kg.add_node("Metric", "recall_at_top_k", name="recall_at_top_k", params={"k": 0.2}, description="前 20% 召回")
+    kg.add_metric("Scenario:churn", "recall_at_20")
+    log = kg.tidy()
+    assert len(log) == 2
+    assert "Lesson:l1" not in kg.g and kg.g.nodes["Lesson:l0"]["hits"] == 3
+    assert kg.neighbors("Lesson:l0", "APPLIES_TO") == ["Operator:LightGBMModel@1"], "被合并节点的边要转移"
+    assert "Metric:recall_at_top_k" not in kg.g and kg.g.nodes["Metric:recall_at_20"]["description"] == "前 20% 召回"
+    assert kg.tidy() == [], "整理应是幂等的"

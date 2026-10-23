@@ -150,16 +150,6 @@
       "hits": 0
     },
     {
-      "id": "Lesson:25484941",
-      "type": "Lesson",
-      "key": "25484941",
-      "title": "样本不平衡导致默认阈值下召回率偏低",
-      "trigger": "正负样本 1:3 不平衡，默认 0.5 阈值下 recall 仅约 0.55，模型偏向多数类",
-      "fix": "设置 class_weight='balanced' 或在验证集上调整分类阈值以提升召回率",
-      "error_code": "M_THRESHOLD",
-      "hits": 0
-    },
-    {
       "id": "Lesson:57718714",
       "type": "Lesson",
       "key": "57718714",
@@ -237,7 +227,10 @@
       "trigger": "流失场景存在正负样本不平衡，模型默认阈值或未配置样本权重时召回率达不到业务要求",
       "fix": "启用平衡类权重（如 class_weight='balanced' 或 BalancedLightGBMClassifier）以提升召回率",
       "error_code": "M_THRESHOLD",
-      "hits": 0
+      "hits": 0,
+      "aliases": [
+        "样本不平衡导致默认阈值下召回率偏低"
+      ]
     },
     {
       "id": "Lesson:f2c1398b",
@@ -259,14 +252,11 @@
       "id": "Metric:recall_at_20",
       "type": "Metric",
       "key": "recall_at_20",
-      "name": "recall_at_20"
-    },
-    {
-      "id": "Metric:recall_at_top_k",
-      "type": "Metric",
-      "key": "recall_at_top_k",
-      "name": "recall_at_top_k",
-      "description": "按预测概率降序排序后计算前 k 比例样本中真实正例的覆盖率，用于触达资源受限场景下的业务召回评估。"
+      "name": "recall_at_20",
+      "description": "按预测概率降序排序后计算前 k 比例样本中真实正例的覆盖率，用于触达资源受限场景下的业务召回评估。",
+      "params": {
+        "k": 0.2
+      }
     },
     {
       "id": "Metric:roc_auc",
@@ -712,7 +702,7 @@
         "Operator:KFoldTargetEncoder@1",
         "Operator:LightGBMModel@1"
       ],
-      "created_at": "2026-10-22T04:00:21+00:00"
+      "created_at": "2026-10-23T11:06:03+00:00"
     },
     {
       "id": "ValidationRun:a7f163bc",
@@ -730,7 +720,7 @@
         "Operator:OneHotCategoricalEncoder@1",
         "Operator:BalancedLightGBMClassifier@1"
       ],
-      "created_at": "2026-10-22T04:00:21+00:00"
+      "created_at": "2026-10-23T11:06:03+00:00"
     },
     {
       "id": "ValidationRun:e0d43fa3",
@@ -748,7 +738,7 @@
         "Operator:OneHotCategoricalEncoder@1",
         "Operator:RandomForestModel@1"
       ],
-      "created_at": "2026-10-22T04:00:21+00:00"
+      "created_at": "2026-10-23T11:06:03+00:00"
     },
     {
       "id": "ValidationRun:e11ba947",
@@ -767,7 +757,7 @@
         "Operator:StandardFeatureScaler@1",
         "Operator:LogisticRegressionModel@1"
       ],
-      "created_at": "2026-10-22T04:00:21+00:00"
+      "created_at": "2026-10-23T11:06:03+00:00"
     },
     {
       "id": "ValidationRun:f6e4284c",
@@ -785,7 +775,7 @@
         "Operator:ChargeRatioFeatureGenerator@1",
         "Operator:LightGBMModel@1"
       ],
-      "created_at": "2026-10-22T04:00:21+00:00"
+      "created_at": "2026-10-23T11:06:03+00:00"
     }
   ],
   "edges": [
@@ -1167,7 +1157,7 @@
       "rel": "EXTRACTED_FROM"
     },
     {
-      "source": "Metric:recall_at_top_k",
+      "source": "Metric:recall_at_20",
       "target": "Source:churn_v1/modeling.py::recall_at_top_k",
       "rel": "EXTRACTED_FROM"
     },
@@ -1299,6 +1289,16 @@
       "rel": "LEARNED_FROM"
     },
     {
+      "source": "Lesson:9e9e77d6",
+      "target": "Operator:LightGBMModel@1",
+      "rel": "APPLIES_TO"
+    },
+    {
+      "source": "Lesson:9e9e77d6",
+      "target": "Source:docs/failure_cases.md",
+      "rel": "LEARNED_FROM"
+    },
+    {
       "source": "Lesson:69d51358",
       "target": "Operator:TotalChargesCleaner@1",
       "rel": "APPLIES_TO"
@@ -1330,36 +1330,6 @@
     },
     {
       "source": "Lesson:88299a38",
-      "target": "Source:docs/failure_cases.md",
-      "rel": "LEARNED_FROM"
-    },
-    {
-      "source": "Lesson:25484941",
-      "target": "Operator:BalancedLightGBMClassifier@1",
-      "rel": "APPLIES_TO"
-    },
-    {
-      "source": "Lesson:25484941",
-      "target": "Operator:LightGBMModel@1",
-      "rel": "APPLIES_TO"
-    },
-    {
-      "source": "Lesson:25484941",
-      "target": "Operator:LogisticRegressionModel@1",
-      "rel": "APPLIES_TO"
-    },
-    {
-      "source": "Lesson:25484941",
-      "target": "Condition:imbalanced",
-      "rel": "APPLIES_TO"
-    },
-    {
-      "source": "Lesson:25484941",
-      "target": "Condition:recall_first",
-      "rel": "APPLIES_TO"
-    },
-    {
-      "source": "Lesson:25484941",
       "target": "Source:docs/failure_cases.md",
       "rel": "LEARNED_FROM"
     },

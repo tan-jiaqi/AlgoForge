@@ -23,7 +23,7 @@ from sklearn.model_selection import StratifiedKFold, train_test_split
 from factory.operators import build_pipeline
 from factory.operators.synthesized import exec_operator_source
 from factory.profile import load_table
-from factory.schemas import Diagnostic, DiagnosticCode, OperatorKind, PipelinePlan, TaskSpec
+from factory.schemas import Diagnostic, DiagnosticCode, OperatorKind, PipelinePlan, TaskSpec, canonical_metric
 from factory.verify.config import VerifyConfig
 
 # ---------------------------------------------------------------------------
@@ -69,7 +69,7 @@ def _recall_at_20(y, pred, proba, classes, pos):
 
 def resolve_metric(name: str, n_classes: int) -> str:
     """多分类时把 recall/precision/f1 自动映射为 macro 版本。"""
-    name = {"auc": "roc_auc", "recall@20": "recall_at_20", "recall@20%": "recall_at_20"}.get(name, name)
+    name = canonical_metric(name)
     if n_classes > 2 and name in ("precision", "recall", "f1"):
         return f"{name}_macro"
     return name

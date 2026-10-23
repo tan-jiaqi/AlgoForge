@@ -7,10 +7,10 @@
 | 运行 ID | 03_churn_reuse |
 | LLM | gemini-3.5-flash |
 | 状态 | ✅ 成功 |
-| 最优方案 | interpretable_logistic_regression |
-| 总耗时 | 10.4 s |
+| 最优方案 | linear_interpretable_lr |
+| 总耗时 | 36.3 s |
 
-共验证 2 个候选方案，1 个通过；重新规划 0 次，修复 0 轮。最优方案 `interpretable_logistic_regression` 的 recall = 0.778（要求 ≥ 0.75）。
+共验证 2 个候选方案，1 个通过；重新规划 0 次，修复 0 轮。最优方案 `linear_interpretable_lr` 的 recall = 0.778（要求 ≥ 0.75）。
 
 ## 1. 需求理解（TaskSpec）
 
@@ -29,12 +29,12 @@
 
 | 步骤 | 候选算子 | 可直接复用 | 得分 | 文本/条件/历史 | 证据 |
 | --- | --- | --- | --- | --- | --- |
-| imputer | TotalChargesCleaner@2 | 是 | 0.599 | 0.78 / 0.18 / 0.78 | 匹配条件：has_missing_values、string_typed_numeric；历史验证 1 次，平均 recall 0.778 |
-| imputer | MissingValueImputer@1 | 是 | 0.497 | 0.62 / 0.09 / 0.73 | 匹配条件：has_missing_values；历史验证 4 次，平均 recall 0.732 |
+| imputer | TotalChargesCleaner@2 | 是 | 0.585 | 0.74 / 0.18 / 0.78 | 匹配条件：has_missing_values、string_typed_numeric；历史验证 1 次，平均 recall 0.778 |
+| imputer | MissingValueImputer@1 | 是 | 0.493 | 0.61 / 0.09 / 0.73 | 匹配条件：has_missing_values；历史验证 4 次，平均 recall 0.732 |
 | imputer | TotalChargesCleaner@1 | 否（历史实现，可参考生成） | 0.482 | 1.00 / 0.27 / 0.00 | 匹配条件：has_missing_values、numeric_features、string_typed_numeric |
-| feature | TenureBucketizer@1 | 否（历史实现，可参考生成） | 0.616 | 0.73 / 0.27 / 0.80 | 匹配条件：interpretable、numeric_features、time_tenure；历史验证 1 次，平均 recall 0.800 |
-| feature | ChargeRatioFeatureGenerator@1 | 否（历史实现，可参考生成） | 0.589 | 0.73 / 0.18 / 0.80 | 匹配条件：numeric_features、time_tenure；历史验证 1 次，平均 recall 0.800 |
-| feature | TenureBucketizer@2 | 是 | 0.576 | 0.72 / 0.18 / 0.78 | 匹配条件：numeric_features、time_tenure；历史验证 1 次，平均 recall 0.778 |
+| feature | TenureBucketizer@1 | 否（历史实现，可参考生成） | 0.619 | 0.74 / 0.27 / 0.80 | 匹配条件：interpretable、numeric_features、time_tenure；历史验证 1 次，平均 recall 0.800 |
+| feature | TenureBucketizer@2 | 是 | 0.598 | 0.77 / 0.18 / 0.78 | 匹配条件：numeric_features、time_tenure；历史验证 1 次，平均 recall 0.778 |
+| feature | ChargeRatioFeatureGenerator@1 | 否（历史实现，可参考生成） | 0.592 | 0.74 / 0.18 / 0.80 | 匹配条件：numeric_features、time_tenure；历史验证 1 次，平均 recall 0.800 |
 | encoder | OneHotCategoricalEncoder@1 | 是 | 0.645 | 0.93 / 0.18 / 0.73 | 匹配条件：has_categorical_features、low_cardinality；历史验证 4 次，平均 recall 0.732 |
 | encoder | KFoldTargetEncoder@1 | 否（历史实现，可参考生成） | 0.427 | 1.00 / 0.09 / 0.00 | 匹配条件：has_categorical_features |
 | scaler | StandardFeatureScaler@1 | 是 | 0.650 | 1.00 / 0.09 / 0.74 | 匹配条件：numeric_features；历史验证 2 次，平均 recall 0.744 |
@@ -48,7 +48,7 @@
 - **样本不平衡导致默认模型召回率偏低**（M_THRESHOLD）：启用平衡类权重（如 class_weight='balanced' 或 BalancedLightGBMClassifier）以提升召回率
 - **逻辑回归标准化与可解释性**：必须先进行特征标准化（如 StandardFeatureScaler），在 0.1~10 之间搜索正则化强度 C，可直接输出系数给业务方。
 - **未剔除客户 ID 导致 One-Hot 编码后维度暴涨与内存溢出**（E_TIMEOUT）：建模前剔除 ID 等标识列，并在编码器中设置最大类别数
-- **避免在沙箱中使用 getattr 等受限反射函数，访问可选属性应使用 try/except AttributeError**（E_UNSAFE）：避免使用 getattr、setattr 等受限反射函数；获取可能未初始化的属性时，改用直接属性访问并配合 try/except AttributeError 来提供默认值
+- **预测阶段出现未见类别导致编码报错**（E_RUNTIME）：编码器配置 handle_unknown='ignore' 或 infrequent_if_exist 忽略未知类别
 
 ## 3. 候选方案比较
 
@@ -56,40 +56,40 @@
 
 | 排名 | 方案 | 结果 | recall | roc_auc | precision | f1 | recall_at_20 | 单次训练 (s) | 峰值内存 (MB) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | ★ interpretable_logistic_regression | 通过 | 0.778 ± 0.000 | 0.814 ± 0.001 | 0.482 ± 0.001 | 0.595 ± 0.001 | 0.457 ± 0.001 | 0.080 | 256 |
-| 2 | balanced_lightgbm | 未通过 | 0.624 ± 0.007 | 0.783 ± 0.003 | 0.492 ± 0.002 | 0.550 ± 0.003 | 0.420 ± 0.006 | 0.265 | 263 |
+| 1 | ★ linear_interpretable_lr | 通过 | 0.778 ± 0.000 | 0.814 ± 0.001 | 0.482 ± 0.001 | 0.595 ± 0.001 | 0.457 ± 0.001 | 0.073 | 252 |
+| 2 | balanced_lgbm_tree | 未通过 | 0.630 ± 0.003 | 0.783 ± 0.004 | 0.490 ± 0.001 | 0.551 ± 0.002 | 0.420 ± 0.008 | 0.229 | 260 |
 
 ```
 recall（| 为阈值 0.75）
-interpretable_logistic_regression    ■■■■■■■■■■■■■■■|···· 0.778
-balanced_lightgbm                    ■■■■■■■■■■■■···|···· 0.624
+linear_interpretable_lr              ■■■■■■■■■■■■■■■|···· 0.778
+balanced_lgbm_tree                   ■■■■■■■■■■■■■··|···· 0.630
 ```
 
 ### 各方案的结构与诊断
 
-- `interpretable_logistic_regression`：生成:IdColumnDropper → TotalChargesCleaner → MissingValueImputer → TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel。诊断：无
-- `balanced_lightgbm`：生成:IdColumnDropper → TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → 生成:BalancedLightGBMClassifier。诊断：`M_THRESHOLD` recall = 0.6243 低于阈值 0.75；`M_THRESHOLD` roc_auc = 0.7835 低于阈值 0.8
+- `linear_interpretable_lr`：生成:IdColumnDropper → TotalChargesCleaner → MissingValueImputer → TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel。诊断：无
+- `balanced_lgbm_tree`：生成:IdColumnDropper → TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → 生成:BalancedLightGBMClassifier。诊断：`M_THRESHOLD` recall = 0.6298 低于阈值 0.75；`M_THRESHOLD` roc_auc = 0.7830 低于阈值 0.8
 
-## 4. 最优方案：interpretable_logistic_regression
+## 4. 最优方案：linear_interpretable_lr
 
-针对电信客户流失预测任务的高可解释性与召回率优先（recall>=0.75）需求，首先清洗脏数据并剔除高基数ID列，通过在网时长分箱与One-Hot编码提升线性表达能力，经标准化后输入配置样本均衡权重的逻辑回归模型，系数直观透明且能有效捕捉流失客户。
+针对流失预测的高召回与高解释性要求，先清洗数据与分箱增强特征表达，再通过类别均衡的逻辑回归直观输出各特征权重系数。
 
 | # | 步骤 | 算子 | 参数 | 选择理由 |
 | --- | --- | --- | --- | --- |
-| 1 | feature | 生成 IdColumnDropper | - | 根据经验提示，customer_id基数过高，直接编码会导致维度暴涨与内存溢出，需在预处理前剔除。 |
-| 2 | imputer | TotalChargesCleaner@2 | - | 根据经验提示，total_charges列存在空白字符脏数据，需先清洗并安全转换为浮点数值。 |
-| 3 | imputer | MissingValueImputer@1 | - | 处理 monthly_charges 与 payment_method 列的缺失值，保证数据完整性。 |
-| 4 | feature | TenureBucketizer@2 | - | 将在网时长 tenure 字段按生命周期分箱离散化，增强线性模型的表达能力与业务可解释性。 |
-| 5 | encoder | OneHotCategoricalEncoder@1 | - | 对低基数类别特征进行 One-Hot 编码，转换为线性分类器可学习的稀疏向量。 |
-| 6 | scaler | StandardFeatureScaler@1 | - | 逻辑回归对特征尺度敏感，必须对数值特征进行 Z-score 标准化以保证权重可解释与收敛。 |
-| 7 | model | LogisticRegressionModel@1 | class_weight=balanced, C=1.0 | 满足任务严格的可解释性约束，配置 class_weight='balanced' 应对样本不平衡以确保召回率达标。 |
+| 1 | feature | 生成 IdColumnDropper | - | 根据经验必须在编码前剔除 customer_id 等标识列，避免 One-Hot 导致特征维度爆炸与内存溢出。 |
+| 2 | imputer | TotalChargesCleaner@2 | col=total_charges | 解决数值列含空白字符导致类型转换失败的问题，安全转换 total_charges 为浮点型并填补缺省值。 |
+| 3 | imputer | MissingValueImputer@1 | - | 对 monthly_charges 与 payment_method 的缺失值分别采用中位数与众数进行填补，确保数据完整性。 |
+| 4 | feature | TenureBucketizer@2 | - | 将在网时长离散化分箱，提升线性模型的非线性拟合能力并增强业务分群解释性。 |
+| 5 | encoder | OneHotCategoricalEncoder@1 | max_categories=20 | 对低基数类别特征进行 One-Hot 编码，转换成适合线性模型计算的稀疏特征。 |
+| 6 | scaler | StandardFeatureScaler@1 | - | 根据经验使用逻辑回归前必须先对数值特征进行 Z-score 标准化，保证收敛与权重可比。 |
+| 7 | model | LogisticRegressionModel@1 | class_weight=balanced | 配置 class_weight='balanced' 解决流失样本不平衡以达成高召回率要求，且回归系数直观可解释。 |
 
 ## 5. 能力生成与修复
 
 | 生成算子 | 类型 | 用途 | 参考的历史实现 | 修复轮数 | 注册到能力库 |
 | --- | --- | --- | --- | --- | --- |
-| IdColumnDropper@2 | feature | 剔除客户ID等标识列，防止One-Hot编码时维度暴涨引发内存溢出 | - | 0 | 是 |
-| BalancedLightGBMClassifier@2 | model | 使用 LightGBM 训练二分类模型，设置 class_weight='balanced' 自动平衡正负样本权重以提升召回率，并输出特征重要性 | BalancedLightGBMClassifier@1 | 0 | 否 |
+| IdColumnDropper@2 | feature | 移除无业务预测意义的客户ID标识列，防止维度暴涨及过拟合 | IdColumnDropper@1 | 0 | 是 |
+| BalancedLightGBMClassifier@2 | model | 基于 LightGBM 训练二分类模型并自动平衡正负样本权重，用于高召回流失预测场景并提供特征重要性 | BalancedLightGBMClassifier@1 | 0 | 否 |
 
 ## 6. 验证机制
 
@@ -100,7 +100,7 @@ balanced_lightgbm                    ■■■■■■■■■■■■···|
 | 3 契约检查 | 不修改输入、行数一致、不引入 NaN/Inf、概率合法、能处理未见类别与缺失值 | 冒烟样本 300 行 |
 | 4 指标检查 | 阈值、种子间稳定性、疑似泄漏、耗时与内存 | 5 折 × 种子 [42, 7, 2024]；std 上限 0.03 |
 
-最优方案资源消耗：单次训练 0.080 s，预测 35.8 ms / 千行，峰值内存 256 MB。
+最优方案资源消耗：单次训练 0.073 s，预测 33.1 ms / 千行，峰值内存 252 MB。
 
 ## 7. 知识沉淀
 
@@ -115,8 +115,8 @@ balanced_lightgbm                    ■■■■■■■■■■■■···|
 """预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户 —— 自动生成的算法流水线
 
 需求：预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户
-方案：interpretable_logistic_regression
-设计依据：针对电信客户流失预测任务的高可解释性与召回率优先（recall>=0.75）需求，首先清洗脏数据并剔除高基数ID列，通过在网时长分箱与One-Hot编码提升线性表达能力，经标准化后输入配置样本均衡权重的逻辑回归模型，系数直观透明且能有效捕捉流失客户。
+方案：linear_interpretable_lr
+设计依据：针对流失预测的高召回与高解释性要求，先清洗数据与分箱增强特征表达，再通过类别均衡的逻辑回归直观输出各特征权重系数。
 主指标：recall >= 0.75
 
 由 AlgoForge 自动生成。用法：
@@ -134,8 +134,7 @@ from factory.operators.models import LogisticRegressionModel
 from factory.operators.tabular import MissingValueImputer, OneHotCategoricalEncoder, StandardFeatureScaler
 
 
-import re
-from typing import List, Optional
+from typing import Sequence
 import pandas as pd
 from sklearn.base import TransformerMixin
 
@@ -149,73 +148,32 @@ class IdColumnDropper(TransformerMixin, Operator):
         kind=OperatorKind.FEATURE,
         version=2,
         origin="synthesized",
-        description="剔除客户ID等标识列以防止特征维度暴涨与过拟合",
+        description="移除客户ID等无业务预测意义的标识列，防止编码维度暴涨和过拟合",
         conditions=["id_columns"],
         dependencies=[],
-        params={
-            "columns": None,
-            "auto_detect": True,
-            "pattern": r"(?i)(?:^|_)(?:id|uuid|guid|code|no)(?:$|_)|^customer_id$|^user_id$",
-            "high_cardinality_threshold": 0.98,
-        },
+        params={"id_cols": ("customer_id",)},
+        parent="IdColumnDropper@1",
     )
 
-    def __init__(
-        self,
-        columns: Optional[List[str]] = None,
-        auto_detect: bool = True,
-        pattern: str = r"(?i)(?:^|_)(?:id|uuid|guid|code|no)(?:$|_)|^customer_id$|^user_id$",
-        high_cardinality_threshold: float = 0.98,
-    ):
-        self.columns = columns
-        self.auto_detect = auto_detect
-        self.pattern = pattern
-        self.high_cardinality_threshold = high_cardinality_threshold
+    def __init__(self, id_cols: Sequence[str] = ("customer_id",)):
+        self.id_cols = id_cols
 
     def fit(self, X: pd.DataFrame, y=None):
-        cols_to_drop = set()
-
-        if self.columns:
-            for col in self.columns:
-                if col in X.columns:
-                    cols_to_drop.add(col)
-
-        if self.auto_detect and len(X) > 0:
-            regex = re.compile(self.pattern)
-            for col in X.columns:
-                col_str = str(col)
-                # 检查列名是否匹配 ID 命名模式
-                is_name_match = bool(regex.search(col_str))
-
-                # 计算非空值的唯一值比例
-                non_null_series = X[col].dropna()
-                n_count = len(non_null_series)
-                ratio = (non_null_series.nunique() / n_count) if n_count > 0 else 0.0
-
-                # 若命中了名称规则，或者属于高基数字符串/对象标识列且唯一率极高
-                if is_name_match:
-                    cols_to_drop.add(col)
-                elif pd.api.types.is_object_dtype(X[col]) or pd.api.types.is_string_dtype(X[col]):
-                    if ratio >= self.high_cardinality_threshold and n_count > 30:
-                        # 辅以简单判断，避免误删长文本描述（均长较短更可能是标识符）
-                        avg_len = non_null_series.astype(str).str.len().mean()
-                        if avg_len <= 64:
-                            cols_to_drop.add(col)
-
-        self.dropped_columns_ = sorted(list(cols_to_drop))
+        cols_to_check = set(self.id_cols) if self.id_cols is not None else set()
+        self.drop_cols_ = [col for col in X.columns if col in cols_to_check]
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         X = X.copy()
-        if hasattr(self, "dropped_columns_") and self.dropped_columns_:
-            existing_cols = [c for c in self.dropped_columns_ if c in X.columns]
-            if existing_cols:
-                X = X.drop(columns=existing_cols)
+        cols_to_drop = [c for c in self.drop_cols_ if c in X.columns]
+        if cols_to_drop:
+            X = X.drop(columns=cols_to_drop)
         return X
 
 import numpy as np
 import pandas as pd
 from sklearn.base import TransformerMixin
+
 from factory.operators.base import Operator, OperatorMeta
 from factory.schemas import OperatorKind
 
@@ -226,37 +184,39 @@ class TotalChargesCleaner(TransformerMixin, Operator):
         kind=OperatorKind.IMPUTER,
         version=2,
         origin="synthesized",
-        description="清洗包含空白字符串的数值列并转换为浮点型，缺失值填充为指定值",
+        description="安全清洗并转换含空白字符串的累计消费等数值列为浮点型，并填充缺失值为指定默认值",
         conditions=["string_typed_numeric", "has_missing_values"],
         dependencies=[],
-        params={"column": "total_charges", "fill_value": 0.0},
+        params={"col": "total_charges", "fill_value": 0.0},
         parent="TotalChargesCleaner@1",
     )
 
-    def __init__(self, column: str = "total_charges", fill_value: float = 0.0):
-        self.column = column
+    def __init__(self, col: str = "total_charges", fill_value: float = 0.0):
+        self.col = col
         self.fill_value = fill_value
 
     def fit(self, X: pd.DataFrame, y=None):
-        self.feature_names_in_ = list(X.columns)
-        self.column_present_ = self.column in X.columns
+        self.is_fitted_ = True
         return self
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         X = X.copy()
-        if self.column in X.columns:
-            cleaned = pd.to_numeric(
-                X[self.column].astype(str).str.strip(),
-                errors="coerce"
-            ).fillna(self.fill_value)
-            X[self.column] = cleaned.astype(float)
+        if self.col in X.columns:
+            cleaned_series = (
+                pd.to_numeric(X[self.col].astype(str).str.strip(), errors="coerce")
+                .replace([np.inf, -np.inf], np.nan)
+                .fillna(self.fill_value)
+                .astype(float)
+            )
+            X[self.col] = cleaned_series
         return X
 
 import numpy as np
 import pandas as pd
 from sklearn.base import TransformerMixin
+
 from factory.operators.base import Operator, OperatorMeta
-from factory.schemas import OperatorKind, Modality
+from factory.schemas import OperatorKind
 
 
 class TenureBucketizer(TransformerMixin, Operator):
@@ -265,64 +225,57 @@ class TenureBucketizer(TransformerMixin, Operator):
         kind=OperatorKind.FEATURE,
         version=2,
         origin="synthesized",
-        description="将在网时长tenure字段按业务经验分箱为离散区间段，增强模型表现与可解释性",
+        description="将在网时长字段分箱为离散区间特征以增强线性模型的表达能力与业务可解释性",
         conditions=["time_tenure", "numeric_features"],
-        dependencies=[],
+        dependencies=["pandas", "numpy"],
         params={
-            "input_col": "tenure",
-            "output_col": "tenure_bucket",
-            "bins": (-1, 6, 12, 24, 48, float("inf")),
+            "col": "tenure",
+            "bins": (-float("inf"), 6.0, 12.0, 24.0, 48.0, float("inf")),
             "labels": ("0-6", "6-12", "12-24", "24-48", "48+"),
-            "fill_missing": "Unknown",
+            "drop_original": False,
         },
         parent="TenureBucketizer@1",
     )
 
     def __init__(
         self,
-        input_col="tenure",
-        output_col="tenure_bucket",
-        bins=(-1, 6, 12, 24, 48, float("inf")),
-        labels=("0-6", "6-12", "12-24", "24-48", "48+"),
-        fill_missing="Unknown",
+        col: str = "tenure",
+        bins: tuple = (-float("inf"), 6.0, 12.0, 24.0, 48.0, float("inf")),
+        labels: tuple = ("0-6", "6-12", "12-24", "24-48", "48+"),
+        drop_original: bool = False,
     ):
-        self.input_col = input_col
-        self.output_col = output_col
+        self.col = col
         self.bins = bins
         self.labels = labels
-        self.fill_missing = fill_missing
+        self.drop_original = drop_original
 
-    def fit(self, X, y=None):
-        self.bins_ = list(self.bins) if self.bins is not None else [-1, 6, 12, 24, 48, float("inf")]
+    def fit(self, X: pd.DataFrame, y=None):
+        self.feature_name_ = f"{self.col}_bucket"
+        self.bins_ = list(self.bins) if self.bins is not None else [-float("inf"), 6.0, 12.0, 24.0, 48.0, float("inf")]
         self.labels_ = list(self.labels) if self.labels is not None else ["0-6", "6-12", "12-24", "24-48", "48+"]
-        self.is_fitted_ = True
         return self
 
-    def transform(self, X):
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         X = X.copy()
-        out_col = self.output_col if self.output_col else f"{self.input_col}_bucket"
-
-        try:
-            bins = self.bins_
-        except AttributeError:
-            bins = list(self.bins) if self.bins is not None else [-1, 6, 12, 24, 48, float("inf")]
-
-        try:
-            labels = self.labels_
-        except AttributeError:
-            labels = list(self.labels) if self.labels is not None else ["0-6", "6-12", "12-24", "24-48", "48+"]
-
-        if self.input_col not in X.columns:
-            X[out_col] = str(self.fill_missing)
+        if self.col not in X.columns:
             return X
 
-        s = pd.to_numeric(X[self.input_col], errors="coerce")
-        cut_res = pd.cut(s, bins=bins, labels=labels)
+        # 安全数值转换，兼顾脏数据、空白字符串与缺失值
+        tenure_series = X[self.col]
+        if tenure_series.dtype == object:
+            tenure_series = tenure_series.astype(str).str.strip()
+        numeric_tenure = pd.to_numeric(tenure_series, errors="coerce")
 
-        bucket_s = cut_res.astype(str)
-        bucket_s = bucket_s.replace({"nan": str(self.fill_missing), "NaN": str(self.fill_missing), "<NA>": str(self.fill_missing)})
+        # 分箱并处理缺失区间
+        bucketed = pd.cut(numeric_tenure, bins=self.bins_, labels=self.labels_)
+        bucketed_str = bucketed.astype(str)
+        bucketed_str = bucketed_str.replace("nan", "unknown").fillna("unknown")
 
-        X[out_col] = bucket_s
+        X[self.feature_name_] = bucketed_str
+
+        if self.drop_original:
+            X = X.drop(columns=[self.col])
+
         return X
 
 
@@ -331,13 +284,13 @@ TARGET = 'churn'
 
 def build_pipeline() -> Pipeline:
     return Pipeline([
-        ("0_feature", IdColumnDropper()),  # 根据经验提示，customer_id基数过高，直接编码会导致维度暴涨与内存溢出，需在预处理前剔除。
-        ("1_imputer", TotalChargesCleaner(column='total_charges', fill_value=0.0)),  # 根据经验提示，total_charges列存在空白字符脏数据，需先清洗并安全转换为浮点数值。
-        ("2_imputer", MissingValueImputer()),  # 处理 monthly_charges 与 payment_method 列的缺失值，保证数据完整性。
-        ("3_feature", TenureBucketizer(input_col='tenure', output_col='tenure_bucket', bins=(-1, 6, 12, 24, 48, float('inf')), labels=('0-6', '6-12', '12-24', '24-48', '48+'), fill_missing='Unknown')),  # 将在网时长 tenure 字段按生命周期分箱离散化，增强线性模型的表达能力与业务可解释性。
-        ("4_encoder", OneHotCategoricalEncoder(max_categories=20)),  # 对低基数类别特征进行 One-Hot 编码，转换为线性分类器可学习的稀疏向量。
-        ("5_scaler", StandardFeatureScaler()),  # 逻辑回归对特征尺度敏感，必须对数值特征进行 Z-score 标准化以保证权重可解释与收敛。
-        ("6_model", LogisticRegressionModel(C=1.0, class_weight='balanced', max_iter=1000, random_state=42)),  # 满足任务严格的可解释性约束，配置 class_weight='balanced' 应对样本不平衡以确保召回率达标。
+        ("0_feature", IdColumnDropper()),  # 根据经验必须在编码前剔除 customer_id 等标识列，避免 One-Hot 导致特征维度爆炸与内存溢出。
+        ("1_imputer", TotalChargesCleaner(col='total_charges', fill_value=0.0)),  # 解决数值列含空白字符导致类型转换失败的问题，安全转换 total_charges 为浮点型并填补缺省值。
+        ("2_imputer", MissingValueImputer()),  # 对 monthly_charges 与 payment_method 的缺失值分别采用中位数与众数进行填补，确保数据完整性。
+        ("3_feature", TenureBucketizer(col='tenure', bins=(float('-inf'), 6.0, 12.0, 24.0, 48.0, float('inf')), labels=('0-6', '6-12', '12-24', '24-48', '48+'), drop_original=False)),  # 将在网时长离散化分箱，提升线性模型的非线性拟合能力并增强业务分群解释性。
+        ("4_encoder", OneHotCategoricalEncoder(max_categories=20)),  # 对低基数类别特征进行 One-Hot 编码，转换成适合线性模型计算的稀疏特征。
+        ("5_scaler", StandardFeatureScaler()),  # 根据经验使用逻辑回归前必须先对数值特征进行 Z-score 标准化，保证收敛与权重可比。
+        ("6_model", LogisticRegressionModel(C=1.0, class_weight='balanced', max_iter=1000, random_state=42)),  # 配置 class_weight='balanced' 解决流失样本不平衡以达成高召回率要求，且回归系数直观可解释。
     ])
 
 
@@ -368,19 +321,19 @@ if __name__ == "__main__":
 
 ## 附录 B. 运行记录
 
-各阶段耗时：PLAN 0.2s，BUILD 0.0s，VERIFY 10.2s，ROUTE 0.0s，CURATE 0.0s
+各阶段耗时：PLAN 17.4s，BUILD 9.7s，VERIFY 9.2s，ROUTE 0.0s，CURATE 0.0s
 
 ```
 [PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']
 [PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75
-[PLAN] 候选方案：['interpretable_logistic_regression(*IdColumnDropper → TotalChargesCleaner → MissingValueImputer → TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)', 'balanced_lightgbm(*IdColumnDropper → TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → *BalancedLightGBMClassifier)']
-[PLAN] 完成，用时 0.2s → BUILD
-[BUILD] 生成算子 IdColumnDropper@2：剔除客户ID等标识列，防止One-Hot编码时维度暴涨引发内存溢出
-[BUILD] 生成算子 BalancedLightGBMClassifier@2（参考 BalancedLightGBMClassifier@1）：使用 LightGBM 训练二分类模型，设置 class_weight='balanced' 自动平衡正负样本权重以提升召回率，并输出特征重要性
-[BUILD] 完成，用时 0.0s → VERIFY
-[VERIFY] interpretable_logistic_regression：通过，recall=0.7785
-[VERIFY] balanced_lightgbm：未通过，recall=0.6243；M_THRESHOLD recall = 0.6243 低于阈值 0.75；M_THRESHOLD roc_auc = 0.7835 低于阈值 0.8
-[VERIFY] 完成，用时 10.2s → ROUTE
+[PLAN] 候选方案：['linear_interpretable_lr(*IdColumnDropper → TotalChargesCleaner → MissingValueImputer → TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)', 'balanced_lgbm_tree(*IdColumnDropper → TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → *BalancedLightGBMClassifier)']
+[PLAN] 完成，用时 17.4s → BUILD
+[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：移除无业务预测意义的客户ID标识列，防止维度暴涨及过拟合
+[BUILD] 生成算子 BalancedLightGBMClassifier@2（参考 BalancedLightGBMClassifier@1）：基于 LightGBM 训练二分类模型并自动平衡正负样本权重，用于高召回流失预测场景并提供特征重要性
+[BUILD] 完成，用时 9.7s → VERIFY
+[VERIFY] linear_interpretable_lr：通过，recall=0.7785
+[VERIFY] balanced_lgbm_tree：未通过，recall=0.6298；M_THRESHOLD recall = 0.6298 低于阈值 0.75；M_THRESHOLD roc_auc = 0.7830 低于阈值 0.8
+[VERIFY] 完成，用时 9.2s → ROUTE
 [ROUTE] 完成，用时 0.0s → CURATE
 [CURATE] 写入 KG：2 条 ValidationRun；注册新算子 ['IdColumnDropper@2']；新增经验 0 条
 [CURATE] 完成，用时 0.0s → DONE

@@ -212,6 +212,26 @@ def kg_search(
     console.print(table)
 
 
+@kg_app.command("tidy")
+def kg_tidy(
+    path: Path = typer.Option(None, help="KG 文件路径"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="只列出将要合并的内容，不写回"),
+) -> None:
+    """整理已有图谱：合并同一指标的不同名字、合并重复经验（诊断码相同且标题相似）。"""
+    from factory.kg import DEFAULT_KG_PATH, CapabilityKG
+
+    path = path or DEFAULT_KG_PATH
+    kg = CapabilityKG.load(path)
+    log = kg.tidy()
+    for line in log:
+        console.print("  " + line)
+    if not log:
+        console.print("没有需要整理的内容")
+    elif not dry_run:
+        kg.save(path)
+        console.print(f"已写回 {path}")
+
+
 @kg_app.command("viz")
 def kg_viz(
     out: Path = typer.Option(Path("kg/capability_kg.html"), help="输出 HTML 路径"),

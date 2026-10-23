@@ -1,8 +1,9 @@
 import numpy as np
 import pandas as pd
 from sklearn.base import TransformerMixin
+
 from factory.operators.base import Operator, OperatorMeta
-from factory.schemas import OperatorKind, Modality
+from factory.schemas import OperatorKind
 
 
 class TenureBucketizer(TransformerMixin, Operator):
@@ -11,62 +12,55 @@ class TenureBucketizer(TransformerMixin, Operator):
         kind=OperatorKind.FEATURE,
         version=2,
         origin="synthesized",
-        description="将在网时长tenure字段按业务经验分箱为离散区间段，增强模型表现与可解释性",
+        description="将在网时长字段分箱为离散区间特征以增强线性模型的表达能力与业务可解释性",
         conditions=["time_tenure", "numeric_features"],
-        dependencies=[],
+        dependencies=["pandas", "numpy"],
         params={
-            "input_col": "tenure",
-            "output_col": "tenure_bucket",
-            "bins": (-1, 6, 12, 24, 48, float("inf")),
+            "col": "tenure",
+            "bins": (-float("inf"), 6.0, 12.0, 24.0, 48.0, float("inf")),
             "labels": ("0-6", "6-12", "12-24", "24-48", "48+"),
-            "fill_missing": "Unknown",
+            "drop_original": False,
         },
         parent="TenureBucketizer@1",
     )
 
     def __init__(
         self,
-        input_col="tenure",
-        output_col="tenure_bucket",
-        bins=(-1, 6, 12, 24, 48, float("inf")),
-        labels=("0-6", "6-12", "12-24", "24-48", "48+"),
-        fill_missing="Unknown",
+        col: str = "tenure",
+        bins: tuple = (-float("inf"), 6.0, 12.0, 24.0, 48.0, float("inf")),
+        labels: tuple = ("0-6", "6-12", "12-24", "24-48", "48+"),
+        drop_original: bool = False,
     ):
-        self.input_col = input_col
-        self.output_col = output_col
+        self.col = col
         self.bins = bins
         self.labels = labels
-        self.fill_missing = fill_missing
+        self.drop_original = drop_original
 
-    def fit(self, X, y=None):
-        self.bins_ = list(self.bins) if self.bins is not None else [-1, 6, 12, 24, 48, float("inf")]
+    def fit(self, X: pd.DataFrame, y=None):
+        self.feature_name_ = f"{self.col}_bucket"
+        self.bins_ = list(self.bins) if self.bins is not None else [-float("inf"), 6.0, 12.0, 24.0, 48.0, float("inf")]
         self.labels_ = list(self.labels) if self.labels is not None else ["0-6", "6-12", "12-24", "24-48", "48+"]
-        self.is_fitted_ = True
         return self
 
-    def transform(self, X):
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
         X = X.copy()
-        out_col = self.output_col if self.output_col else f"{self.input_col}_bucket"
-
-        try:
-            bins = self.bins_
-        except AttributeError:
-            bins = list(self.bins) if self.bins is not None else [-1, 6, 12, 24, 48, float("inf")]
-
-        try:
-            labels = self.labels_
-        except AttributeError:
-            labels = list(self.labels) if self.labels is not None else ["0-6", "6-12", "12-24", "24-48", "48+"]
-
-        if self.input_col not in X.columns:
-            X[out_col] = str(self.fill_missing)
+        if self.col not in X.columns:
             return X
 
-        s = pd.to_numeric(X[self.input_col], errors="coerce")
-        cut_res = pd.cut(s, bins=bins, labels=labels)
-        
-        bucket_s = cut_res.astype(str)
-        bucket_s = bucket_s.replace({"nan": str(self.fill_missing), "NaN": str(self.fill_missing), "<NA>": str(self.fill_missing)})
-        
-        X[out_col] = bucket_s
+        # 安全数值转换，兼顾脏数据、空白字符串与缺失值
+        tenure_series = X[self.col]
+        if tenure_series.dtype == object:
+            tenure_series = tenure_series.astype(str).str.strip()
+        numeric_tenure = pd.to_numeric(tenure_series, errors="coerce")
+
+        # 分箱并处理缺失区间
+        bucketed = pd.cut(numeric_tenure, bins=self.bins_, labels=self.labels_)
+        bucketed_str = bucketed.astype(str)
+        bucketed_str = bucketed_str.replace("nan", "unknown").fillna("unknown")
+
+        X[self.feature_name_] = bucketed_str
+
+        if self.drop_original:
+            X = X.drop(columns=[self.col])
+
         return X
