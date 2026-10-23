@@ -141,3 +141,4 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 | 修复与选优的顺序：先修复所有可修复的候选，再比较 | 保证候选之间比较公平 |
 | 静态检查的 `E_UNSAFE` 诊断带上修复提示 | 修复时 LLM 能直接看到可用的替代写法 |
 | Lesson 的 `LEARNED_FROM` 指向用了该算子的方案 | 原来固定连到第一条验证记录，可能指错 |
+| 沙箱支持原生 Windows：无 `resource` 时改用 psutil 看门狗限制内存，峰值内存改用 psutil 统计 | 原实现依赖 Linux 的 `resource` 与 `preexec_fn`，Windows 上无法导入 |

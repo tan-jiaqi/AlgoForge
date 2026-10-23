@@ -306,9 +306,9 @@ def _rel(path: Path | str) -> str:
     """仓库内的产物用相对路径记录，避免把本机绝对路径写进报告与 state.json。"""
     path = Path(path).resolve()
     try:
-        return str(path.relative_to(ROOT))
+        return path.relative_to(ROOT).as_posix()  # 统一用 /，Windows 与 Linux 生成的 state.json 一致
     except ValueError:
-        return str(path)
+        return path.as_posix()
 
 
 def _uses(plan: PipelinePlan, name: str) -> bool:

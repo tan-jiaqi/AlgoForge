@@ -196,6 +196,8 @@ cp .env.example .env
 python -m factory.cli llm-ping           # 检查连通性并列出可用模型（不会打印 Key）
 ```
 
+**Windows**：原生 Windows 可直接运行（已移除对 Linux `resource` 模块与 `preexec_fn` 的硬依赖）。沙箱的内存上限在 Linux/macOS 上由内核 `RLIMIT_AS` 强制，在 Windows 上由父进程用 psutil 轮询子进程内存、超限即终止；超时限制两者一致。已有环境请执行 `conda env update -f environment.yml` 安装新增的 psutil。
+
 API Key 只从 `.env` 读取（已加入 `.gitignore`），在报错中脱敏，不会写进缓存与录制文件；沙箱子进程中也会清除。`tests/test_secrets.py` 会扫描所有将被提交的文件。
 
 **LLM 模式**：`--llm replay`（默认用于演示，回放 `examples/cassettes/`，完全离线）、`live`（真实调用，带磁盘缓存）、`record`（真实调用并录制）、`mock`（规则版 Agent，用于测试）。默认模型 `gemini-3.5-flash`，可在 `configs/llm.yaml` 或 `.env` 的 `LLM_MODEL` 中修改，任意 OpenAI 兼容接口均可。

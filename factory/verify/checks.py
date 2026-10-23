@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-import resource
+import sys
 import time
 import traceback
 from typing import Any, Callable
@@ -99,8 +99,21 @@ def run_checks(job: dict) -> dict:
     if not diags:
         diags = evaluate(plan, spec, X, y, classes, pos, cfg, result)
     result["diagnostics"] = [d.model_dump(mode="json") for d in diags]
-    result["resources"]["peak_rss_mb"] = round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1)
+    result["resources"]["peak_rss_mb"] = round(peak_rss_mb(), 1)
     return result
+
+
+def peak_rss_mb() -> float:
+    """当前进程的峰值常驻内存（MB）。POSIX 用 resource，Windows 用 psutil 的 peak_wset。"""
+    try:
+        import resource
+    except ImportError:  # Windows
+        import psutil
+
+        info = psutil.Process().memory_info()
+        return getattr(info, "peak_wset", info.rss) / 1024 / 1024
+    usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return usage / 1024 / 1024 if sys.platform == "darwin" else usage / 1024  # macOS 单位为字节，Linux 为 KB
 
 
 # ---------------------------------------------------------------------------

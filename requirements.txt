@@ -15,6 +15,7 @@ pyvis>=0.3.2
 # Interface
 typer>=0.12
 rich>=13.7
+psutil>=5.9            # Windows 下沙箱的内存限制与内存统计
 streamlit>=1.35
 # Testing
 pytest>=8.0
