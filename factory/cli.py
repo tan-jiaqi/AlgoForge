@@ -234,19 +234,23 @@ def kg_tidy(
 
 @kg_app.command("viz")
 def kg_viz(
-    out: Path = typer.Option(Path("kg/capability_kg.html"), help="输出 HTML 路径"),
-    view: str = typer.Option("overview", help="overview：只画场景/指标/算子/经验主干（默认）；full：全部节点与边"),
-    focus: str = typer.Option(None, help="中心节点 id，如 Operator:TotalChargesCleaner@1；只看其邻域"),
+    out: Path = typer.Option(Path("kg/capability_kg.html"), help="概览 HTML 路径；完整视图写到同目录的 <名字>_full.html"),
+    focus: str = typer.Option(None, help="中心节点 id，如 Operator:TotalChargesCleaner@1；只看其邻域（只写 out 一个文件）"),
     radius: int = typer.Option(1, help="邻域半径（跳数）"),
-    types: list[str] = typer.Option([], "--type", "-t", help="只显示这些节点类型，可多次指定"),
+    types: list[str] = typer.Option([], "--type", "-t", help="聚焦时只显示这些节点类型，可多次指定"),
     path: Path = typer.Option(None, help="KG 文件路径"),
 ) -> None:
-    """生成可交互的知识图谱 HTML（pyvis），浏览器打开即可拖拽、缩放、悬停查看属性。"""
+    """生成可交互的知识图谱 HTML：概览（主干）与完整视图（全部节点）两个文件，页面顶部可互相跳转。"""
     from factory.kg import DEFAULT_KG_PATH, CapabilityKG
-    from factory.kg_viz import render_html
+    from factory.kg_viz import render_html, render_views
 
-    render_html(CapabilityKG.load(path or DEFAULT_KG_PATH), out, view=view, types=types or None, focus=focus, radius=radius)
-    console.print(f"已生成 {out}")
+    kg = CapabilityKG.load(path or DEFAULT_KG_PATH)
+    if focus:
+        render_html(kg, out, focus=focus, radius=radius, types=types or None)
+        console.print(f"已生成 {out}")
+    else:
+        for f in render_views(kg, out):
+            console.print(f"已生成 {f}")
 
 
 @kg_app.command("lessons")

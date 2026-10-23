@@ -13,7 +13,7 @@ import shutil
 from pathlib import Path
 
 from factory.kg import DEFAULT_KG_PATH, CapabilityKG
-from factory.kg_viz import render_html
+from factory.kg_viz import render_views
 from factory.llm import LLM
 from factory.schemas import RunState
 from factory.workflow import Workflow, WorkflowConfig, best_report
@@ -39,7 +39,7 @@ def run_demo(llm: LLM, out: Path, base_kg: Path = DEFAULT_KG_PATH) -> list[RunSt
         wf = Workflow(llm, kg_path=kg_path, runs_dir=out / "runs", config=WorkflowConfig(n_candidates=n))
         states.append(wf.run(request, data, run_id=run_id))
     kg = CapabilityKG.load(kg_path)
-    render_html(kg, out / "kg" / "capability_kg.html")
+    render_views(kg, out / "kg" / "capability_kg.html")
     (out / "SUMMARY.md").write_text(summary(states, kg, CapabilityKG.load(base_kg)), encoding="utf-8")
     return states
 
@@ -68,7 +68,7 @@ def summary(states: list[RunState], kg: CapabilityKG, base: CapabilityKG) -> str
         "",
         f"知识图谱的变化：{growth or '无'}。",
         "",
-        "- 知识图谱：`kg/capability_kg.json`（可视化 `kg/capability_kg.html`）",
+        "- 知识图谱：`kg/capability_kg.json`（可视化：概览 `kg/capability_kg.html`，完整 `kg/capability_kg_full.html`）",
         "- 沉淀的生成算子源码：`kg/operators/`",
         "",
     ])

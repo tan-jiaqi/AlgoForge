@@ -72,3 +72,40 @@ def test_streamlit_mock_run(tmp_path, monkeypatch):
     assert not at.exception, at.exception
     assert [s.label for s in at.status] == ["完成：succeeded"]
     assert DEFAULT_KG_PATH.read_bytes() == before
+
+
+def _drawn_nodes(page: str) -> list[dict]:
+    import json
+    import re
+
+    return json.loads(re.search(r"nodes = new vis\.DataSet\((\[.*?\])\);", page, re.S).group(1))
+
+
+@pytest.mark.parametrize("view", ["overview", "full"])
+def test_node_colors_and_shapes_match_legend(view):
+    """回归测试：pyvis 在节点带 group 时会丢弃 color，导致图中颜色与图例不一致。"""
+    import re
+
+    from factory.kg_viz import GLYPHS
+
+    kg = CapabilityKG.load(ROOT / "examples" / "demo" / "kg" / "capability_kg.json")
+    page = render_html(kg, view=view)
+    nodes = _drawn_nodes(page)
+    assert all("color" in n and "group" not in n for n in nodes), "每个节点都必须带显式颜色"
+    legend = page[page.index("<body>"): page.index("</div></div>", page.index("<body>"))]
+    pairs = set(re.findall(r'color:(#[0-9a-f]{6});font-size:15px">(.)</span>', legend))
+    drawn = {(n["color"], GLYPHS[n["shape"]]) for n in nodes}
+    assert drawn <= pairs, f"图中出现了图例里没有的颜色/形状：{drawn - pairs}"
+
+
+def test_render_views_writes_linked_pages(tmp_path):
+    from factory.kg_viz import render_views
+
+    kg = CapabilityKG.load(ROOT / "examples" / "demo" / "kg" / "capability_kg.json")
+    overview, full = render_views(kg, tmp_path / "kg.html")
+    o, f = overview.read_text(encoding="utf-8"), full.read_text(encoding="utf-8")
+    assert full.name == "kg_full.html" and 'href="kg_full.html"' in o and 'href="kg.html"' in f
+    types_full = {n["id"].split(":")[0] for n in _drawn_nodes(f)}
+    assert {"ValidationRun", "Source", "Condition", "Dependency"} <= types_full
+    assert not {n["id"].split(":")[0] for n in _drawn_nodes(o)} & {"ValidationRun", "Source"}
+    assert "ValidationRun 汇总成蓝线" in o, "概览图例要说明折叠了哪些节点"

@@ -126,11 +126,11 @@ flowchart LR
 - **9 类边**：`SUITABLE_WHEN`、`DEPENDS_ON`、`EVALUATED_BY{threshold}`、`VALIDATED_BY{metric}`、`RUN_ON`、`LEARNED_FROM`、`APPLIES_TO`、`EXTRACTED_FROM`、`DERIVED_FROM`（版本谱系）
 - **检索**：结构化过滤（类型、模态、可执行） → `0.4 × BM25+ 文本 + 0.3 × 条件匹配 + 0.3 × 历史验证分`，每条结果带分项得分和证据；作废的历史实验（如数据泄漏）不计入历史分
 
-**可视化**：`python -m factory.cli kg viz` 默认生成**概览**，只画场景 / 指标 / 算子 / 经验四类主干节点。适用条件、依赖、出处折叠在节点的悬停信息里；验证记录汇总为"算子 → 场景"的一条边（线越粗，验证次数越多）。演示后的图谱在概览中是 33 个节点 / 39 条边，完整视图是 81 / 174。需要看全部关系时用 `--view full`，或用 `--focus <节点 id>` 只看某个节点的邻域。Web 界面里三种视图都可以切换。
+**可视化**：`python -m factory.cli kg viz` 默认生成**概览**，只画场景 / 指标 / 算子 / 经验四类主干节点。适用条件、依赖、出处折叠在节点的悬停信息里；验证记录汇总为"算子 → 场景"的一条边（线越粗，验证次数越多）。演示后的图谱在概览中是 33 个节点 / 39 条边，完整视图是 81 / 174。命令会同时写出概览 `capability_kg.html` 与完整视图 `capability_kg_full.html`（含 ValidationRun、Source、Condition、Dependency），页面顶部可互相跳转；`--focus <节点 id>` 只看某个节点的邻域。Web 界面里三种视图都可以切换。
 
 | 文件 | 内容 |
 | --- | --- |
-| [`kg/capability_kg.json`](kg/capability_kg.json) / `.graphml` / [`.html`](kg/capability_kg.html) | 抽取得到的基础知识图谱：14 个算子、10 条经验（已合并重复）、5 条历史实验 |
+| [`kg/capability_kg.json`](kg/capability_kg.json) / `.graphml` / [概览 `.html`](kg/capability_kg.html) / [完整 `_full.html`](kg/capability_kg_full.html) | 抽取得到的基础知识图谱：14 个算子、10 条经验（已合并重复）、5 条历史实验 |
 | [`kg/extraction.json`](kg/extraction.json) | LLM 的原始抽取结果（能力卡片、文档知识） |
 | [`examples/demo/kg/`](examples/demo/kg/) | 演示 3 个任务后的知识图谱：算子 14 → 17、验证记录 5 → 12、场景 1 → 2；`operators/` 下是沉淀的生成算子源码 |
 
@@ -212,7 +212,7 @@ API Key 只从 `.env` 读取（已加入 `.gitignore`），在报错中脱敏，
 | `python -m factory.cli demo` | 端到端演示（3 个任务），输出到 `runs/demo/` |
 | `python -m factory.cli run "<需求>" --data data/churn.csv` | 端到端运行；`--candidates 3`、`--no-synthesis`、`--no-writeback`、`--kg <路径>` |
 | `python -m factory.cli extract` | 从 `data/materials/` 抽取能力，重建 `kg/` |
-| `python -m factory.cli kg stats / search / lessons / viz` | 统计、检索算子、检索经验、生成可视化 HTML（`--view overview/full`、`--focus`） |
+| `python -m factory.cli kg stats / search / lessons / viz` | 统计、检索算子、检索经验、生成可视化 HTML（概览 + 完整两个文件；`--focus` 只看邻域） |
 | `python -m factory.cli report runs/<id>` | 根据 `state.json` 重新生成报告 |
 | `python -m factory.cli operators` | 列出已注册算子 |
 | `streamlit run app.py` | Web 界面：运行（实时进度、报告、代码下载）、能力库与可交互图谱、历史运行 |

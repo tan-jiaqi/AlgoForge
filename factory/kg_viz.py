@@ -170,7 +170,8 @@ def build_network(kg: CapabilityKG, *, view: str = "overview", types: list[str] 
         t = data["type"]
         color = _operator_color(data) if t == "Operator" else COLORS.get(t, "#adb5bd")
         size = 12 + 2 * min(degree.get(nid, 0), 12) + (12 if t == "Scenario" else 0) + (10 if nid == focus else 0)
-        net.add_node(nid, label=_label(data), title=_tooltip(nid, data), group=t, shape=SHAPES.get(t, "dot"),
+        # 注意不要传 group：pyvis 在节点带 group 时会丢弃 color，vis-network 改用默认调色板，与图例对不上
+        net.add_node(nid, label=_label(data), title=_tooltip(nid, data), shape=SHAPES.get(t, "dot"),
                      color=color, size=size, borderWidth=3 if nid == focus else 1, font={"size": 13})
     for u, v, data in g.edges(data=True):
         rel = data["rel"]
@@ -189,32 +190,64 @@ def build_network(kg: CapabilityKG, *, view: str = "overview", types: list[str] 
     return net
 
 
-def _dot(color: str, text: str, shape: str = "50%") -> str:
-    return (f'<span style="display:inline-block;margin-right:14px"><span style="display:inline-block;width:10px;'
-            f'height:10px;border-radius:{shape};background:{color};margin-right:4px"></span>{text}</span>')
+GLYPHS = {"dot": "●", "star": "★", "diamond": "◆", "square": "■", "triangle": "▲"}
 
 
-def legend_html(view: str = "overview") -> str:
+def _item(color: str, text: str, node_type: str = "Operator") -> str:
+    """图例项：符号形状与图中该类节点一致（星形 = 场景，菱形 = 经验……）。"""
+    glyph = GLYPHS[SHAPES.get(node_type, "dot")]
+    return f'<span style="margin-right:14px;white-space:nowrap"><span style="color:{color};font-size:15px">{glyph}</span> {text}</span>'
+
+
+def _edge_item(color: str, text: str, dashed: bool = False) -> str:
+    line = f"border-top:3px {'dashed' if dashed else 'solid'} {color}"
+    return (f'<span style="margin-right:14px;white-space:nowrap"><span style="display:inline-block;width:22px;'
+            f'vertical-align:middle;{line}"></span> {text}</span>')
+
+
+def legend_html(view: str = "overview", links: dict[str, str] | None = None) -> str:
+    """图例：颜色与形状和图中一致。links 为 {名称: 相对路径}，用于在概览与完整视图之间跳转。"""
     if view == "overview":
-        items = [_dot(COLORS["Scenario"], "场景"), _dot(COLORS["Metric"], "评价指标"),
-                 _dot(OPERATOR_COLORS["builtin"], "内置算子"), _dot(OPERATOR_COLORS["synthesized"], "生成并注册的算子"),
-                 _dot(OPERATOR_COLORS["reference"], "历史实现（未注册，可参考生成）"), _dot(COLORS["Lesson"], "经验", "2px")]
-        note = ("蓝线：算子在该场景的验证（越粗次数越多）；粉线：经验适用对象；虚线：版本派生。"
-                "悬停节点可查看适用条件、依赖、出处与历史验证；完整关系请用 --view full 或聚焦某个节点。")
+        nodes = [_item(COLORS["Scenario"], "场景", "Scenario"), _item(COLORS["Metric"], "评价指标", "Metric"),
+                 _item(OPERATOR_COLORS["builtin"], "内置算子"), _item(OPERATOR_COLORS["synthesized"], "生成并注册的算子"),
+                 _item(OPERATOR_COLORS["reference"], "历史实现（未注册，可参考生成）"), _item(COLORS["Lesson"], "经验", "Lesson")]
+        edges = [_edge_item(EDGE_COLORS["VALIDATED_ON"], "在该场景验证过（越粗次数越多）"),
+                 _edge_item(EDGE_COLORS["APPLIES_TO"], "经验适用于"), _edge_item(EDGE_COLORS["EVALUATED_BY"], "场景的评价指标"),
+                 _edge_item(EDGE_COLORS["DERIVED_FROM"], "新版本派生自", dashed=True)]
+        note = ("概览只画主干：ValidationRun 汇总成蓝线，悬停算子可看各场景的验证次数；"
+                "Condition、Dependency、Source 折叠进算子的悬停信息。所有节点与边见完整视图。")
     else:
-        items = [_dot(COLORS[t], t) for t in NODE_TYPES]
-        items += [_dot(OPERATOR_COLORS["synthesized"], "Operator（生成）"), _dot(OPERATOR_COLORS["reference"], "Operator（历史实现）")]
-        note = "边的关系名称在鼠标悬停时显示。"
-    return f'<div style="font:13px sans-serif;margin:6px 0">{"".join(items)}<div style="color:#666">{note}</div></div>'
+        nodes = [_item(COLORS[t] if t != "Operator" else OPERATOR_COLORS["builtin"],
+                       t + ("（内置）" if t == "Operator" else ""), t) for t in NODE_TYPES]
+        nodes[1:1] = [_item(OPERATOR_COLORS["synthesized"], "Operator（生成）"),
+                      _item(OPERATOR_COLORS["reference"], "Operator（历史实现）")]
+        nodes.insert(1, nodes.pop(NODE_TYPES.index("Operator") + 2))  # 三种算子排在一起
+        edges = []
+        note = "完整视图：全部 8 类节点、9 类关系；关系名称在鼠标悬停于边上时显示。"
+    nav = " | ".join(f'<a href="{href}">{name}</a>' for name, href in (links or {}).items())
+    return (f'<div style="font:13px sans-serif;margin:6px 8px;line-height:1.9">'
+            + (f'<div style="margin-bottom:2px"><b>视图：</b>{nav}</div>' if nav else "")
+            + "".join(nodes) + ("<br>" + "".join(edges) if edges else "")
+            + f'<div style="color:#666">{note}</div></div>')
 
 
-def render_html(kg: CapabilityKG, out: Path | None = None, **kwargs) -> str:
+def render_html(kg: CapabilityKG, out: Path | None = None, *, links: dict[str, str] | None = None, **kwargs) -> str:
     """返回完整 HTML（含图例）；给出 out 时同时写入文件。"""
     page = build_network(kg, **kwargs).generate_html(notebook=False)
     # pyvis 模板里有一个指向本地 node_modules 的无效脚本引用，去掉以免浏览器报 404
     page = re.sub(r'<script[^>]*src="\.\./node_modules[^"]*"[^>]*></script>', "", page)
     view = "full" if kwargs.get("focus") else kwargs.get("view", "overview")
-    page = page.replace("<body>", "<body>" + legend_html(view), 1)
+    page = page.replace("<body>", "<body>" + legend_html(view, links), 1)
     if out is not None:
         Path(out).write_text(page, encoding="utf-8")
     return page
+
+
+def render_views(kg: CapabilityKG, out: Path) -> tuple[Path, Path]:
+    """同时写出概览（out）与完整视图（<out>_full.html），页面顶部互相链接。"""
+    out = Path(out)
+    full = out.with_name(out.stem + "_full.html")
+    links = {"概览": out.name, "完整": full.name}
+    render_html(kg, out, view="overview", links=links)
+    render_html(kg, full, view="full", links=links)
+    return out, full
