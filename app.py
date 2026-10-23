@@ -172,12 +172,17 @@ with tab_kg:
     with sub_graph:
         from factory.kg_viz import render_html
 
-        c1, c2, c3 = st.columns([2, 2, 1])
-        types = c1.multiselect("节点类型", list(NODE_TYPES), default=[t for t in NODE_TYPES if t not in ("Source", "Dependency")])
-        focus = c2.selectbox("聚焦节点（可选）", [""] + sorted(n for n, _ in kg.nodes()), index=0)
-        radius = c3.number_input("邻域半径", 1, 3, 1)
-        page = render_html(kg, types=types or None, focus=focus or None, radius=int(radius), height="680px")
-        embed_html(page, height=720)
+        mode = st.radio("视图", ["概览", "完整", "聚焦某个节点"], horizontal=True,
+                        help="概览只画场景/指标/算子/经验主干，适用条件、依赖、出处、验证记录折叠在悬停信息与汇总边中")
+        kwargs: dict = {"view": "overview"}
+        if mode == "完整":
+            kwargs = {"view": "full", "types": st.multiselect("节点类型", list(NODE_TYPES), default=list(NODE_TYPES))}
+        elif mode == "聚焦某个节点":
+            c1, c2 = st.columns([3, 1])
+            ops = sorted(n for n, _ in kg.nodes("Operator")) + sorted(n for n, d in kg.nodes() if d["type"] != "Operator")
+            kwargs = {"focus": c1.selectbox("中心节点", ops), "radius": int(c2.number_input("邻域半径", 1, 3, 1)),
+                      "types": [t for t in NODE_TYPES if t not in ("Source", "Dependency")]}
+        embed_html(render_html(kg, height="680px", **kwargs), height=740)
 
 # ---------------------------------------------------------------------------
 # 历史运行

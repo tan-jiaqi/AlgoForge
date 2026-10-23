@@ -215,6 +215,7 @@ def kg_search(
 @kg_app.command("viz")
 def kg_viz(
     out: Path = typer.Option(Path("kg/capability_kg.html"), help="输出 HTML 路径"),
+    view: str = typer.Option("overview", help="overview：只画场景/指标/算子/经验主干（默认）；full：全部节点与边"),
     focus: str = typer.Option(None, help="中心节点 id，如 Operator:TotalChargesCleaner@1；只看其邻域"),
     radius: int = typer.Option(1, help="邻域半径（跳数）"),
     types: list[str] = typer.Option([], "--type", "-t", help="只显示这些节点类型，可多次指定"),
@@ -224,7 +225,7 @@ def kg_viz(
     from factory.kg import DEFAULT_KG_PATH, CapabilityKG
     from factory.kg_viz import render_html
 
-    render_html(CapabilityKG.load(path or DEFAULT_KG_PATH), out, types=types or None, focus=focus, radius=radius)
+    render_html(CapabilityKG.load(path or DEFAULT_KG_PATH), out, view=view, types=types or None, focus=focus, radius=radius)
     console.print(f"已生成 {out}")
 
 
