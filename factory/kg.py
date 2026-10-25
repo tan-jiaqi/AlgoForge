@@ -346,6 +346,24 @@ class CapabilityKG:
                 values.append(sum(ms.values()) / len(ms))
         return (sum(values) / len(values), len(values)) if values else (0.0, 0)
 
+    def metric_evidence(self, nid: str, scenario: str, metric: str) -> list[float]:
+        """算子在某场景上所有可信验证记录中的指标值，供方案搜索估计先验。
+
+        与 ``historical_score`` 不同，这里**包含未通过的验证**（本系统的失败结果同样说明该算子表现如何）；
+        但抽取到的历史实验只取有效的（``passed`` 为 False 表示被作废，如数据泄漏）。
+        """
+        values = []
+        for rid in self.neighbors(nid, "VALIDATED_BY"):
+            run = self.g.nodes[rid]
+            if run.get("origin") != "factory" and not run.get("passed"):
+                continue
+            if node_id("Scenario", scenario) not in self.neighbors(rid, "RUN_ON"):
+                continue
+            value = run.get("metrics", {}).get(metric)
+            if isinstance(value, (int, float)):
+                values.append(float(value))
+        return values
+
     def search_operators(
         self,
         query: str,

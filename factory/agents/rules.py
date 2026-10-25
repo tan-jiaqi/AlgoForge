@@ -64,6 +64,8 @@ def rule_spec(ctx: dict) -> TaskSpec:
 
 
 def rule_plans(ctx: dict) -> PlanSet:
+    if ctx.get("beam_parents") and (children := _beam_children(ctx)):
+        return PlanSet(plans=children)
     spec = TaskSpec.model_validate(ctx["task_spec"])
     tags = set(ctx["data_profile"]["tags"])
     options = ctx["operator_options"]
@@ -100,6 +102,50 @@ def rule_plans(ctx: dict) -> PlanSet:
         name = re.sub(r"(?<!^)(?=[A-Z])", "_", model["ref"].split("@")[0]).lower().replace("_model", "")
         plans.append(PipelinePlan(name=f"{name}_pipeline", steps=steps, rationale="规则规划：按画像标签选择预处理，按检索得分选择模型"))
     return PlanSet(plans=plans)
+
+
+# Beam 扩展时对模型参数做的局部修改（规则版的"变异"算子）
+PARAM_TWEAKS = {
+    "LogisticRegressionModel": [{"C": 0.1}, {"C": 10.0}],
+    "RandomForestModel": [{"max_depth": 8}, {"n_estimators": 500, "max_depth": 12}],
+    "LightGBMModel": [{"num_leaves": 15}, {"learning_rate": 0.02, "n_estimators": 600}],
+}
+
+
+def _beam_children(ctx: dict) -> list[PipelinePlan]:
+    """规则版 Beam 扩展：对每个父方案，① 调整模型参数，② 换成另一个可执行模型；轮流取，直到凑够 n 个。"""
+    n = ctx["n_candidates"]
+    models = [o for o in ctx["operator_options"].get("model", []) if o.get("executable", True)]
+    per_parent: list[list[PipelinePlan]] = []
+    for parent in ctx["beam_parents"]:
+        steps = [Step(kind=s["kind"], action="reuse", operator_ref=s["operator"], params=s["params"])
+                 if s["action"] == "reuse" else Step(kind=s["kind"], action="synthesize", synth_spec=s["synth_spec"])
+                 for s in parent["steps"]]
+        if steps[-1].action != "reuse":
+            continue
+        model = steps[-1]
+        base = model.operator_ref.split("@")[0]
+        variants = []
+        for tweak in PARAM_TWEAKS.get(base, []):
+            changed = model.model_copy(update={"params": {**model.params, **tweak},
+                                               "rationale": f"在 {parent['name']} 基础上调整 {tweak}"})
+            tag = "_".join(f"{k}{v}" for k, v in tweak.items()).replace(".", "p")
+            variants.append(PipelinePlan(name=f"{parent['name']}_{tag}".lower(), steps=[*steps[:-1], changed],
+                                         rationale=f"基于 {parent['name']}，针对诊断调整模型参数 {tweak}"))
+        for other in models:
+            if other["ref"].split("@")[0] == base:
+                continue
+            params = {"class_weight": "balanced"} if "class_weight" in other["params"] else {}
+            swapped = Step(kind="model", action="reuse", operator_ref=other["ref"], params=params,
+                           rationale=f"在 {parent['name']} 基础上换用 {other['ref']}")
+            name = other["ref"].split("@")[0].replace("Model", "").lower()
+            variants.append(PipelinePlan(name=f"{parent['name']}_to_{name}", steps=[*steps[:-1], swapped],
+                                         rationale=f"基于 {parent['name']}，换用模型 {other['ref']}"))
+        per_parent.append(variants)
+    plans: list[PipelinePlan] = []
+    for i in range(max((len(v) for v in per_parent), default=0)):
+        plans += [v[i] for v in per_parent if i < len(v)]
+    return plans[:n]
 
 
 def _cleaning_step(ctx: dict) -> Step | None:

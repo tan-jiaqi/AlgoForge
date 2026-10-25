@@ -2,11 +2,13 @@
 
     PLAN → BUILD → VERIFY → ROUTE ─┬─ 生成算子有代码类错误且未超轮数 → REPAIR → VERIFY ...
                                    ├─ 有方案通过                    → CURATE → DONE
-                                   ├─ 指标不达标且可重试            → REPLAN → BUILD ...
+                                   ├─ 指标不达标且可重试            → REPLAN（Beam 搜索一轮）→ BUILD ...
                                    └─ 其他                          → CURATE → FAILED（失败结果同样回写 KG）
 
 - BUILD：为 synthesize 步骤调用 Synthesizer 生成算子（同名算子在一次运行内只生成一次）；
 - REPAIR：诊断能定位到生成算子时，只修复该算子（带上同诊断码的 Lesson），然后只重验受影响的方案；
+- REPLAN：以排名前 k 的已验证方案为父方案，让 Planner 扩展 k × m 个子方案，去重后按知识图谱
+  历史验证分估计的先验保留 k 个再验证（小规模 Beam Search，见 search.py）；
 - 先修复、后选优：所有候选都得到修复机会后再比较，保证公平。
 
 不使用 LangGraph 等框架：状态转移一目了然，依赖少，便于单元测试。
@@ -20,6 +22,7 @@ from typing import Callable
 from datetime import datetime
 from pathlib import Path
 
+from factory import search
 from factory.agents.curator import Curator
 from factory.agents.planner import Planner, PlanningContext, resolve_scenario
 from factory.agents.synthesizer import Synthesizer
@@ -30,7 +33,9 @@ from factory.operators import registry
 from factory.operators.synthesized import load_saved_operators
 from factory.profile import DataProfile, profile
 from factory.report import write_report
-from factory.schemas import Diagnostic, GeneratedOperator, PipelinePlan, RepairRecord, RunState, TaskSpec, ValidationReport
+from factory.schemas import (
+    Diagnostic, GeneratedOperator, PipelinePlan, RepairRecord, RunState, SearchRound, TaskSpec, ValidationReport,
+)
 from factory.utils import ROOT, get_logger
 from factory.verify import Verifier, VerifyConfig, load_verify_config
 
@@ -44,6 +49,8 @@ class WorkflowConfig:
     n_candidates: int = 2
     max_replans: int = 1
     max_repairs: int = 3  # 每个生成算子最多修复的轮数
+    beam_width: int | None = None  # 重新规划时每轮保留并验证的方案数；None 表示与 n_candidates 相同
+    beam_expand: int = 2  # 扩展倍数：每轮让 Planner 给出 beam_width × beam_expand 个子方案，按先验剪枝
     allow_synthesis: bool = True
     writeback: bool = True
     verify: VerifyConfig | None = None  # None 表示按任务类型读取 configs/tasks/*.yaml
@@ -210,6 +217,7 @@ class Workflow:
         return "VERIFY"
 
     def _replan(self, state: RunState, ctx: _Ctx) -> str:
+        """Beam 搜索的一轮：以排名前 width 的已验证方案为父方案扩展，按 KG 先验剪枝后再验证（见 search.py）。"""
         state.replans += 1
         names = {p.name for p in state.candidates}
         for r in state.reports:
@@ -219,16 +227,33 @@ class Workflow:
             if gen.revision >= self.cfg.max_repairs:
                 ctx.feedback.append(f"生成算子 {name} 修复 {gen.revision} 轮仍未通过，请换一种实现思路或不用它")
         ctx.retired |= names
-        new = self.planner.propose(state.spec, ctx.profile, ctx.planning, n_candidates=self.cfg.n_candidates, feedback=ctx.feedback)
-        for p in new:
+
+        width = self.cfg.beam_width or self.cfg.n_candidates
+        plans = {p.name: p for p in state.candidates}
+        parents = [r for r in search.beam_parents(state.reports, state.spec, width) if r.plan_name in plans]
+        children = self.planner.propose(
+            state.spec, ctx.profile, ctx.planning, n_candidates=width * max(self.cfg.beam_expand, 1),
+            feedback=ctx.feedback, parents=[search.parent_summary(plans[r.plan_name], r, state.spec) for r in parents],
+        )
+        for p in children:
             if p.name in names:
                 p.name = f"{p.name}_r{state.replans}"
+        kept, records = search.select(
+            children, seen={search.signature(p) for p in state.candidates}, width=width, spec=state.spec,
+            kg=self.kg, scenario=ctx.scenario, observed=search.run_observations(state),
+        )
+        state.search.append(SearchRound(round=state.replans, parents=[r.plan_name for r in parents], width=width,
+                                        candidates=records))
+        for p in kept:
             for step in p.steps:  # 修复失败的生成算子不再沿用旧代码，重新生成
                 gen = state.generated.get(step.synth_spec.name) if step.action == "synthesize" else None
                 if gen and gen.revision >= self.cfg.max_repairs:
                     state.generated.pop(step.synth_spec.name)
-        state.candidates += new
-        state.note(f"[REPLAN] 第 {state.replans} 次重新规划：{[_describe(p) for p in new]}")
+        state.candidates += kept
+        pruned = [f"{c.plan}({c.prior})" for c in records if not c.selected]
+        state.note(f"[REPLAN] 第 {state.replans} 轮 Beam 搜索：父方案 {[r.plan_name for r in parents]}，"
+                   f"扩展 {len(children)} 个，入选 {[f'{_describe(p)}' for p in kept]}"
+                   + (f"，剪枝/去重 {pruned}" if pruned else ""))
         return "BUILD"
 
     def _curate(self, state: RunState, ctx: _Ctx) -> str:

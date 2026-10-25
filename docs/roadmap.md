@@ -144,3 +144,5 @@ NL 需求 → TaskSpec → PipelinePlan ─┬─ Reuse：从知识图谱取已�
 | 经验写入时按"诊断码 + 标题相似度"去重；指标名按参数规范化；`kg tidy` 整理已有图谱 | 两份文档抽出重复经验、同一指标出现多个名字；`recall_at_top_k` 与 `recall_at_20` 合并 |
 | 生成算子与图谱中已有算子仅大小写不同时，沿用原名并以最新版本为 `reference` | 修复了 `IdColumnDropper@2` 没有接入版本谱系的问题 |
 | 沙箱支持原生 Windows：无 `resource` 时改用 psutil 看门狗限制内存，峰值内存改用 psutil 统计 | 原实现依赖 Linux 的 `resource` 与 `preexec_fn`，Windows 上无法导入 |
+| 沙箱新增运行时防线：子进程内装审计钩子，限制可读 / 可写路径，禁止网络、子进程与加载动态库；静态检查新增库自带 I/O 入口黑名单，factory 内部只允许导入算子基类 | 原静态检查只按名字拦 `open()`，`pd.read_csv('<仓库>/.env')` 能通过检查并在沙箱中读到密钥文件 |
+| 重新规划改为小规模 Beam Search（`factory/search.py`）：以排名前 k 的方案为父方案扩展 k × m 个子方案，去重后按 KG 先验保留 k 个验证 | 原来的重新规划由 LLM 一次给出新方案，可能与已验证方案重复，也不利用历史验证分 |

@@ -109,6 +109,7 @@ def build_blocks(state: RunState, *, pipeline_code: str | None = None, kg: Capab
     ])]
     blocks += _retrieval_blocks(state)
     blocks += _comparison_blocks(state, ranked)
+    blocks += _search_blocks(state)
     blocks += _best_plan_blocks(state)
     blocks += _synthesis_blocks(state)
     blocks += _verification_blocks(state, best)
@@ -170,6 +171,24 @@ def _comparison_blocks(state: RunState, ranked: list[ValidationReport]) -> list[
         diag = "；".join(f"`{d.code.value}` {d.message}" for d in r.diagnostics) or "无"
         items.append(f"`{r.plan_name}`：{chain}。诊断：{diag}")
     out.append(UL(items))
+    return out
+
+
+def _search_blocks(state: RunState) -> list[Block]:
+    """重新规划时的 Beam 搜索：每轮的父方案、扩展出的子方案、先验分与剪枝结果。"""
+    if not state.search:
+        return []
+    metric = state.spec.primary_metric.name
+    actual = {r.plan_name: r.metrics.get(metric) for r in state.reports}
+    out = [H(3, "方案搜索（Beam Search）"),
+           P("指标不达标时，以已验证结果排名前 k 的方案为父方案，由 Planner 扩展 k × m 个子方案；"
+             "与已验证方案结构相同的直接去重，其余按先验（知识图谱中该场景的历史验证记录 + 本次运行的观测，"
+             f"平滑后按步骤加权，模型步骤权重更高）估计 {metric}，只保留前 k 个进入验证。")]
+    for rnd in state.search:
+        rows = [[("✔ " if c.selected else "") + c.plan, c.chain, _fmt(c.prior),
+                 _fmt(actual.get(c.plan)) if c.selected else "-", c.reason] for c in rnd.candidates]
+        out += [P(f"第 {rnd.round} 轮：父方案 {', '.join(f'`{n}`' for n in rnd.parents) or '-'}，beam 宽度 {rnd.width}。"),
+                T(["子方案", "结构", f"先验 {metric}", f"实际 {metric}", "结果"], rows)]
     return out
 
 

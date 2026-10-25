@@ -58,13 +58,16 @@ def run(
     no_writeback: bool = typer.Option(False, "--no-writeback", help="不把验证结果写回 KG"),
     no_synthesis: bool = typer.Option(False, "--no-synthesis", help="只复用能力库中已有算子，不生成新算子"),
     max_repairs: int = typer.Option(3, help="每个生成算子最多修复轮数"),
+    beam_width: int = typer.Option(None, help="重新规划时每轮保留并验证的方案数（默认等于 --candidates）"),
+    beam_expand: int = typer.Option(2, help="重新规划时的扩展倍数：Planner 给出 width × expand 个子方案，按 KG 先验剪枝"),
 ) -> None:
     """端到端：需求理解 → 知识检索 → 方案规划（复用/生成）→ 自动验证 → 修复优化 → 知识沉淀。"""
     from factory.kg import DEFAULT_KG_PATH
     from factory.workflow import DEFAULT_RUNS_DIR, Workflow, WorkflowConfig
 
     cfg = WorkflowConfig(n_candidates=candidates, max_replans=max_replans, max_repairs=max_repairs,
-                         allow_synthesis=not no_synthesis, writeback=not no_writeback)
+                         allow_synthesis=not no_synthesis, writeback=not no_writeback,
+                         beam_width=beam_width, beam_expand=beam_expand)
     wf = Workflow(make_llm(llm), kg_path=kg or DEFAULT_KG_PATH, runs_dir=runs_dir or DEFAULT_RUNS_DIR, config=cfg)
     with console.status("运行中…"):
         state = wf.run(request, str(data), target=target)

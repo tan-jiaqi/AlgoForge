@@ -193,7 +193,9 @@ class Planner:
         *,
         n_candidates: int = 2,
         feedback: list[str] | None = None,
+        parents: list[dict] | None = None,
     ) -> list[PipelinePlan]:
+        """parents 非空时为 Beam 搜索的扩展：在这些已验证的方案基础上做局部修改。"""
         order = TEXT_ORDER if spec.modality == Modality.TEXT else TABULAR_ORDER
         payload = {
             "task_spec": spec.model_dump(mode="json"),
@@ -205,6 +207,8 @@ class Planner:
             **ctx.to_prompt(),
             "feedback": feedback or [],
         }
+        if parents:  # 首轮规划不带该字段，prompt 与录制的 LLM 响应保持一致
+            payload["beam_parents"] = parents
         system = (
             "你是算法能力工厂的 Planner。根据 TaskSpec、数据画像和从知识图谱检索到的候选算子，"
             f"给出 {n_candidates} 个互不相同的候选 PipelinePlan，放在 plans 列表中；优先使用不同的模型，只有一个可选模型时改变预处理或超参数。\n"
@@ -226,6 +230,12 @@ class Planner:
             "- feedback 非空时，表示之前的方案未通过验证，新方案必须针对这些问题调整（换算子或调参）；\n"
             "- plan 的 name 用简短的 snake_case 英文，彼此不同。"
         )
+        if parents:
+            system += (
+                "\n- beam_parents 是目前验证结果最好的方案（含指标与诊断）。新方案应以其中某个为基础做局部修改"
+                "（替换一个算子、调整参数、增删一个预处理步骤），针对诊断改进；各方案的修改方向要互不相同，"
+                "不要与父方案完全相同；plan 的 rationale 说明基于哪个父方案、改了什么。"
+            )
 
         def check(ps: PlanSet) -> None:
             errors = []

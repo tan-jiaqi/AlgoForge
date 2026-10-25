@@ -92,8 +92,9 @@ flowchart LR
 │   ├── kg.py / kg_viz.py   # 知识图谱存储、检索、导出、可视化
 │   ├── profile.py          # 数据画像：列角色与适用条件标签（确定性）
 │   ├── agents/             # planner / synthesizer / curator，rules.py 为离线规则版
-│   ├── verify/             # static / sandbox / checks 四级验证，按任务类型读取配置
+│   ├── verify/             # static / sandbox / checks 四级验证，guard 为沙箱内的审计钩子，按任务类型读取配置
 │   ├── workflow.py         # 状态机
+│   ├── search.py           # 重新规划阶段的 Beam Search（去重、KG 先验、剪枝）
 │   ├── codegen.py          # 方案 → 可独立运行的 pipeline.py
 │   ├── report.py           # Markdown / HTML 验证报告
 │   ├── demo.py / cli.py    # 演示与命令行
@@ -103,7 +104,7 @@ flowchart LR
 ├── kg/                     # 抽取得到的知识图谱（JSON / GraphML / HTML）与原始抽取结果
 ├── examples/               # 录制的 LLM 响应（cassettes）与演示产物
 ├── docs/                   # schema.md、roadmap.md
-└── tests/                  # 90 个测试
+└── tests/                  # 119 个测试
 ```
 
 **技术选型与理由**
@@ -159,7 +160,7 @@ stateDiagram-v2
     VERIFY --> ROUTE
     ROUTE --> REPAIR: 生成算子有代码类错误
     REPAIR --> VERIFY: 只重验受影响的方案
-    ROUTE --> REPLAN: 指标不达标
+    ROUTE --> REPLAN: 指标不达标（Beam 搜索一轮）
     REPLAN --> BUILD
     ROUTE --> CURATE: 有方案通过 / 无法继续
     CURATE --> [*]
@@ -172,18 +173,19 @@ stateDiagram-v2
 | **Verifier** | 四级验证，输出结构化诊断（确定性，不调用 LLM） | 否 |
 | **Curator** | 注册新算子、回写验证结果、把"诊断 → 修复"提炼为 Lesson | 仅提炼经验 |
 
-三个设计要点：
+四个设计要点：
 
 1. **分层结构化规划**（借鉴编译器的分层中间表示）：`TaskSpec`（做什么）→ `PipelinePlan`（怎么做）→ 代码。LLM 的每次输出都要通过 pydantic schema 和语义检查（算子是否存在、参数是否合法、模态是否匹配、阈值是否有出处），不通过就带着错误信息让 LLM 重写。
 2. **知识驱动的能力组合**：规划时检索候选算子和经验，报告中能看到每个选择的分项得分和证据；抽取到的历史代码作为生成新算子的参考。
 3. **诊断驱动的自修复与经验复用**：诊断码分为代码类（`E_*`，只修复出错的算子）和指标类（`M_*`，重新规划）；修复时检索同诊断码的 Lesson；修复成功后提炼成新 Lesson；先修复所有可修复的候选，再公平选优。
+4. **知识图谱先验引导的 Beam 搜索**（`factory/search.py`）：指标不达标时，以排名前 k 的已验证方案为父方案，让 Planner 做局部修改（换算子、调参、增删预处理），一次扩展 k × m 个子方案；与已验证方案结构相同的直接去重，其余用知识图谱中该场景的历史验证记录与本次运行的观测估计主指标（平滑均值，模型步骤加权），只把先验最高的 k 个送去验证。每轮的父方案、子方案、先验与实际值都写进报告。
 
 **四级验证**（`factory/verify/`，配置见 `configs/tasks/*.yaml`）
 
 | 级别 | 检查 | 诊断码 |
 | --- | --- | --- |
-| 1 静态检查 | 语法；import 白名单；禁止 `eval/exec/open/getattr/__dunder__` 等；接口齐全；`meta.params` 与 `__init__` 默认值一致 | `E_SYNTAX` `E_UNSAFE` `E_INTERFACE` |
-| 2 沙箱执行 | 独立子进程，限制超时与内存，清除含 KEY/TOKEN/SECRET 的环境变量，小样本冒烟并定位到出错算子 | `E_RUNTIME` `E_TIMEOUT` |
+| 1 静态检查 | 语法；import 白名单（factory 内部只能导入算子基类与枚举）；禁止 `eval/exec/open/getattr/__dunder__` 等（调用或取用）；禁止库自带的文件读写、下载与字符串求值入口（`pd.read_*`、`df.to_*`、`np.load`、`df.query`、`sklearn.datasets` 等）；接口齐全；`meta.params` 与 `__init__` 默认值一致 | `E_SYNTAX` `E_UNSAFE` `E_INTERFACE` |
+| 2 沙箱执行 | 独立子进程，限制超时与内存，清除含 KEY/TOKEN/SECRET 的环境变量；子进程内装审计钩子（PEP 578），只允许读 Python 库、`factory/` 与本次数据文件，只允许写沙箱临时目录，禁止网络、子进程与加载动态库，越权即判 `E_UNSAFE` 并定位到算子（即使生成代码吞掉了异常）；小样本冒烟并定位到出错算子 | `E_UNSAFE` `E_RUNTIME` `E_TIMEOUT` |
 | 3 契约检查 | 不修改输入；行数一致；不新引入 NaN/Inf；`predict_proba` 为合法概率的 ndarray；能处理未见类别与缺失值 | `E_MUTATION` `E_SHAPE` `E_NAN` `E_PROBA` |
 | 4 指标检查 | 多种子 × 分层 K 折交叉验证；阈值；种子间稳定性；指标过高疑似泄漏；耗时与内存 | `M_THRESHOLD` `M_UNSTABLE` |
 
@@ -210,13 +212,13 @@ API Key 只从 `.env` 读取（已加入 `.gitignore`），在报错中脱敏，
 | 命令 | 说明 |
 | --- | --- |
 | `python -m factory.cli demo` | 端到端演示（3 个任务），输出到 `runs/demo/` |
-| `python -m factory.cli run "<需求>" --data data/churn.csv` | 端到端运行；`--candidates 3`、`--no-synthesis`、`--no-writeback`、`--kg <路径>` |
+| `python -m factory.cli run "<需求>" --data data/churn.csv` | 端到端运行；`--candidates 3`、`--max-replans 2`、`--beam-width 2 --beam-expand 3`、`--no-synthesis`、`--no-writeback`、`--kg <路径>` |
 | `python -m factory.cli extract` | 从 `data/materials/` 抽取能力，重建 `kg/` |
 | `python -m factory.cli kg stats / search / lessons / viz` | 统计、检索算子、检索经验、生成可视化 HTML（概览 + 完整两个文件；`--focus` 只看邻域） |
 | `python -m factory.cli report runs/<id>` | 根据 `state.json` 重新生成报告 |
 | `python -m factory.cli operators` | 列出已注册算子 |
 | `streamlit run app.py` | Web 界面：运行（实时进度、报告、代码下载）、能力库与可交互图谱、历史运行 |
-| `pytest` / `pytest -m slow` | 89 个常规测试（约 1 分钟）/ 完整演示回放测试 |
+| `pytest` / `pytest -m slow` | 118 个常规测试（约 2 分钟）/ 完整演示回放测试 |
 
 > `run` 默认把结果写回 `kg/capability_kg.json`。只想试用时加 `--no-writeback`，或用 `--kg` 指向一份副本；Web 界面默认在副本上运行。
 
@@ -287,7 +289,7 @@ rf_service_count_pipeline            ■■■■■■■■■■■■■■�
 lgb_balanced_pipeline                ■■■■■■■■■■■■···|···· 0.624
 ```
 
-全部演示结果见 [examples/demo/SUMMARY.md](examples/demo/SUMMARY.md)。图谱写入时自动合并同一指标的不同名字与重复经验（`kg tidy` 可整理已有图谱）。测试覆盖：schema 校验、算子契约、验证器对各类坏代码给出正确诊断码（安全违规、崩溃、修改输入、行数错误、NaN、超时、指标不达标、泄漏）、知识图谱读写与检索、Planner 的语义校验与重试、生成 → 修复 → 注册 → 复用全流程、报告渲染与 HTML 转义、Web 界面、离线回放与录制结果一致。
+全部演示结果见 [examples/demo/SUMMARY.md](examples/demo/SUMMARY.md)。图谱写入时自动合并同一指标的不同名字与重复经验（`kg tidy` 可整理已有图谱）。测试覆盖：schema 校验、算子契约、验证器对各类坏代码给出正确诊断码（静态安全违规、运行时越权读文件 / 写文件 / 联网 / 起进程、崩溃、修改输入、行数错误、NaN、超时、指标不达标、泄漏）、知识图谱读写与检索、Planner 的语义校验与重试、Beam 搜索的去重 / 先验 / 剪枝、生成 → 修复 → 注册 → 复用全流程、报告渲染与 HTML 转义、Web 界面、离线回放与录制结果一致。
 
 ## 9. 遇到的挑战和解决方案
 
@@ -296,7 +298,8 @@ lgb_balanced_pipeline                ■■■■■■■■■■■■···|
 | LLM 输出不稳定：引用不存在的算子、给参数乱起名、在只允许复用时生成 | 每层输出用 pydantic 校验 + 语义检查（算子、参数、模态），错误信息回传 LLM 重写；真实录制中可见一次被拒后改正 |
 | LLM 编造指标阈值（给只需"报告"的 recall@20% 设 0.7，导致所有方案失败） | 次要指标的阈值必须能在需求原文或知识图谱中找到出处，否则只报告不设门槛 |
 | 生成代码的隐蔽缺陷：`predict_proba` 返回 DataFrame、`meta.params` 与 `__init__` 默认值不一致、转换后留下 NaN | 都加入契约 / 静态检查，并能定位到具体算子；修复 prompt 中带上诊断与提示 |
-| 执行 LLM 生成的代码有安全风险 | import 白名单 + 危险调用黑名单 + 子进程沙箱（超时、内存上限、清除密钥环境变量）；父进程只加载验证通过且复查过的源码；Web 界面以 `data:` URL 隔离展示 LLM 生成的内容 |
+| 执行 LLM 生成的代码有安全风险；只按名字拦截不够（例如 `pd.read_csv('.env')` 能绕过 `open()` 黑名单） | 三道防线：静态检查（import 白名单、危险函数与库自带 I/O 入口黑名单）→ 子进程内的审计钩子（按行为拦截越权的文件、网络与进程操作，与写法无关）→ 进程级隔离（超时、内存上限、清除密钥环境变量、临时工作目录）；父进程只加载静态复查通过的源码；Web 界面以 `data:` URL 隔离展示 LLM 生成的内容 |
+| 重新规划只靠 LLM 一次给出新方案，容易重复或盲目 | Beam 搜索：以最好的已验证方案为父方案做局部修改，去掉与已验证方案重复的子方案，再用知识图谱历史验证分估计的先验剪枝，验证开销不变（每轮仍只验证 k 个） |
 | 评审复现依赖 LLM 与 API Key | 录制回放：请求哈希不含密钥与地址；`demo --llm replay` 离线复现，测试校验回放结果与仓库一致 |
 | 只靠模板的合成数据太容易，指标 = 1.0 被泄漏检测判为异常 | 工单数据加入跨类表述与标签噪声，使任务有真实难度 |
 | 64 核服务器上 LightGBM / OpenMP 线程与内存上限冲突 | 沙箱中限制线程数与 malloc arena |
@@ -304,8 +307,8 @@ lgb_balanced_pipeline                ■■■■■■■■■■■■···|
 
 ## 10. 后续可扩展方向
 
-- **方案搜索**：目前是"候选 + 重新规划"，可在 `PipelinePlan` 空间上做 Beam Search / MCTS，用知识图谱历史分作为先验
-- **更强的隔离**：把进程级沙箱替换为容器或 gVisor，并加入网络隔离
+- **方案搜索**：目前是重新规划阶段的小规模 Beam Search，先验只基于逐算子的历史统计；可进一步学习算子组合的交互效应，或改为 MCTS 并用验证结果回传更新先验
+- **更强的隔离**：审计钩子是进程内防线（C 扩展的底层调用不经过它），生产环境应再加容器或 gVisor 与网络命名空间隔离
 - **更多任务类型**：回归、时序预测、异常检测（新增 `configs/tasks/*.yaml`、指标插件与算子即可）；图像缺陷识别需要新的模态
 - **真实代码仓库抽取**：支持类、跨文件调用关系、git 历史与测试用例；接入 Neo4j 承载更大规模图谱
 - **人机协同**：在界面中审阅、编辑 Planner 的方案和生成代码后再验证；经验的人工审核与淘汰

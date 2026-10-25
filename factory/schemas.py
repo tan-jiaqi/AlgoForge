@@ -243,6 +243,26 @@ class RepairRecord(BaseModel):
 # 在各 Agent 之间传递的工作流状态
 # ---------------------------------------------------------------------------
 
+class SearchCandidate(BaseModel):
+    """Beam 搜索中扩展出的一个子方案：先验分、是否入选验证。"""
+
+    plan: str
+    chain: str = Field(description="方案结构，如 TotalChargesCleaner → ... → LogisticRegressionModel")
+    prior: float | None = Field(default=None, description="KG 历史 + 本次观测估计的主指标（重复方案为空）")
+    evidence: dict[str, str] = Field(default_factory=dict, description="每步的估计值与证据来源")
+    selected: bool = False
+    reason: str = ""
+
+
+class SearchRound(BaseModel):
+    """一轮 Beam 扩展：从当前最好的若干方案出发，LLM 扩展 width × expand 个子方案，按先验保留 width 个。"""
+
+    round: int
+    parents: list[str] = Field(description="本轮作为扩展起点的方案（已验证结果中排名前 width 的）")
+    width: int
+    candidates: list[SearchCandidate] = Field(default_factory=list)
+
+
 class RunState(BaseModel):
     """各 Agent 读写的共享状态（黑板）。"""
 
@@ -261,6 +281,7 @@ class RunState(BaseModel):
     replans: int = 0
     history: list[ValidationReport] = Field(default_factory=list, description="被修复替换掉的旧验证结果")
     repairs: list[RepairRecord] = Field(default_factory=list)
+    search: list[SearchRound] = Field(default_factory=list, description="重新规划时的 Beam 搜索记录")
     registered: list[str] = Field(default_factory=list, description="本次注册到能力库的新算子")
     lessons_learned: list[str] = Field(default_factory=list, description="本次提炼写入 KG 的 Lesson")
     lessons_used: list[str] = Field(default_factory=list, description="规划/修复时放进 prompt 的 Lesson 节点 id")
