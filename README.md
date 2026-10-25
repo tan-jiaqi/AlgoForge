@@ -265,38 +265,117 @@ stateDiagram-v2
 
 ## 5. 环境配置和运行方法
 
-```bash
-# 1. 环境（Miniconda3）
-conda env create -f environment.yml      # 创建 algoforge 环境（Python 3.11），并以可编辑方式安装 factory 包
-conda activate algoforge
+以下命令都在**仓库根目录**执行。第一次体验建议先跑离线 `demo`；要处理自己的需求，再配置 API 并选择 `live`。
 
-# 2. （可选）真实 LLM：复制 .env.example 为 .env 并填写 LLM_API_KEY
-cp .env.example .env
-python -m factory.cli llm-ping           # 检查连通性并列出可用模型（不会打印 Key）
+### 5.1 准备环境
+
+```bash
+# 首次使用：创建环境，同时安装依赖与本项目
+conda env create -f environment.yml
+
+# 每次打开新终端后激活；环境已存在时，直接从这一步开始
+conda activate algoforge
 ```
 
-**LLM 模式**：`--llm replay`（默认用于演示，离线回放 `examples/cassettes/`）、`live`（真实调用，带磁盘缓存）、`record`（真实调用并录制）、`mock`（规则版 Agent，用于测试）。默认模型 `gemini-3.5-flash`，可在 `configs/llm.yaml` 或 `.env` 的 `LLM_MODEL` 中修改；更换模型或接口后需要验证兼容性。
+环境使用 Python 3.11。激活后可用 `which python`（Linux/macOS）或 `where python`（Windows）检查解释器路径是否位于 `algoforge` 环境中。
 
-**API 平台**：本项目开发及录制示例使用 [XHub API 平台](https://api15.xhub.chat)，通过 OpenAI 兼容客户端调用；[默认配置](configs/llm.yaml) 的 `base_url` 为 `https://api15.xhub.chat/v1`。可在 `.env` 中设置 `LLM_BASE_URL`、`LLM_MODEL` 和 `LLM_API_KEY` 覆盖配置。
+### 5.2 先选模式：LLM 的回答从哪里来
 
-回放只支持已录制的请求与模型配置；修改需求、候选数或其他影响 prompt 的设置可能找不到对应响应。新需求可用 `live` / `record` 调用接口，`mock` 仅覆盖规则支持的场景。
+通过 `--llm <模式>` 显式选择回答来源。**这控制的是 LLM 调用方式，不决定流水线是否包含新算子。**
 
-API Key 从 `LLM_API_KEY` 环境变量读取，也支持加载已被 Git 忽略的 `.env`；SDK 报错会脱敏，请求缓存键不含密钥。沙箱会清除名称含 KEY / TOKEN / SECRET 等的环境变量；`tests/test_secrets.py` 扫描待跟踪文件中的已配置密钥和常见密钥格式。
+| 模式 | 回答来源 | 是否请求远端 API | 适用情况 |
+| --- | --- | --- | --- |
+| `replay` | 读取 `examples/cassettes/` 中匹配的已录制响应 | 否，不需要 API Key；缺少录制时直接报错 | 复现已有示例 |
+| `live` | 先读 `.cache/llm/`，未命中时请求 API 并缓存 | 未命中时请求；使用该模式需配置 API Key | 运行自己的新需求 |
+| `record` | 先读 `examples/cassettes/`，未命中时请求 API 并录制 | 未命中时请求；使用该模式需配置 API Key | 为新任务准备离线回放 |
+| `mock` | 本地规则提供需求理解、规划、源码和修复响应 | 否，不需要 API Key | 测试规则支持的场景和错误分支 |
 
-**平台支持**：代码包含 Windows 的 psutil 内存看门狗分支，Linux/macOS 使用 `RLIMIT_AS` 资源限制；本仓库当前记录的运行结果来自 Linux，其他平台需在对应环境验证。
+**不同入口的默认值不同**：`demo`、`extract` 默认 `replay`；`run` 默认 `live`；Web 界面默认选中 `live`。下面的示例显式写出模式，避免混淆。
+
+### 5.3 只看现有项目效果：离线演示
+
+```bash
+python -m factory.cli demo --llm replay
+```
+
+命令依次运行工单分类、客户流失预测和相似需求复用，结果写入 `runs/demo/`，知识图谱在该目录下的副本中更新。运行耗时随机器配置变化。
+
+回放时，需求理解、方案和生成源码取自以前保存的 LLM 响应；**流水线组装、训练、验证和指标计算仍实际执行**，并重新生成 `pipeline.py`、`state.json`、`report.md` 与 `report.html`。因此，离线运行也会产生代码文件，但本次没有请求远端 LLM 新写源码。
+
+`demo` 默认使用仓库中的基础图谱与录制请求。若修改基础图谱、模型配置或其他影响 prompt 的内容，现有录制可能不再匹配。
+
+### 5.4 处理自己的需求：在线运行
+
+先准备 API 配置：如果没有 `.env`，复制 `.env.example` 为 `.env`，填入自己的 `LLM_API_KEY`；已有 `.env` 时直接编辑，保留现有配置。
+
+**API 平台**：本项目开发及录制示例使用 [XHub API 平台](https://api15.xhub.chat)，通过 OpenAI 兼容客户端调用。[默认配置](configs/llm.yaml) 为：
+
+```dotenv
+LLM_BASE_URL=https://api15.xhub.chat/v1
+LLM_MODEL=gemini-3.5-flash
+```
+
+这两个变量可按需写入 `.env` 覆盖配置；更换模型或接口后需验证兼容性。`LLM_API_KEY` 从环境变量读取，也支持由 `.env` 加载。
+
+```bash
+# 请求远端接口检查连通性并列出模型，不执行建模任务
+python -m factory.cli llm-ping
+
+# 处理需求；首次试用不持久修改基础知识图谱
+python -m factory.cli run "预测30天内可能流失的客户，需可解释，召回优先" \
+  --data data/churn.csv --llm live --no-writeback
+```
+
+这次运行会获取 Planner 的需求理解与方案：
+
+- 步骤为 **Reuse**：从注册表实例化已有算子，在当前数据上拟合；不需要为这一步编写源码。
+- 步骤为 **Synthesize**：获取 Synthesizer 的源码响应；缓存未命中时才请求远端 LLM 编写。
+- 出现可修复的生成代码错误：按诊断获取修复响应，再验证。
+
+所以，**`live` 不保证每次都请求 API，也不保证每次都有新算子**。`--no-synthesis` 只禁止生成新算子，需求理解和规划仍使用所选 LLM 模式，并不等于离线运行。
+
+结果默认写到 `runs/<run_id>/`。`run` 默认把验证结果与符合条件的新算子写回 `kg/capability_kg.json` 及同目录的 `operators/`；加 `--no-writeback` 保留运行报告和脚本，但不持久修改基础能力库。
+
+### 5.5 保存新任务，之后离线复现：先录制，再回放
+
+```bash
+# 首次录制：匹配不到已有响应的请求会调用 API，并保存到 examples/cassettes/
+python -m factory.cli run "预测30天内可能流失的客户，需可解释，召回优先" \
+  --data data/churn.csv --candidates 1 --llm record --no-writeback
+
+# 保持需求、数据、模型配置、知识图谱和其他参数一致，再切换为 replay
+python -m factory.cli run "预测30天内可能流失的客户，需可解释，召回优先" \
+  --data data/churn.csv --candidates 1 --llm replay --no-writeback
+```
+
+两条命令都使用 `--no-writeback`，避免第一轮回写知识图谱改变第二轮的检索上下文。`record` 发现已有匹配响应时也会直接读取，并不强制刷新。
+
+回放按**模型、消息内容与 JSON 输出模式**匹配录制响应，文件名还带调用标签。修改需求、数据画像、候选数、知识图谱或提示词，都可能产生新的请求。若出现 `no recorded response`，说明没有对应录制，**不会自动转为在线调用**；要么恢复原上下文，要么配置 API 后用 `record` 补充该请求。
+
+`live` 的缓存与 `record` 的录制使用不同目录：只运行过 `live`，不代表该任务已经可以用 `replay` 复现。
+
+### 5.6 Web 界面与其他命令
+
+```bash
+streamlit run app.py
+```
+
+启动页面本身不会执行 LLM 建模任务。在“运行”页选择模式并点击“开始”才启动工作流；默认选中 `live`。已有录制只适用于匹配的上下文，不保证 Web 中的任意输入都可回放；复现三个固定任务时优先使用 `demo --llm replay`。Web 默认在图谱副本上运行，勾选“回写知识图谱”后才持久修改所选图谱。
 
 | 命令 | 说明 |
 | --- | --- |
-| `python -m factory.cli demo` | 端到端演示（3 个任务），输出到 `runs/demo/` |
-| `python -m factory.cli run "<需求>" --data data/churn.csv` | 端到端运行；`--candidates 3`、`--max-replans 2`、`--beam-width 2 --beam-expand 3`、`--no-synthesis`、`--no-writeback`、`--kg <路径>` |
-| `python -m factory.cli extract` | 从 `data/materials/` 抽取能力，重建 `kg/` |
-| `python -m factory.cli kg stats / search / lessons / tidy / viz` | 统计、检索算子、检索经验、按融合规则整理、生成可视化 |
-| `python -m factory.cli report runs/<id>` | 根据 `state.json` 重新生成报告 |
-| `python -m factory.cli operators` | 列出已注册算子 |
-| `streamlit run app.py` | Web 界面：运行（实时进度、报告、代码下载）、能力库与可交互图谱、历史运行 |
-| `pytest` / `pytest -m slow` | 118 个常规测试（约 2 分钟）/ 完整演示回放测试 |
+| `python -m factory.cli extract --llm replay` | 读取已有录制抽取响应，从 `data/materials/` 重建图谱；默认覆盖 `kg/`，可用 `--out <路径>` 指定输出 |
+| `python -m factory.cli extract --llm record` | 对新材料获取抽取响应并录制，未命中时调用 API；需配置 Key |
+| `python -m factory.cli kg stats / search / lessons / tidy / viz` | 查看、检索、整理图谱或生成可视化，不调用 LLM；其中 `tidy` 会保存整理结果 |
+| `python -m factory.cli report runs/<run_id>` | 从已保存状态重新生成报告，不调用 LLM |
+| `python -m factory.cli operators` | 列出当前注册表中的算子，不调用 LLM |
+| `pytest` / `pytest -m slow` | 118 个常规测试 / 1 个完整演示回放测试，不需要远端 LLM |
 
-> `run` 默认把结果写回 `kg/capability_kg.json`。只想试用时加 `--no-writeback`，或用 `--kg` 指向一份副本；Web 界面默认在副本上运行。
+`run` 还支持 `--target <目标列>`、`--candidates 3`、`--max-repairs 3`、`--max-replans 2`、`--beam-width 2 --beam-expand 3` 和 `--kg <路径>`；完整参数见 `python -m factory.cli run --help`。
+
+SDK 报错会脱敏，请求缓存键不含密钥；沙箱会清除名称含 KEY / TOKEN / SECRET 等的环境变量。`tests/test_secrets.py` 扫描待跟踪文件中的已配置密钥和常见密钥格式。
+
+**平台支持**：代码包含 Windows 的 psutil 内存看门狗分支，Linux/macOS 使用 `RLIMIT_AS` 资源限制；当前记录的运行结果来自 Linux，其他平台需在对应环境验证。上面的多行命令采用 Bash 续行写法，其他终端可合并为一行执行。
 
 ## 6. 示例数据和测试任务说明
 
