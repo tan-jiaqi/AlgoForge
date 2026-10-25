@@ -1,5 +1,9 @@
 # AlgoForge：基于 AI Agent 的算法能力工厂
 
+<p align="center">
+  <a href="pic/UI.png"><img src="pic/UI.png" alt="AlgoForge Web 界面：任务输入、运行配置与能力知识概览" width="100%"></a>
+</p>
+
 > AlgoForge 从历史代码和业务文档中抽取算法能力与经验，通过知识检索辅助 LLM 规划 Pipeline，复用已有算子或生成缺失实现。验证器依据固定规则和实际执行结果检查候选方案，对可定位的生成代码问题进行定向修复，并按配置保存验证记录、可复用算子和修复经验。
 
 ```
