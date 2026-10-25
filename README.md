@@ -121,25 +121,48 @@ streamlit run app.py                # Web 界面
 
 ### 整体架构
 
+**Workflow 是中央控制器**：统一调用各阶段，通过 `RunState` 保存需求、候选方案、源码和验证结果。下图的箭头表示数据流向；虚线表示读取知识或已有实现，实线表示阶段间的数据交接、结果写入与导出。
+
 ```mermaid
-flowchart LR
-    subgraph 输入
-        NL[自然语言需求] & CSV[数据 CSV]
+flowchart TB
+    INPUT["输入：自然语言需求 + CSV"]
+
+    subgraph WORKFLOW["Workflow 中央控制器 · RunState 共享状态"]
+        PL["Planner<br/>理解需求 · 检索知识 · 规划候选"]
+        CHOICE{"按每个步骤选择实现方式"}
+        REUSE["Reuse<br/>引用已注册算子"]
+        SY["Synthesizer<br/>按规格生成缺失算子源码"]
+        VE["Verifier<br/>组装 Pipeline · 执行训练与四级验证"]
+        CU["Curator<br/>注册合格新算子 · 记录验证结果与经验"]
+
+        PL -->|候选方案 PipelinePlan| CHOICE
+        CHOICE -->|已有合适实现| REUSE
+        CHOICE -->|需要新实现| SY
+        REUSE -->|已有算子引用与参数| VE
+        SY -->|生成源码| VE
+        VE -->|验证报告与候选结果| CU
     end
-    subgraph 知识层
-        MAT[历史代码 + 业务文档] -->|抽取 + 融合| KG[(能力知识图谱)]
-        REG[[算子注册表]]
+
+    subgraph KNOWLEDGE["知识与能力层"]
+        MAT["历史代码 + 业务文档"]
+        KG[("能力知识图谱<br/>场景 · 算子描述 · 验证记录 · 经验")]
+        REG["算子注册表<br/>名称@版本 → 可实例化的类"]
+        MAT -->|离线抽取与规则融合| KG
     end
-    subgraph Agent 层
-        PL[Planner] --> SY[Synthesizer] --> VE[Verifier] --> CU[Curator]
-        VE -- 代码错误 E_* --> SY
-        VE -- 指标不达标 M_* --> PL
-    end
-    NL & CSV --> PL
-    KG <-->|检索 / 回写| PL & SY & CU
-    REG <--> CU
-    CU --> OUT[pipeline.py + 验证报告]
+
+    INPUT -->|需求与数据画像| PL
+    INPUT -->|CSV 数据| VE
+    KG -.->|候选能力与经验| PL
+    KG -.->|参考源码与经验| SY
+    REG -.->|读取已有实现| REUSE
+    CU -->|回写算子描述、验证记录与经验| KG
+    CU -->|注册最优且通过方案中的新算子| REG
+    CU -->|更新 RunState 后由 Workflow 导出| OUT["输出：pipeline.py + 验证报告 + state.json"]
 ```
+
+一个候选方案可同时包含 Reuse 和 Synthesize 步骤；全部复用时无需调用 Synthesizer。Verifier 在验证子进程中加载所需实现并实例化流水线。Curator 负责运行后的知识回写；Planner 与 Synthesizer 读取图谱以规划或生成。
+
+图中展示组成关系与数据流。代码错误的定向修复、指标失败后的 Beam Search，以及停止条件，见[第 4 节的状态机](#4-agent-工作流四个角色一个中央控制器)。
 
 ```
 ├── factory/
