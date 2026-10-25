@@ -1,77 +1,468 @@
-# Agent 的输入与输出（Query / Response）
+# Agent 工作原理：职责、输入输出与协作流程
 
-本文档逐个说明每个 Agent **收到什么、返回什么、返回后怎样被校验**。需求、方案与验证结果等通过结构化对象交换；模型主要定义在 `factory/schemas.py`，部分定义在 `planner.py`、`profile.py` 和 `extract.py`。生成源码是字符串，由 Verifier 检查其内容与执行行为。
+本文用一个“预测客户流失”的任务，解释各个 Agent **负责什么、收到什么、返回什么，以及代码在哪里**。先看流程与例子，需要查具体字段时再看最后的技术附录。
 
-文中的 JSON 与代码片段经过节选，用于说明字段与接口，不一定是完整可运行输入。可复现的真实 LLM 录制见 [`examples/cassettes/`](../examples/cassettes/)，完整演示结果见 [`examples/demo/`](../examples/demo/)；修复与搜索的规则 mock 运行节选另见 [`examples/verification/`](../examples/verification/)。
+正文中的对象和方案是教学示意，不代表已经运行或达到指标。真实 LLM 录制演示见 [examples/demo/](../examples/demo/)，录制响应见 [examples/cassettes/](../examples/cassettes/)；经过实际验证器执行的规则 mock 修复与搜索样例见 [examples/verification/](../examples/verification/)。
 
-## 总览
+阅读导航：[Planner](#2-planner把需求变成候选执行方案) · [Synthesizer](#3-synthesizer生成缺失代码并按诊断修复) · [Verifier](#4-verifier运行方案给出指标和失败原因) · [Curator](#5-curator让本次运行留下可复用的知识) · [Workflow](#6-workflow谁决定修复重新规划和结束) · [技术附录](#8-技术附录)。
 
-| 阶段 | 调用 | LLM | Query（输入） | Response（输出） | 校验 / 失败时 |
-| --- | --- | :-: | --- | --- | --- |
-| 需求理解 | `Planner.understand` | ✅ | 自然语言需求 + 数据画像 + 场景指标 | `TaskSpec` | schema + 目标列存在；无出处的次要阈值被移除 |
-| 知识检索 | `Planner.retrieve` | — | `TaskSpec` + 画像标签 | `PlanningContext`（每类步骤的候选算子 + 经验） | 确定性 |
-| 方案规划 | `Planner.propose` | ✅ | `TaskSpec` + 画像 + 检索结果（+ 反馈 / 父方案） | `PlanSet`（N 个 `PipelinePlan`） | schema + 语义检查，不通过带错误重问 |
-| 代码生成 | `Synthesizer.synthesize` | ✅ | `SynthSpec` + 任务摘要 + 参考代码 + 经验 | `GeneratedOperator`（源码） | 交给 Verifier |
-| 代码修复 | `Synthesizer.repair` | ✅ | 上一版源码 + `Diagnostic` + 同诊断码经验 | `GeneratedOperator`（修订号 +1） | 交给 Verifier |
-| 自动验证 | `Verifier.verify` | — | `PipelinePlan` + `TaskSpec` + 数据 + 生成源码 | `ValidationReport`（指标 + `Diagnostic` 列表） | 确定性 |
-| 知识沉淀 | `Curator.record` | 部分 | `RunState` | 写入 KG：算子、`ValidationRun`、`Lesson` | 注册前再做一次静态复查 |
-| 经验提炼 | `Curator.distill` | ✅ | `RepairRecord`（诊断 + 代码 diff） | `LessonRecord` | schema |
+## 1. 总览：一个任务如何经过各个 Agent
 
-```mermaid
-sequenceDiagram
-    participant U as 用户
-    participant W as Workflow（状态机）
-    participant P as Planner
-    participant KG as 知识图谱
-    participant S as Synthesizer
-    participant V as Verifier
-    participant C as Curator
-    U->>W: 需求 + data.csv
-    W->>P: understand(需求, 画像)
-    P-->>W: TaskSpec
-    W->>P: retrieve(TaskSpec, 画像)
-    P->>KG: search_operators / search_lessons
-    KG-->>P: 候选算子（得分 + 证据）、经验
-    W->>P: propose(TaskSpec, 检索结果)
-    P-->>W: N 个 PipelinePlan
-    W->>S: synthesize(SynthSpec) × 缺失步骤
-    S-->>W: GeneratedOperator
-    W->>V: verify(plan, generated)
-    V-->>W: ValidationReport
-    alt 代码类诊断 E_*
-        W->>S: repair(源码, Diagnostic, 经验)
-        S-->>W: 修复后的 GeneratedOperator → 重新 verify
-    else 指标类诊断 M_*
-        W->>P: propose(feedback, beam_parents)
-        P-->>W: 子方案 → KG 先验剪枝 → BUILD
-    end
-    W->>C: record(RunState)
-    C->>KG: 注册算子 / 写 ValidationRun / 写 Lesson
-    W-->>U: pipeline.py + report.md/html
+假设用户输入：
+
+> 预测客户流失，需要可解释性，召回率不低于 0.75。
+
+同时提供一个 CSV，目标列为 `churn`，其中 `total_charges` 含空白字符串，部分其他列也有缺失值。
+
+| 组件 | 负责什么 | 主要输出 | 是否使用 LLM |
+| --- | --- | --- | --- |
+| Planner | 理解需求、检索知识、提出候选执行方案 | 任务规格 `TaskSpec`、候选方案 `PipelinePlan` 列表 | 理解需求与生成方案时使用；检索不使用 |
+| Synthesizer | 为缺失能力生成源码，按诊断修改本次生成的代码 | 含源码的 `GeneratedOperator` | 生成和修复时使用 |
+| Verifier | 检查源码、执行方案、验证接口契约和指标 | 验证报告 `ValidationReport` | 否 |
+| Curator | 注册通过的新算子、记录验证结果、提炼修复经验 | 注册记录、验证记录、经验 | 仅提炼经验时使用 |
+| Workflow | 调用上述组件，决定继续修复、重新规划还是结束 | 完整运行状态、流水线脚本和报告 | 调度本身不使用 |
+
+```text
+用户需求 + CSV
+    ↓
+Planner：明确任务 → 检索已有能力 → 给出候选方案
+    ↓
+Synthesizer：为标记为 Synthesize 的步骤补齐源码
+    ↓
+Verifier：检查并运行每个候选方案
+    ↓
+Workflow：根据验证结果安排修复、重新规划或结束
+    ↓
+Curator：记录结果，按条件注册算子和提炼经验
+    ↓
+流水线脚本 + 验证报告 + state.json
 ```
 
----
+**“使用 LLM”描述的是实现方式，不等于每次都会请求远端 API。** `replay` 读取录制响应，`mock` 使用规则响应；`live` 和 `record` 命中缓存或录制时也会直接读取，未命中才请求 API。具体运行方式见 [README 第五节](../README.md#5-环境配置和运行方法)。
 
-## 0. 通用约定
+## 2. Planner：把需求变成候选执行方案
 
-### 消息结构
+Planner 包含三个阶段：**需求理解 → 知识检索 → 方案生成**。它决定方案有哪些步骤、按什么顺序执行，以及每一步是 Reuse 还是 Synthesize。
 
-Planner 和 Curator 的首次结构化请求通常使用以下三条消息；校验失败后会追加原回复与错误反馈：
+### 2.1 输入与输出
 
+| 阶段 | 输入 | 输出 | 是否使用 LLM |
+| --- | --- | --- | --- |
+| ① `understand()` | 自然语言需求、数据画像、指定目标列、历史场景指标 | `TaskSpec`：结构化任务规格 | 是 |
+| ② `retrieve()` | `TaskSpec`、数据画像、关联场景、候选数量设置 | `PlanningContext`：候选算子、检索依据和历史经验 | 否 |
+| ③ `propose()` | `TaskSpec`、数据画像、`PlanningContext`，可选的失败反馈和父方案 | `list[PipelinePlan]`：候选执行方案列表 | 是 |
+
+### 2.2 `understand()`：明确要解决什么问题
+
+**输入：**
+
+- `request`：用户的自然语言需求。
+- `profile`：程序读取 CSV 后得到的数据画像，包括列名、类型、缺失情况、类别分布等。
+- `target`：用户指定的目标列；可选，指定后优先采用。
+- `scenario`：关联的历史场景；用于从知识图谱读取已有指标要求，也可以为空。
+
+**输出：`TaskSpec`，即后续规划和验收共同使用的任务规格。**
+
+```python
+TaskSpec(
+    description="预测客户流失，需要可解释性，召回率不低于 0.75。",
+    task_type="binary_classification",
+    modality="tabular",
+    target_column="churn",
+    metrics=[{"name": "recall", "threshold": 0.75, "primary": True}],
+    constraints=["interpretable", "recall_first"],
+)
 ```
-system : 角色 + 规则（例如"你是算法能力工厂的 Planner……规则：……"）
-user   : <<CONTEXT>> {结构化输入 JSON} <</CONTEXT>>
-system : Respond with a single JSON object only, ... conforming to this JSON schema: {pydantic 生成的 JSON Schema}
+
+这里把“召回率不低于 0.75”变成可比较的指标门槛，把“需要可解释性”变成规划约束标签。如果用户没有给出阈值，提示词要求优先采用场景中的阈值，否则采用默认值 0.7。
+
+返回前会检查结构和目标列等字段，并移除缺乏出处的次要指标要求。`interpretable` 目前用于指导检索和规划，没有对应的确定性可解释性验收。
+
+**作用：明确做什么、有哪些约束、用什么指标评价。**
+
+### 2.3 `retrieve()`：查找已有能力和经验
+
+**输入：**
+
+- `spec`：上一步得到的 `TaskSpec`。
+- `profile`：数据画像，主要使用其中的条件标签。
+- `scenario`：关联的历史场景。
+- `top_k`：每类算子返回多少个候选，默认 3。
+- `executable_only`：是否只返回可执行算子；默认随是否允许生成新代码而调整。
+
+代码把需求描述、画像标签和业务约束组成查询，按算子类型调用知识图谱的 `search_operators()`，再通过 `search_lessons()` 查找相关经验。**这一阶段不调用 LLM。**
+
+**输出：`PlanningContext`，即供下一步规划使用的上下文。** 假设当前使用初始能力库，清洗算子只有历史实现，以下只展示部分字段：
+
+```text
+PlanningContext
+  scenario：telecom_churn
+  scenario_metrics：关联场景的指标要求
+  options：
+    imputer：
+      - MissingValueImputer@1，executable=True
+      - TotalChargesCleaner@1，executable=False
+    encoder：……
+    model：
+      - LogisticRegressionModel@1，executable=True
+        score：检索得分
+        evidence：匹配条件、历史验证等依据
+  lessons：相关历史经验
 ```
 
-- **工作流上下文使用 JSON 字段**：Planner、Synthesizer 和 Curator 通过 `<<CONTEXT>>` 接收画像、检索结果与诊断。规则 mock 解析相同的上下文格式，走相同的工作流与验证器；响应由规则提供，不能替代真实 LLM 能力评估。离线抽取的请求还包含直接拼接的代码或文档文本；
-- **输出要求符合 schema**：`LLM.structured()` 把 pydantic 模型的 JSON Schema 放进 prompt，返回后先做 schema 校验，再执行调用方提供的语义检查 `check`；
-- **失败带错误重问**：任一校验失败，把原回复和错误信息追加进对话（`Your JSON was invalid: ...`），最多重试 `attempts` 次；
-- **代码生成例外**：Synthesizer 使用角色规则和上下文两条消息，要求返回一个 ```` ```python ```` 代码块，不走 `LLM.structured()` 的 JSON 校验。
+这里最关键的是 `executable`：
+
+- `True`：当前注册表中已有可执行实现，可以 Reuse。
+- `False`：图谱中有历史能力描述或参考源码，但当前没有可直接执行的注册实现，可以作为 Synthesize 的参考。
+
+因此，**知识图谱中“查得到”不等于注册表中“可以直接运行”**。每个候选还带有得分、分项得分、证据和参数信息，供 Planner 判断并在报告中说明依据。对象中的字段名是 `options`，放进 LLM 上下文时改为 `operator_options`。
+
+**作用：告诉 Planner 有哪些能力可选、哪些可以直接执行、选择依据是什么。**
+
+### 2.4 `propose()`：决定步骤、顺序与 Reuse / Synthesize
+
+**输入：**
+
+- `spec`：任务规格。
+- `profile`：数据画像。
+- `ctx`：检索得到的 `PlanningContext`。
+- `n_candidates`：期望的候选方案数量，方法默认值为 2。
+- `feedback`：之前验证失败的反馈，初次规划时通常为空。
+- `parents`：重新规划时提供的已验证父方案摘要，初次规划时通常为空。
+
+**输出：`list[PipelinePlan]`，即多个候选执行方案。** 例如可以提出下面两个方案，均保留线性模型作为可解释性方向，比较不同特征和参数：
+
+```text
+方案 A：清洗 + 逻辑回归
+  TotalChargesCleaner       (Synthesize，参考历史 @1)
+      ↓
+  MissingValueImputer        (Reuse)
+      ↓
+  OneHotCategoricalEncoder   (Reuse)
+      ↓
+  StandardFeatureScaler     (Reuse)
+      ↓
+  LogisticRegressionModel    (Reuse，C=1.0)
+
+方案 B：增加在网时长分箱特征 + 逻辑回归
+  TotalChargesCleaner       (Synthesize，与 A 共用本次生成实现)
+      ↓
+  MissingValueImputer        (Reuse)
+      ↓
+  TenureBucketizer           (Synthesize，参考历史 @1)
+      ↓
+  OneHotCategoricalEncoder   (Reuse)
+      ↓
+  StandardFeatureScaler     (Reuse)
+      ↓
+  LogisticRegressionModel    (Reuse，C=0.5)
+```
+
+`TotalChargesCleaner` 处理特定列的脏值，不能代替对其他列的通用缺失值填补，因此仍保留 `MissingValueImputer`。候选也可以采用不同模型，实际选择由需求、检索结果和 LLM 响应共同决定。
+
+每一步还包含选择理由和参数。例如一个复用步骤可以表示为：
+
+```python
+Step(
+    kind="model",
+    action="reuse",
+    operator_ref="LogisticRegressionModel@1",
+    params={"C": 1.0, "class_weight": "balanced"},
+    rationale="根据可解释性要求选择线性分类模型，并通过类别权重处理不平衡。",
+)
+```
+
+对于 Synthesize 步骤，Planner 提供的是 `SynthSpec`：类名、用途、输入输出和参考实现，源码由 Synthesizer 随后生成。**Planner 交付的是候选规划，是否可执行、指标是否达标，还要由后续验证确定。**
+
+内部 LLM 响应使用 `PlanSet` 包装，形如 `{"plans": [...]}`；`propose()` 校验并绑定参数后，返回其中的方案列表。每个方案当前最多包含 2 个 Synthesize 步骤。更多校验规则见[技术附录](#8-技术附录)。
+
+### 2.5 代码在哪里？
+
+主要实现：[factory/agents/planner.py](../factory/agents/planner.py)。
+
+- `understand()`：调用 `self.llm.structured(..., TaskSpec, ...)` 理解需求。
+- `retrieve()`：调用 `self.kg.search_operators()` 和 `search_lessons()` 检索知识。
+- `propose()`：调用 `self.llm.structured(..., PlanSet, ...)` 提出并校验候选方案。
+
+调用入口：[factory/workflow.py](../factory/workflow.py) 的 `_plan()`。关键调用顺序如下，画像生成和日志代码已省略：
+
+```python
+state.spec = self.planner.understand(
+    state.request, rough, target=state.target, scenario=ctx.scenario,
+)
+ctx.planning = self.planner.retrieve(
+    state.spec, ctx.profile, scenario=ctx.scenario,
+)
+state.candidates = self.planner.propose(
+    state.spec, ctx.profile, ctx.planning, n_candidates=self.cfg.n_candidates,
+)
+```
+
+其中 `rough` 是初步画像；理解需求并确定目标列后，Workflow 会重新生成 `ctx.profile`，再用于检索和规划。
+
+**一句话总结：Planner 通过需求理解、确定性知识检索和方案生成，把自然语言需求变成带参数、理由和复用 / 生成标记的候选执行计划。** 首次规划通常经过两个 LLM 阶段，校验重试和重新规划会增加调用，实际远端请求次数还受运行模式与缓存影响。
+
+## 3. Synthesizer：生成缺失代码，并按诊断修复
+
+Synthesizer 只处理 Planner 标记为 Synthesize 的步骤。Reuse 步骤由执行层直接从注册表实例化，不需要 Synthesizer 再写一遍代码。
+
+### 3.1 输入与输出
+
+| 阶段 | 输入 | 输出 | 是否使用 LLM |
+| --- | --- | --- | --- |
+| `synthesize()` 生成 | `SynthSpec`、任务规格、数据画像、版本号、相关经验；按 reference 读取参考源码 | `GeneratedOperator`：源码、规格、版本和修订号 | 是 |
+| `repair()` 修复 | 上一版 `GeneratedOperator`、结构化 `Diagnostic`、同诊断码的经验 | 修复后的 `GeneratedOperator`，修订号加 1 | 是 |
+
+### 3.2 `synthesize()`：把算子规格变成实现
+
+在前面的案例中，Planner 要求一个 `TotalChargesCleaner`，其任务是将含空白字符串的 `total_charges` 安全转换为数值。
+
+```text
+输入
+  SynthSpec：类名、类型、用途、输入、输出、reference
+  TaskSpec：需求描述、目标列、约束
+  DataProfile：数据画像
+  参考代码：图谱中的 TotalChargesCleaner@1 源码
+  经验：先处理空白字符串，再转换数值等
+      ↓
+输出 GeneratedOperator
+  spec：原算子规格
+  source：完整 Python 算子类源码
+  version：2（假设当前图谱和注册表中同名最高版本为 1）
+  revision：0（本次运行内的首版代码）
+```
+
+LLM 接收算子接口规范，返回 Python 代码块；程序提取源码并包装为 `GeneratedOperator`。这里使用 `llm.chat()`，不走 `LLM.structured()` 的 JSON 校验。生成后先交给 Verifier，不在生成阶段直接执行。
+
+### 3.3 `repair()`：根据具体诊断修改出错算子
+
+假设首版清洗代码在数值转换后留下新的 NaN。Verifier 可以返回 `E_NAN`，并定位到 `TotalChargesCleaner@2`。Workflow 随后按同一诊断码检索修复经验，将**旧源码 + 具体诊断 + 同类经验**交给 `repair()`。
+
+```text
+首版源码：数值转换后留下新的 NaN
+诊断：E_NAN，出错算子 TotalChargesCleaner@2
+    ↓ repair()
+修复源码：补齐产生的缺失值
+version 仍为 2，revision 从 0 变为 1
+    ↓
+重新验证所有受影响的完整候选方案
+```
+
+这就是“带诊断的定向修复”：先定位问题，再修改对应算子，并用完整方案重新验证。提示词要求只处理该问题、保持接口，但程序不强制修改一定是最小 diff。
+
+只有代码类诊断能够定位到本次生成的算子、且未超过修复上限时，才进入该分支；默认每个算子最多修复 3 轮。`RepairRecord.fixed=true` 只表示原算子上的同一诊断码不再出现，不表示整个方案已经通过。
+
+实际执行过的[规则 mock 修复样例](../examples/verification/README.md#定向修复与后续复用)将 `fill_value=None` 改为 `0.0`，随后通过验证并在第二次运行中复用。该样例使用召回率门槛 0.4，与本文 0.75 的教学案例不同；不能将其结果当成本文案例已经达标。
+
+### 3.4 代码在哪里？
+
+主要实现：[factory/agents/synthesizer.py](../factory/agents/synthesizer.py) 的 `synthesize()`、`repair()` 和接口规范 `CONTRACT`。调用入口是 [factory/workflow.py](../factory/workflow.py) 的 `_build()`、`_repair()`。
+
+`_build()` 按算子名称去重，同名生成算子在一次运行内可以被多个候选共享；修复后，Workflow 将涉及它的旧报告移入历史，再重新验证。
+
+**一句话总结：Synthesizer 把“需要一个什么算子”变成源码，并根据验证器提供的具体错误修改这份源码。**
+
+## 4. Verifier：运行方案，给出指标和失败原因
+
+Verifier 是确定性验证器，不调用 LLM。它依据检查规则和实际执行结果生成报告，供 Workflow 决定下一步。
+
+### 4.1 输入与输出
+
+| 方法 | 输入 | 输出 | 是否使用 LLM |
+| --- | --- | --- | --- |
+| `verify()` | `PipelinePlan`、`TaskSpec`、CSV 路径、该方案使用的生成源码 | `ValidationReport`：通过状态、诊断、指标、波动和资源数据 | 否 |
+
+验证配置从构造参数或 `configs/tasks/<task_type>.yaml` 读取，包括交叉验证折数、随机种子、超时和内存上限等。
+
+### 4.2 检查什么？
+
+| 层级 | 检查内容 | 常见失败诊断 |
+| --- | --- | --- |
+| ① 静态检查 | 生成源码的语法、允许的导入和调用、接口、元数据与参数一致性 | `E_SYNTAX`、`E_UNSAFE`、`E_INTERFACE` |
+| ② 沙箱执行 | 子进程能否加载和执行；是否超时、超内存或触发越权行为 | `E_RUNTIME`、`E_TIMEOUT`、`E_UNSAFE` |
+| ③ 契约检查 | 是否修改输入、改变行数、引入 NaN/Inf；预测形状和概率是否合法等 | `E_MUTATION`、`E_SHAPE`、`E_NAN`、`E_PROBA` |
+| ④ 指标检查 | 多种子交叉验证的指标是否达到门槛，波动是否过大或分数疑似虚高 | `M_THRESHOLD`、`M_UNSTABLE` |
+
+前置检查失败时停止后续评估。子进程负责加载所需算子并组装 sklearn Pipeline；Reuse 复用的是实现和参数，模型仍在当前训练数据上拟合。
+
+### 4.3 输出如何帮助修复？
+
+`ValidationReport` 包含 `passed`、`diagnostics`、`metrics`、`metric_std`、`resources` 和 `notes`。其中一个诊断可以表示为：
+
+```text
+Diagnostic
+  code：E_NAN
+  stage：contract
+  operator：TotalChargesCleaner@2
+  message：输出引入了新的 NaN/Inf
+  hint：检查该算子产生和处理缺失值的逻辑
+```
+
+相比一段“运行失败”的文本，这个结构同时说明了**问题类型、发现阶段和出错位置**。Workflow 据此判断能否调用 Synthesizer 修复。若是 `M_THRESHOLD`，则通常需要调整方案或参数，而不是直接把它当作某个算子的代码错误。
+
+### 当前验证范围
+
+- 当前支持分类任务；二分类以少数类作为正类，尚未提供显式业务正类配置。
+- 未注册的指标在 `notes` 中记为跳过，缺失指标值不会触发阈值失败。因此 `passed=true` 仍可能缺少必需指标的验收，应核对报告中实际包含的指标。
+- `interpretable` 等标签用于检索和规划，目前没有对应的确定性业务约束验收；高分触发的疑似泄漏检查也不能证明不存在其他泄漏。
+- 静态检查、子进程审计钩子和资源限制覆盖部分风险。通过验证并被选中的源码还会在注册时经静态复查后于主进程执行；后续加载保存的算子也会执行源码。主进程注册和原生扩展等仍是隔离边界，当前不是操作系统级完整隔离。
+
+固定代码、数据、配置、随机种子与依赖环境后支持复现，平台和资源上限等仍可能影响结果。通过只表示满足当前检查项。
+
+### 4.4 代码在哪里？
+
+入口：[factory/verify/__init__.py](../factory/verify/__init__.py) 的 `Verifier.verify()`。静态检查见 [static.py](../factory/verify/static.py)，子进程与行为拦截见 [sandbox.py](../factory/verify/sandbox.py)、[guard.py](../factory/verify/guard.py)，契约与指标检查见 [checks.py](../factory/verify/checks.py)。调用入口是 Workflow 的 `_verify()`。
+
+**一句话总结：Verifier 用规则与执行结果回答“这条方案哪里有问题、指标是多少、是否满足当前验收项”，下一步调度由 Workflow 决定。**
+
+## 5. Curator：让本次运行留下可复用的知识
+
+Curator 负责记录运行成果。它的大部分操作由代码完成，只有把修复过程概括为经验时使用 LLM。
+
+### 5.1 输入与输出
+
+| 方法 | 输入 | 输出与副作用 | 是否使用 LLM |
+| --- | --- | --- | --- |
+| `record()` | `RunState`、关联场景 | 返回验证记录 ID 列表；更新图谱、注册表及状态中的注册 / 经验字段 | 记录和注册不使用；内部按条件调用 `distill()` |
+| `distill()` | 一条 `RepairRecord`、算子用途 | `LessonRecord`：现象、通用修复方法、诊断码和适用条件 | 是 |
+
+### 5.2 `record()`：哪些内容会保存？
+
+| 内容 | 写入条件 | 后续用途 |
+| --- | --- | --- |
+| 新算子实现 | 仅最优且通过验证的方案所使用的新算子；注册前再次静态复查 | 后续任务直接 Reuse |
+| 验证记录 | 当前候选的最终验证结果，失败结果也记录 | 提供可追溯的历史指标和搜索依据 |
+| 修复经验 | 存在 `fixed=true` 的修复记录且配置了 LLM | 后续检索同类问题的处理方法 |
+| 经验命中次数 | 本次放入规划或修复上下文的经验 | 记录经验被使用的情况 |
+
+没有匹配场景时，会根据任务规格新建场景与指标关系。并非所有生成代码都会注册：未通过方案中的新算子不会仅因“生成过”就成为可复用能力。
+
+启用磁盘回写时，新源码保存到图谱目录下的 `operators/<Name>_v<版本>.py`，图谱也会保存。`--no-writeback` 会禁止这些持久化操作，但当前进程的内存图谱和注册表仍可更新，运行目录中的报告与状态也照常保存。
+
+### 5.3 `distill()`：从一次改动中总结经验
+
+```text
+输入
+  原诊断：E_NAN，清洗后引入 NaN
+  修复差异：fill_value 从 None 改为 0.0
+  算子用途：清洗字符串数值列
+      ↓ distill()
+输出 LessonRecord（教学示意）
+  title：数值转换后应处理新产生的缺失值
+  trigger：转换脏值后出现新的 NaN
+  fix：转换后按业务含义填补缺失值，并保持默认参数与元数据一致
+  error_code：E_NAN
+  applies_to：相关条件标签
+```
+
+写入时按诊断码与标题相似度融合。后续修复先按同一诊断码过滤，再按报错文本排序检索；不保证某条经验一定入选，也不自动证明经验适用于所有同类问题。
+
+### 5.4 代码在哪里？
+
+主要实现：[factory/agents/curator.py](../factory/agents/curator.py) 的 `record()`、`distill()`，以及 `_register_operators()`、`_write_runs()`、`_distill_lessons()`。Workflow 的 `_curate()` 调用 `record()`，并把其返回值赋给 `state.kg_writes`。
+
+**一句话总结：Curator 保存符合条件的实现、验证结果和修复经验，为下一次任务提供可检索、可复用的材料。**
+
+## 6. Workflow：谁决定修复、重新规划和结束？
+
+各阶段由 [factory/workflow.py](../factory/workflow.py) 的 `Workflow.run()` 统一调度，运行数据记录在 `RunState`。可把 `RunState` 理解为这次任务的公共记录本，`ctx` 则保存画像、检索上下文和待修复队列等运行期对象。
+
+### 6.1 根据诊断选择下一步
+
+`_route()` 按以下顺序判断：
+
+1. **先处理可修复的生成算子。** 诊断是代码类、能定位到本次生成算子、且未达修复上限时，进入 `_repair()`，然后重新验证受影响方案。
+2. **再检查是否有方案通过。** 有则选优，进入 `_curate()`。
+3. **仍无通过方案时，检查能否重新规划。** 重规划次数未耗尽，且诊断全为指标类或当前允许生成新算子时，进入 `_replan()`。
+4. **无法继续时记录失败。** 仍进入 Curator 记录结果，随后结束为失败。
+
+因此，“`E_*` 一定修复、`M_*` 一定重规划”只是粗略理解。实际还取决于错误是否可定位、是否为本次生成的代码、是否已有候选通过，以及剩余重试次数。允许生成时，代码问题无法继续修复也可能进入重新规划。
+
+### 6.2 重新规划为什么叫 Beam Search？
+
+重新规划沿用已经得到的任务规格和检索上下文，再次调用 `Planner.propose()`，附上失败反馈与父方案摘要：
+
+```text
+选出排名前 k 个已验证父方案
+    ↓
+请求 Planner 扩展 k × m 个子方案
+    ↓
+按步骤、算子和参数签名去重
+    ↓
+结合匹配场景的历史记录与本次观测估计先验分
+    ↓
+最多保留 k 个子方案，进入生成与验证
+```
+
+`k` 是 beam 宽度，`m` 是扩展倍数。提示词要求局部修改，代码未强制每个子方案只改一处，也不保证 LLM 返回足量候选。先验是启发式估计，不是性能保证；新场景没有历史证据时使用本次观测与阈值平滑。
+
+实现见 [factory/search.py](../factory/search.py) 和 Workflow 的 `_replan()`。实际执行记录与限制见 [Beam Search 样例](../examples/verification/README.md#beam-search)。
+
+### 6.3 最后输出什么？
+
+`_save()` 将状态和报告写入 `runs/<run_id>/`，并保存本次生成源码；有选中的方案和任务规格时还导出 `pipeline.py`。如果方案未通过，脚本会带失败警告，不能仅凭文件生成就认为任务成功。最终状态以 `state.status` 和验证报告为准。
+
+**一句话总结：Workflow 根据共享状态和验证结果安排下一步，各 Agent 提供本阶段的规划、源码、诊断或记录。**
+
+## 7. 补充：历史代码和文档如何进入知识图谱？
+
+前面使用的历史能力和经验来自单独的批量抽取流程，不属于每次任务运行的必经阶段。“离线构建”指任务运行前准备知识，不等于一定不请求 API，是否请求仍取决于 LLM 模式和缓存。
+
+| 阶段 | 输入 | 输出 | 是否使用 LLM |
+| --- | --- | --- | --- |
+| `scan_repo()` | 历史 Python 代码仓库 | 通过 AST 提取的函数签名、文档字符串、源码和依赖线索 | 否 |
+| `summarize_function()` | 函数信息和源码 | `CapabilityCard`：能力类型、用途、输入输出、条件和参数 | 是，标签 `extract_code` |
+| `extract_doc()` | 业务文档、场景、已知算子名等 | `DocKnowledge`：指标、约束、实验和经验 | 是，标签 `extract_doc` |
+| `build_kg()` | 抽取结果、材料清单和函数信息 | 融合后的能力知识图谱 | 否 |
+
+例如，文档中的“数值列含空白字符串时，先 strip，再安全转换并处理缺失值”，可以抽取为带 `E_RUNTIME` 诊断码的经验。Planner 检索时可用它安排清洗步骤，Synthesizer 生成或修复时也可将它放入上下文。
+
+代码见 [factory/extract.py](../factory/extract.py)。本体、抽取、融合和存储的详细解释见 [schema.md](schema.md)，这里不重复展开。
+
+## 8. 技术附录
+
+### 关键对象与字段
+
+| 对象 | 关键字段 | 定义位置 |
+| --- | --- | --- |
+| `TaskSpec` | `description`、`task_type`、`modality`、`target_column`、`text_column`、`metrics`、`constraints` | [schemas.py](../factory/schemas.py) |
+| `PlanningContext` | `scenario`、`scenario_metrics`、`options`、`lessons`；`to_prompt()` 将 `options` 映射为 `operator_options` | [planner.py](../factory/agents/planner.py) |
+| 检索候选 | `ref`、`executable`、`origin`、`description`、`conditions`、`params`、`defaults`、`score`、`breakdown`、`evidence` | [planner.py](../factory/agents/planner.py) 的 `retrieve()` |
+| `PipelinePlan` | `name`、`rationale`、`steps` | [schemas.py](../factory/schemas.py) |
+| `Step` | `kind`、`action`、`operator_ref`、`synth_spec`、`params`、`rationale` | 同上 |
+| `SynthSpec` | `name`、`kind`、`purpose`、`inputs`、`outputs`、`reference` | 同上 |
+| `GeneratedOperator` | `spec`、`source`、`version`、`revision`；`key` 为 `Name@version` | 同上 |
+| `Diagnostic` | `code`、`stage`、`message`、`operator`、`hint` | 同上 |
+| `ValidationReport` | `plan_name`、`passed`、`diagnostics`、`metrics`、`metric_std`、`resources`、`notes` | 同上 |
+| `RepairRecord` | `operator`、`revision`、`diagnostic`、`lessons`、`fixed`、`before`、`after` | 同上 |
+| `LessonRecord` | `title`、`trigger`、`fix`、`error_code`、`applies_to` | [extract.py](../factory/extract.py) |
+| `SearchRound` | `round`、`parents`、`width`、`candidates`；候选记录先验、证据、是否入选及理由 | [schemas.py](../factory/schemas.py) |
+
+`metrics` 中每项包含 `name`、`threshold`、`primary`，恰好一个主指标。`metric_std` 表示不同种子聚合结果之间的标准差；`resources` 记录训练耗时、千条预测耗时和峰值内存等。
+
+### 消息结构与校验
+
+Planner 和 Curator 的结构化请求通常由角色规则、结构化上下文及 JSON Schema 要求组成：
+
+```text
+system：角色与规则
+user：<<CONTEXT>> {结构化输入} <</CONTEXT>>
+system：只返回符合指定 JSON Schema 的 JSON 对象
+```
+
+`LLM.structured()` 先解析响应并进行 Pydantic 校验，再执行调用方提供的语义检查。失败时追加原回复和错误信息，要求更正，达到尝试上限后抛出异常。Planner 的两类结构化请求最多各尝试 3 次。
+
+`TaskSpec` 检查唯一主指标、文本任务必需文本列等，Planner 另检查目标列和文本列存在。`_grounded_metrics()` 保留主指标，对次要指标按场景中同名同阈值记录或需求文本中的阈值字符串过滤。被移除的次要要求是否仍在报告中计算，取决于验证配置的 `report_metrics`，不是自动保证“只报告不设门槛”。
+
+`PipelinePlan` 要求最后且仅有一个模型步骤；Reuse 必须给出引用，Synthesize 必须给出规格。`plan_errors()` 检查可复用算子的存在性、类型、模态和参数名，检查生成数量、参考节点以及已有可执行能力的重复生成等。`bind()` 规范化引用、绑定文本列等参数，并对齐生成算子的名称和版本参考。这些检查不能替代实际执行验证。
+
+Synthesizer 的 `synthesize()` 和 `repair()` 使用 `LLM.chat()` 返回源码字符串，不走结构化 JSON 校验。接口规范要求指定类名、sklearn 兼容接口、`meta`、参数默认值一致、转换不改输入和行数、处理自身引入的非有限值、合法的模型概率输出，以及允许的库导入；落实情况由验证器检查。
+
+调用标签包括 `plan_spec`、`plan`、`synthesize`、`repair`、`lesson`、`extract_code`、`extract_doc`。录制与缓存文件采用 `<tag>-<请求哈希>.json`，哈希包含模型、消息和 JSON 模式，不含密钥与接口地址。抽取请求直接包含代码或文档文本；规则 mock 与真实模型使用同一工作流，但不能代替真实模型能力评估。
 
 ### 算子接口与执行
 
-算子通过 `meta` 描述名称、类型、适用条件和依赖。以下是接口示意，`fit` / `transform` 的省略号需要由具体实现替换；完整实现见 [tabular.py](../factory/operators/tabular.py)。
+算子通过 `meta` 描述名称、版本、类型、条件、依赖和参数，并实现 sklearn 兼容接口。以下是接口示意，省略号需由具体实现替换：
 
 ```python
 @register
@@ -88,7 +479,9 @@ class MissingValueImputer(TransformerMixin, Operator):
     def transform(self, X): ...
 ```
 
-内置算子在导入时注册；生成算子先在验证子进程中加载，最优且通过的方案所用新算子再由 Curator 持久化并在主进程注册。执行层按步骤实例化算子，核心逻辑为：
+完整算子见 [tabular.py](../factory/operators/tabular.py)。内置算子导入时注册；生成算子先在验证子进程中加载，最优且通过的方案所用新算子经复查后由 Curator 注册，启用回写时同时保存源码。
+
+执行层通过注册表实例化各步骤，再组装为 sklearn Pipeline，关键逻辑为：
 
 ```python
 steps = []
@@ -98,363 +491,21 @@ for i, step in enumerate(plan.steps):
 pipe = Pipeline(steps)
 ```
 
-完整实现见 [operators/__init__.py](../factory/operators/__init__.py)。只有输入输出与步骤顺序兼容的算子才能组合。Reuse 复用实现和参数配置，仍在当前训练数据上拟合；生成源码与训练后的模型权重分别保存。
-
-### 调用标签
-
-每次调用带一个 `tag`（`plan_spec`、`plan`、`synthesize`、`repair`、`lesson`、`extract_code`、`extract_doc`），用于缓存与录制回放的文件名（`<tag>-<请求哈希>.json`，哈希不含密钥与地址）。
+实现见 [operators/__init__.py](../factory/operators/__init__.py)。只有输入输出和步骤顺序兼容的算子才能组合。Reuse 复用实现与参数配置，在当前训练数据上重新拟合；生成源码和训练后的模型权重是不同产物。
 
 ### 共享状态 RunState
 
-Agent 之间不直接调用，而是由 `factory/workflow.py` 调度，通过共享状态 `RunState` 交换数据：
+下表中的字段由 Workflow 接收各组件结果后写入，部分由 Curator 直接更新：
 
-| 字段 | 写入方 | 读取方 |
-| --- | --- | --- |
-| `request` `data_path` `target` | 用户 | Planner |
-| `spec`（TaskSpec） `profile_tags` `retrieval` | Planner | 全部 |
-| `candidates`（PipelinePlan 列表） | Planner | Synthesizer、Verifier、Curator |
-| `generated`（算子名 → GeneratedOperator） | Synthesizer | Verifier、Curator |
-| `reports`（ValidationReport 列表） `history` | Verifier | Workflow 路由、Curator |
-| `repairs`（RepairRecord 列表） | Workflow（修复时） | Curator |
-| `search`（SearchRound 列表） | Workflow（Beam 搜索） | 报告 |
-| `best_plan` | Workflow（`rank_reports`） | Curator、导出代码 |
-| `registered` `kg_writes` `lessons_learned` `lessons_used` | Curator / Workflow | 报告 |
-
-每次运行结束，`RunState` 完整保存为 `runs/<run_id>/state.json`，报告可由它重新生成。
-
----
-
-## 1. Planner Agent
-
-### 1.1 需求理解 `understand` → `TaskSpec`
-
-**Query**
-
-| 字段 | 来源 | 说明 |
-| --- | --- | --- |
-| `request` | 用户 | 原始自然语言需求 |
-| `user_target` | 用户（可选） | 指定的目标列 |
-| `data_profile` | `profile.py`（确定性） | 行数、类别分布、每列角色 / 类型 / 缺失率 / 基数、条件标签 |
-| `scenario_metrics` | 知识图谱 | 已知场景的指标与阈值（来自需求文档） |
-
-**Response：`TaskSpec`**
-
-| 字段 | 说明 |
+| 字段 | 内容与主要用途 |
 | --- | --- |
-| `description` | 原样保留的需求 |
-| `task_type` | `binary_classification` / `multiclass_classification` |
-| `modality` | `tabular` / `text`；文本任务需填 `text_column` |
-| `target_column` | 目标列 |
-| `metrics` | `[{name, threshold, primary}]`，恰好一个 primary |
-| `constraints` | 业务约束标签，如 `interpretable`、`recall_first` |
-
-**校验**：schema（恰好一个主指标、文本任务必须有文本列）+ 语义（`target_column` 必须在数据列中）。返回后再做一次**阈值溯源**：次要指标的阈值必须能在需求原文或知识图谱中找到出处，否则移除，只报告不设门槛。
-
-**示例**
-
-```jsonc
-// Query（节选）
-{"request": "预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户",
- "user_target": null,
- "data_profile": {"rows": 5000, "target": "churn", "class_counts": {"0": 3671, "1": 1329},
-                  "tags": {"string_typed_numeric": "数值列被读成字符串（含空白等脏值）", "imbalanced": "正负样本不平衡", "...": "..."},
-                  "columns": ["customer_id: id, str, missing 0.0%, unique 5000", "total_charges: string_numeric, str, ...", "..."]},
- "scenario_metrics": [{"name": "recall", "threshold": 0.75, "primary": true},
-                      {"name": "roc_auc", "threshold": 0.8, "primary": false},
-                      {"name": "recall_at_20", "threshold": null, "primary": false}]}
-
-// Response
-{"description": "预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户",
- "task_type": "binary_classification", "modality": "tabular", "target_column": "churn", "text_column": null,
- "metrics": [{"name": "recall", "threshold": 0.75, "primary": true},
-             {"name": "roc_auc", "threshold": 0.8, "primary": false}],
- "constraints": ["interpretable", "recall_first"]}
-```
-
-"尽量不漏掉"被理解为 `recall_first`，阈值 0.75 来自知识图谱中的需求文档，而不是 LLM 自己编的。
-
-### 1.2 知识检索 `retrieve` → `PlanningContext`（确定性，不调用 LLM）
-
-**Query**：`TaskSpec` + 画像标签 + 场景名。检索词为需求描述 + 条件标签（画像标签 ∪ 业务约束），按步骤类型（表格：imputer → feature → encoder → scaler → model；文本：vectorizer → model）逐类检索。
-
-**Response：`PlanningContext`**
-
-| 字段 | 说明 |
-| --- | --- |
-| `scenario` / `scenario_metrics` | 匹配到的场景及其指标 |
-| `operator_options` | `{步骤类型: [候选算子]}`，每个候选带 `ref`、`executable`、`origin`、`description`、`conditions`、可调参数、默认值、**`score` / `breakdown` / `evidence`** |
-| `lessons` | 相关经验 `[{title, trigger, fix, error_code}]` |
-
-**示例**：一个可直接复用的内置算子，一个只能参考的历史实现
-
-```json
-{"ref": "LogisticRegressionModel@1", "executable": true, "origin": "builtin",
- "conditions": ["interpretable", "scaled_features", "sparse_features"],
- "params": ["C", "class_weight", "max_iter", "random_state"],
- "score": 0.6403, "breakdown": {"text": 1.0, "condition": 0.091, "history": 0.71},
- "evidence": ["匹配条件：interpretable", "历史验证 1 次，平均 recall 0.710"]}
-
-{"ref": "TotalChargesCleaner@1", "executable": false, "origin": "extracted",
- "description": "将包含空白字符串的数值列安全转换为浮点型，并将缺失及空白值填充为0.0",
- "score": 0.4818, "breakdown": {"text": 1.0, "condition": 0.273, "history": 0.0},
- "evidence": ["匹配条件：has_missing_values、numeric_features、string_typed_numeric"]}
-```
-
-这份检索结果原样进入下一步的 prompt，同时写进 `RunState.retrieval`，在报告中作为"设计依据"展示。
-
-### 1.3 方案规划 `propose` → `PlanSet`
-
-**Query**
-
-| 字段 | 说明 |
-| --- | --- |
-| `task_spec` / `data_profile` | 上两步的结果 |
-| `n_candidates` | 需要的候选方案数 |
-| `allow_synthesis` / `max_synthesize_steps` | 是否允许生成新算子、每个方案最多几个生成步骤（2） |
-| `step_order` | 步骤顺序约定 |
-| `scenario` / `scenario_metrics` / `operator_options` / `lessons` | 检索结果 |
-| `feedback` | 重新规划时，上一轮方案的失败诊断 |
-| `beam_parents` | 仅 Beam 搜索时出现，见 1.4 |
-
-**Response：`PlanSet` = `{plans: [PipelinePlan]}`**
-
-```
-PipelinePlan
-├── name        snake_case 方案名
-├── rationale   整体设计依据
-└── steps[]     Step
-    ├── kind         imputer / feature / encoder / scaler / vectorizer / model
-    ├── action       reuse | synthesize
-    ├── operator_ref reuse 时：注册表键，如 MissingValueImputer@1
-    ├── synth_spec   synthesize 时：SynthSpec {name, kind, purpose, inputs, outputs, reference}
-    ├── params       超参数
-    └── rationale    这一步的理由（引用 evidence 或 lessons）
-```
-
-**每一步由 Planner 决定 Reuse 还是 Synthesize**：`executable=true` 的候选用 `reuse`；能力库没有、但数据或需求确有需要时用 `synthesize`，图中有历史实现就填进 `synth_spec.reference`。
-
-**校验**
-
-- schema：最后一步必须是模型，且只有一个模型步骤；reuse 必须有 `operator_ref`，synthesize 必须有 `synth_spec`；
-- 语义（`plan_errors`）：算子存在、类型与模态匹配、参数名属于该算子；生成步骤不超过上限；能力库已有可执行算子时不允许 synthesize；`reference` 必须在图谱中；方案名不重复；
-- 后处理（`bind`，确定性）：规范化为 `Name@version`，文本列等参数由 `TaskSpec` 绑定；生成算子与图中已有算子同名（忽略大小写）时沿用原名并接入版本谱系。
-
-**示例**（3 个候选中第 1 个，节选）
-
-```json
-{"name": "interpretable_logistic_regression",
- "rationale": "针对高可解释性需求与召回优先目标，结合在网时长分箱特征与标准化的线性模型，配合平衡类别权重实现高召回率与透明的特征权重解释。",
- "steps": [
-  {"kind": "imputer", "action": "synthesize",
-   "synth_spec": {"name": "TotalChargesCleaner", "kind": "imputer",
-                  "purpose": "将包含空白字符串的数值列安全转换为浮点型，避免数值转换异常并将空缺值填充为0.0",
-                  "inputs": "含 total_charges 字符串数值列的原始 DataFrame",
-                  "outputs": "total_charges 转换为浮点数值后的 DataFrame",
-                  "reference": "TotalChargesCleaner@1"},
-   "rationale": "根据 lesson 经验，必须先清洗 total_charges 中的空白字符并转为浮点数，防止后续处理类型转换失败。"},
-  {"kind": "imputer", "action": "reuse", "operator_ref": "MissingValueImputer@1",
-   "rationale": "依据匹配条件 has_missing_values，对其余数值和类别缺失列进行中位数和众数填补。"},
-  {"kind": "feature", "action": "synthesize", "synth_spec": {"name": "TenureBucketizer", "reference": "TenureBucketizer@1", "...": "..."}},
-  {"kind": "encoder", "action": "reuse", "operator_ref": "OneHotCategoricalEncoder@1", "params": {"max_categories": 20}},
-  {"kind": "scaler", "action": "reuse", "operator_ref": "StandardFeatureScaler@1",
-   "rationale": "根据 lesson 经验，逻辑回归模型必须在拟合前对特征进行标准化。"},
-  {"kind": "model", "action": "reuse", "operator_ref": "LogisticRegressionModel@1",
-   "params": {"C": 1.0, "class_weight": "balanced", "max_iter": 1000, "random_state": 42},
-   "rationale": "满足 interpretable 约束，且设置 class_weight='balanced' 解决不平衡导致的召回率不足问题。"}]}
-```
-
-### 1.4 Beam 扩展：`propose` + `beam_parents`
-
-指标不达标（`M_*`）时，Workflow 进入 REPLAN，仍调用 `propose`，但 Query 多两项：
-
-- `feedback`：每个未通过方案的诊断，例如 `"cost_ratio_random_forest: M_THRESHOLD recall = 0.7143 低于阈值 0.75"`；
-- `beam_parents`：当前排名前 k 的已验证方案摘要（`search.parent_summary`）：
-
-```jsonc
-{"name": "...", "steps": [{"kind": "...", "action": "reuse", "operator": "LogisticRegressionModel@1", "params": {}}],
- "recall": 0.7143,         // 主指标的实际值
- "passed": false,
- "diagnostics": ["M_THRESHOLD recall = 0.7143 低于阈值 0.75"]}
-```
-
-prompt 请求在父方案基础上做**局部修改**（换一个算子、调参、增删一个预处理步骤），扩展 k × m 个子方案；代码未强制每个子方案都只改一处，也不保证 LLM 返回足量候选。Response 同样是 `PlanSet`。之后 `search.select` 按步骤、算子与参数签名去重，结合匹配场景的知识图谱记录和本次观测估计先验，最多保留 k 个进入验证。新场景没有匹配的历史证据时，使用本次观测与阈值平滑。每轮结果记录为 `SearchRound`，写进报告。
-
-先验是按算子统计的启发式值，不是经过校准的性能预测；当前未对搜索收益做基线对照。流程运行节选见 [Beam Search 样例](../examples/verification/README.md#beam-search)。
-
----
-
-## 2. Synthesizer Agent
-
-Planner 已经为每一步标好了 Reuse 还是 Synthesize。Synthesizer 只为 synthesize 步骤生成源码，并按诊断修复本次生成的算子；reuse 步骤由执行层从注册表实例化。
-
-### 2.1 生成 `synthesize` → `GeneratedOperator`
-
-**Query**
-
-| 字段 | 说明 |
-| --- | --- |
-| `synth_spec` | Planner 给出的规格：类名、类型、用途、输入、输出、参考实现 |
-| `task` | 需求描述、目标列、业务约束 |
-| `data_profile` | 数据画像 |
-| `reference_code` | `synth_spec.reference` 指向的历史源码（来自知识图谱中抽取的算子），没有则为 null |
-| `lessons` | 按"用途 + 输入 + 输出"检索到的相关经验 |
-
-system 中附带**算子代码规范**（8 条）：只定义一个指定名字的类；继承 `(TransformerMixin, Operator)` 或 `(ClassifierMixin, Operator)`；声明 `meta = OperatorMeta(...)`，且 `params` 与 `__init__` 默认值一致；`transform` 先 `X.copy()`、不改输入、行数不变；自己产生的 NaN 自己处理；模型的 `predict_proba` 返回 numpy 数组；只能导入白名单内的库。
-
-**Response**：一个 ```` ```python ```` 代码块，解析为 `GeneratedOperator {spec, source, version, revision=0}`。版本号与图中同名算子顺延（参考 `@1` 时生成 `@2`）。
-
-**示例**（节选）
-
-```python
-class BalancedLightGBMClassifier(ClassifierMixin, Operator):
-    meta = OperatorMeta(
-        name="BalancedLightGBMClassifier", kind=OperatorKind.MODEL, version=2, origin="synthesized",
-        description="使用带类别平衡权重的LightGBM分类器进行建模，优化正类召回率并提供概率预测",
-        conditions=["imbalanced", "tabular", "classification"],
-        dependencies=["lightgbm", "scikit-learn", "numpy", "pandas"],
-        params={"n_estimators": 400, "learning_rate": 0.05, "num_leaves": 31, "class_weight": "balanced"},  # 其余参数省略
-        parent="BalancedLightGBMClassifier@1",
-    )
-    ...
-```
-
-生成阶段只返回源码，首次执行在 Verifier 的子进程中。验证通过并被最优方案使用后，Curator 会静态复查，并在主进程执行源码以注册类；后续启动加载保存的算子时也会执行源码。运行时审计钩子只安装在验证子进程中，因此当前机制仍不能提供操作系统级的完整隔离。
-
-### 2.2 修复 `repair` → `GeneratedOperator`（revision + 1）
-
-**Query**
-
-| 字段 | 说明 |
-| --- | --- |
-| `synth_spec` | 原规格 |
-| `previous_code` | 未通过验证的源码 |
-| `diagnostic` | Verifier 的结构化诊断 + 诊断码的含义 `meaning` |
-| `lessons` | **按同一诊断码精确过滤**、再按报错文本排序的历史修复经验 |
-
-prompt 要求"只修复导致该诊断的问题，保持类名、meta 与接口不变"。
-
-**Response**：完整的修复后源码，`revision` 加一；不强制最小 diff。Workflow 重新验证使用该算子的完整候选方案；每个算子最多修复 `max_repairs`（默认 3）轮。只有能定位到本次生成算子的代码类诊断才进入这个分支。
-
-`RepairRecord.fixed` 表示重新验证后，原算子上的同一诊断码不再出现，并不表示整个方案已经通过。另有错误或指标不达标时仍需处理。已执行的规则 mock 样例和前后差异见 [定向修复与后续复用](../examples/verification/README.md#定向修复与后续复用)；当前真实 LLM 录制演示没有触发修复。
-
----
-
-## 3. Verifier（确定性验证器）
-
-Verifier 不调用 LLM，依据固定检查规则和执行结果判定。固定代码、数据、配置、随机种子与依赖环境后支持复现；平台、资源上限等仍会影响运行结果。通过表示满足当前检查项，不构成完整的业务正确性证明。
-
-**Input**：`PipelinePlan` + `TaskSpec` + 数据路径 + 本方案用到的生成源码；验证配置按任务类型读取 `configs/tasks/<task_type>.yaml`（折数、种子、超时、内存上限、稳定性与泄漏阈值、报告指标）。
-
-**Output：`ValidationReport`**
-
-| 字段 | 说明 |
-| --- | --- |
-| `plan_name` / `passed` | 方案名、是否通过 |
-| `diagnostics` | `Diagnostic` 列表，任一级失败即停止 |
-| `metrics` / `metric_std` | 多种子 × K 折的均值，以及种子间标准差 |
-| `resources` | `fit_seconds`、`predict_ms_per_1k`、`peak_rss_mb` |
-
-**`Diagnostic` 是 Verifier 与其他 Agent 之间的"协议"**：
-
-```
-Diagnostic
-├── code      诊断码（决定路由）
-├── stage     static | sandbox | contract | metric
-├── message   具体现象
-├── operator  能定位时，出错的算子 Name@version
-└── hint      修复提示
-```
-
-| 级别 | 诊断码 | 路由 |
-| --- | --- | --- |
-| 1 静态检查 | `E_SYNTAX` `E_UNSAFE` `E_INTERFACE` | 代码类 → Synthesizer 定向修复该算子 |
-| 2 沙箱执行 | `E_RUNTIME` `E_TIMEOUT`（越权的文件 / 网络 / 进程操作为 `E_UNSAFE`） | 同上 |
-| 3 契约检查 | `E_SHAPE` `E_PROBA` `E_MUTATION` `E_NAN` | 同上 |
-| 4 指标检查 | `M_THRESHOLD` `M_UNSTABLE` | 指标类 → Planner 重新规划（Beam 搜索） |
-
-代码类诊断只有定位到**本次生成的算子**且未超修复次数时才进入修复；指标类诊断表示已通过前置检查，但没有满足指标或稳定性要求，不能据此证明实现无误。Workflow 先处理可修复候选；若仍无候选通过且满足重试条件，再重新规划，否则结束并记录结果。
-
-### 当前验证范围
-
-- 当前支持分类任务，二分类以少数类作为正类，尚未提供显式业务正类配置。
-- 未注册的指标会在 `notes` 中记为跳过，缺失的指标值不会触发阈值失败。因此若必需指标未注册，`passed=true` 仍可能缺少该项验收；应核对结果是否包含全部必需指标。此处记录的是现有行为，尚未修复为缺失即失败。
-- `interpretable` 等业务标签用于检索和规划提示，目前没有对应的确定性约束验收；高指标触发的是疑似泄漏提示，也不能证明不存在其他泄漏。
-- 静态检查、审计钩子和资源限制覆盖部分风险；注册时主进程执行源码、原生扩展调用等仍是隔离边界。
-
-**示例**：通过的报告
-
-```json
-{"plan_name": "logistic_regression_pipeline", "passed": true, "diagnostics": [],
- "metrics": {"recall": 0.778, "roc_auc": 0.8144, "precision": 0.4834, "f1": 0.5962, "recall_at_20": 0.4572},
- "metric_std": {"recall": 0.0006, "roc_auc": 0.0005, "...": "..."},
- "resources": {"fit_seconds": 0.1, "predict_ms_per_1k": 48.69, "peak_rss_mb": 257.3}}
-```
-
----
-
-## 4. Curator Agent
-
-### 4.1 沉淀 `record`
-
-**Input**：本次运行的完整 `RunState`。
-
-**Output**：写入知识图谱（并保存到磁盘），同时把写入记录回填到 `RunState`：
-
-| 顺序 | 动作 | 写入 | 回填字段 |
-| --- | --- | --- | --- |
-| 1 | 注册通过的算子：只注册**最优方案且已通过**中用到的生成算子；注册前再做一次静态复查 | `kg/operators/<Name>_v<版本>.py`；可执行 `Operator` 节点 + `DERIVED_FROM` | `registered` |
-| 2 | 保存验证记录：每个候选的最终结果，**失败的也写** | `ValidationRun`（origin=factory）+ `VALIDATED_BY` / `RUN_ON` | `kg_writes` |
-| 3 | 提炼经验：每条修复成功的 `RepairRecord` 交给 LLM 归纳 | `Lesson`（origin=factory）+ `APPLIES_TO` / `LEARNED_FROM` | `lessons_learned` |
-| 4 | 更新命中次数：本次规划和修复中用到的经验 | `Lesson.hits` + 1 | — |
-
-新数据集没有对应场景时，先按 `TaskSpec` 新建 `Scenario` 与指标阈值（工单分类就是这样建立的新场景）。
-
-### 4.2 经验提炼 `distill` → `LessonRecord`
-
-**Query**
-
-| 字段 | 说明 |
-| --- | --- |
-| `operator_purpose` | 出错算子的用途 |
-| `diagnostic` | 原诊断 |
-| `code_diff` | 修复前后的 unified diff |
-| `condition_tags` | 条件词表，供填写 `applies_to` |
-
-**Response：`LessonRecord`**
-
-| 字段 | 说明 |
-| --- | --- |
-| `title` | 一句话概括 |
-| `trigger` | 现象 / 报错 |
-| `fix` | **通用的**修复方法，而不只是这一处改动 |
-| `error_code` | 与原诊断码一致（写入时以原诊断码为准） |
-| `applies_to` | 相关的条件标签 |
-
-写入时按"诊断码相同 + 标题相似"与已有经验合并（见 [schema.md](schema.md) ③ 知识融合）。后续修复先按同一诊断码过滤，再按报错文本排序，取前几条经验；不保证某条经验必定入选，也未自动证明经验可泛化到所有同类问题。
-
----
-
-## 5. 能力抽取（离线，构建知识图谱）
-
-抽取不属于一次运行的工作流，但同样是结构化的 LLM 调用，详见 [schema.md](schema.md) ② 知识抽取。
-
-| 调用 | Query | Response |
-| --- | --- | --- |
-| `extract_code` | 仓库、模块、签名、依赖（AST 得到）+ 源码；system 中给出算子类型与条件词表 | `CapabilityCard {function, capability_type, name, kind, description, inputs, outputs, conditions, params}` |
-| `extract_doc` | 文档类型 + 全文；system 中给出场景、已知算子名、条件词表、诊断码说明 | `DocKnowledge {metrics, constraints, experiments, lessons}` |
-
-**示例**：失败复盘中的一段被抽取为经验
-
-```jsonc
-// Query 节选（docs/failure_cases.md）
-"## 1. total_charges 转换报错\n- 现象：`ValueError: could not convert string to float: ' '`\n- 原因：新入网客户的累计消费为空白字符串……\n- 修复：先 `str.strip()`，再 `pd.to_numeric(errors=\"coerce\")`，缺失填 0。"
-
-// Response 节选
-{"title": "数值列含空白字符导致类型转换失败",
- "trigger": "新入网客户累计消费为空白字符串，读取为 object 类型，转 float 时抛出 ValueError: could not convert string to float: ' '",
- "fix": "先 str.strip()，再 pd.to_numeric(errors='coerce')，缺失值填补为 0",
- "error_code": "E_RUNTIME",
- "applies_to": ["TotalChargesCleaner", "string_typed_numeric"]}
-```
-
-文档中的自由描述被映射到验证器的诊断码 `E_RUNTIME`，以后沙箱里再出现同类报错，修复时就能检索到这条经验。
+| `request`、`data_path`、`target` | 用户输入 |
+| `spec`、`profile_tags`、`retrieval` | 任务规格、数据标签、检索依据 |
+| `candidates`、`generated` | 候选方案列表、算子名到生成产物的映射 |
+| `reports`、`history` | 当前验证结果、因修复被替换的旧报告 |
+| `repairs`、`search` | 修复记录、Beam 搜索轮次记录 |
+| `best_plan`、`status` | 选中方案与最终状态 |
+| `registered`、`kg_writes`、`lessons_learned`、`lessons_used` | 注册算子、验证记录 ID、新经验、放入上下文的经验 ID |
+| `verify_config`、`llm_model`、`timings`、`log`、`artifacts` | 配置、模型名、阶段耗时、日志与产物路径 |
+
+状态保存为 `runs/<run_id>/state.json`，便于追踪各阶段输入输出并重新生成报告。
