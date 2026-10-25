@@ -121,70 +121,15 @@ streamlit run app.py                # Web 界面
 
 ### 整体架构
 
-**Workflow 是中央控制器**：统一调用各阶段，通过 `RunState` 保存需求、候选方案、源码和验证结果。下图分为能力记忆、工作流编排和输出三部分；实线连接主流程，虚线标注检索、加载、诊断反馈及回写关系。
+**Workflow 是中央控制器**：统一调用各阶段，通过 `RunState` 保存需求、候选方案、源码和验证结果。下图上层为知识与能力层，下层展示输入、规划、算子实现、验证、沉淀与输出；实线连接主流程，虚线标注知识读取、诊断反馈及回写关系。点击图片可查看原图。
 
-```mermaid
-flowchart TB
-    subgraph KNOW["① Capability Memory"]
-        direction LR
-        SRC["Historical Code & Docs"]
-        EXT["Extraction & Fusion"]
-        KG[("Capability Knowledge Graph")]
-        REG[("Operator Registry")]
-        SRC --> EXT --> KG
-    end
-
-    subgraph CORE["② Workflow Orchestration · RunState"]
-        direction LR
-        IN["Requirement + CSV"]
-        PL["Planner<br/>TaskSpec + Candidate Plans"]
-
-        subgraph FACTORY["Operator Factory"]
-            direction TB
-            CH{"Per-step Decision"}
-            RE["Reuse<br/>Existing Operator"]
-            SY["Synthesize<br/>New Operator Code"]
-            CH -->|Available| RE
-            CH -->|Missing| SY
-        end
-
-        ASM["Pipeline Assembly"]
-        VE["Verifier<br/>Static · Sandbox · Contract · Metrics"]
-        ROUTE{"Diagnostic Routing"}
-        CU["Curator"]
-
-        IN --> PL --> CH
-        RE --> ASM
-        SY --> ASM
-        ASM --> VE --> ROUTE
-        ROUTE -->|Finish| CU
-    end
-
-    OUT["③ Executable Pipeline + Validation Report"]
-
-    KG -.->|Retrieve| PL
-    KG -.->|Lessons| SY
-    REG -.->|Load| RE
-    ROUTE -.->|Code Repair| SY
-    ROUTE -.->|Replanning| PL
-    CU --> OUT
-    CU -.->|Optional Writeback| KG
-    CU -.->|Validated Operators| REG
-
-    classDef knowledge fill:#EAF2FF,stroke:#7098D4,color:#234A78
-    classDef factory fill:#E6F6EC,stroke:#55A47D,color:#205D3D
-    classDef check fill:#FFF2DD,stroke:#DAAA57,color:#785014
-    classDef terminal fill:#F0F1F4,stroke:#A3ACB9,color:#334155
-
-    class SRC,EXT,KG,REG knowledge
-    class CH,RE,SY,ASM factory
-    class VE,ROUTE check
-    class IN,OUT terminal
-```
+<p align="center">
+  <a href="pic/AlgoForge%20系统架构总览.png"><img src="pic/AlgoForge%20系统架构总览.png" alt="AlgoForge 系统架构总览：知识与能力层、Agent 驱动工作流及修复闭环" width="100%"></a>
+</p>
 
 一个候选方案可同时包含 Reuse 和 Synthesize 步骤；全部复用时无需调用 Synthesizer。Verifier 在验证子进程中加载所需实现并实例化流水线。Curator 负责运行后的知识回写；Planner 与 Synthesizer 读取图谱以规划或生成。
 
-图中的 Pipeline Assembly 是逻辑步骤，实际组装与执行在 Verifier 的验证流程中完成；产物由 Workflow 导出。诊断路由是简化表示，定向修复的适用条件、指标失败后的 Beam Search 及停止条件，见[第 4 节的状态机](#4-agent-工作流四个角色一个中央控制器)。
+流水线的组装与执行在 Verifier 的验证流程中完成，产物由 Workflow 导出。诊断路由是简化表示，定向修复的适用条件、指标失败后的 Beam Search 及停止条件，见[第 4 节的状态机](#4-agent-工作流四个角色一个中央控制器)。
 
 ```
 ├── factory/
