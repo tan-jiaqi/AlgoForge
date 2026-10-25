@@ -1,12 +1,12 @@
 # Agent 工作原理：职责、输入输出与协作流程
 
-本文用一个“预测客户流失”的任务，解释各个 Agent **负责什么、收到什么、返回什么，以及代码在哪里**。先看流程与例子，需要查具体字段时再看最后的技术附录。
+本文以客户流失预测为例，说明各组件的**职责、输入、输出和代码位置**。正文介绍流程与示例，技术附录提供字段、消息格式和算子执行接口。
 
 正文中的对象和方案是教学示意，不代表已经运行或达到指标。真实 LLM 录制演示见 [examples/demo/](../examples/demo/)，录制响应见 [examples/cassettes/](../examples/cassettes/)；经过实际验证器执行的规则 mock 修复与搜索样例见 [examples/verification/](../examples/verification/)。
 
-阅读导航：[Planner](#2-planner把需求变成候选执行方案) · [Synthesizer](#3-synthesizer生成缺失代码并按诊断修复) · [Verifier](#4-verifier运行方案给出指标和失败原因) · [Curator](#5-curator让本次运行留下可复用的知识) · [Workflow](#6-workflow谁决定修复重新规划和结束) · [技术附录](#8-技术附录)。
+阅读导航：[Planner](#2-planner把需求变成候选执行方案) · [Synthesizer](#3-synthesizer生成缺失代码并按诊断修复) · [Verifier](#4-verifier运行方案给出指标和失败原因) · [Curator](#5-curator算子注册与知识回写) · [Workflow](#6-workflow阶段调度与诊断路由) · [算子接口与执行](#算子接口与执行) · [技术附录](#8-技术附录)。
 
-## 1. 总览：一个任务如何经过各个 Agent
+## 1. 总览：任务处理流程
 
 假设用户输入：
 
@@ -52,7 +52,7 @@ Planner 包含三个阶段：**需求理解 → 知识检索 → 方案生成**�
 | ② `retrieve()` | `TaskSpec`、数据画像、关联场景、候选数量设置 | `PlanningContext`：候选算子、检索依据和历史经验 | 否 |
 | ③ `propose()` | `TaskSpec`、数据画像、`PlanningContext`，可选的失败反馈和父方案 | `list[PipelinePlan]`：候选执行方案列表 | 是 |
 
-### 2.2 `understand()`：明确要解决什么问题
+### 2.2 `understand()`：需求理解
 
 **输入：**
 
@@ -176,7 +176,7 @@ Step(
 
 内部 LLM 响应使用 `PlanSet` 包装，形如 `{"plans": [...]}`；`propose()` 校验并绑定参数后，返回其中的方案列表。每个方案当前最多包含 2 个 Synthesize 步骤。更多校验规则见[技术附录](#8-技术附录)。
 
-### 2.5 代码在哪里？
+### 2.5 代码位置
 
 主要实现：[factory/agents/planner.py](../factory/agents/planner.py)。
 
@@ -254,7 +254,7 @@ version 仍为 2，revision 从 0 变为 1
 
 实际执行过的[规则 mock 修复样例](../examples/verification/README.md#定向修复与后续复用)将 `fill_value=None` 改为 `0.0`，随后通过验证并在第二次运行中复用。该样例使用召回率门槛 0.4，与本文 0.75 的教学案例不同；不能将其结果当成本文案例已经达标。
 
-### 3.4 代码在哪里？
+### 3.4 代码位置
 
 主要实现：[factory/agents/synthesizer.py](../factory/agents/synthesizer.py) 的 `synthesize()`、`repair()` 和接口规范 `CONTRACT`。调用入口是 [factory/workflow.py](../factory/workflow.py) 的 `_build()`、`_repair()`。
 
@@ -274,7 +274,7 @@ Verifier 是确定性验证器，不调用 LLM。它依据检查规则和实际�
 
 验证配置从构造参数或 `configs/tasks/<task_type>.yaml` 读取，包括交叉验证折数、随机种子、超时和内存上限等。
 
-### 4.2 检查什么？
+### 4.2 四级验证内容
 
 | 层级 | 检查内容 | 常见失败诊断 |
 | --- | --- | --- |
@@ -285,7 +285,7 @@ Verifier 是确定性验证器，不调用 LLM。它依据检查规则和实际�
 
 前置检查失败时停止后续评估。子进程负责加载所需算子并组装 sklearn Pipeline；Reuse 复用的是实现和参数，模型仍在当前训练数据上拟合。
 
-### 4.3 输出如何帮助修复？
+### 4.3 诊断输出与错误定位
 
 `ValidationReport` 包含 `passed`、`diagnostics`、`metrics`、`metric_std`、`resources` 和 `notes`。其中一个诊断可以表示为：
 
@@ -298,7 +298,7 @@ Diagnostic
   hint：检查该算子产生和处理缺失值的逻辑
 ```
 
-相比一段“运行失败”的文本，这个结构同时说明了**问题类型、发现阶段和出错位置**。Workflow 据此判断能否调用 Synthesizer 修复。若是 `M_THRESHOLD`，则通常需要调整方案或参数，而不是直接把它当作某个算子的代码错误。
+诊断结构包含**问题类型、发现阶段和出错位置**，Workflow 据此判断是否调用 Synthesizer 修复。`M_THRESHOLD` 表示指标未达到要求，通常进入方案或参数调整流程；该诊断本身不能定位某个算子的实现缺陷。
 
 ### 当前验证范围
 
@@ -309,13 +309,13 @@ Diagnostic
 
 固定代码、数据、配置、随机种子与依赖环境后支持复现，平台和资源上限等仍可能影响结果。通过只表示满足当前检查项。
 
-### 4.4 代码在哪里？
+### 4.4 代码位置
 
 入口：[factory/verify/__init__.py](../factory/verify/__init__.py) 的 `Verifier.verify()`。静态检查见 [static.py](../factory/verify/static.py)，子进程与行为拦截见 [sandbox.py](../factory/verify/sandbox.py)、[guard.py](../factory/verify/guard.py)，契约与指标检查见 [checks.py](../factory/verify/checks.py)。调用入口是 Workflow 的 `_verify()`。
 
 **一句话总结：Verifier 用规则与执行结果回答“这条方案哪里有问题、指标是多少、是否满足当前验收项”，下一步调度由 Workflow 决定。**
 
-## 5. Curator：让本次运行留下可复用的知识
+## 5. Curator：算子注册与知识回写
 
 Curator 负责记录运行成果。它的大部分操作由代码完成，只有把修复过程概括为经验时使用 LLM。
 
@@ -326,7 +326,7 @@ Curator 负责记录运行成果。它的大部分操作由代码完成，只有
 | `record()` | `RunState`、关联场景 | 返回验证记录 ID 列表；更新图谱、注册表及状态中的注册 / 经验字段 | 记录和注册不使用；内部按条件调用 `distill()` |
 | `distill()` | 一条 `RepairRecord`、算子用途 | `LessonRecord`：现象、通用修复方法、诊断码和适用条件 | 是 |
 
-### 5.2 `record()`：哪些内容会保存？
+### 5.2 `record()`：写入内容与条件
 
 | 内容 | 写入条件 | 后续用途 |
 | --- | --- | --- |
@@ -357,15 +357,15 @@ Curator 负责记录运行成果。它的大部分操作由代码完成，只有
 
 写入时按诊断码与标题相似度融合。后续修复先按同一诊断码过滤，再按报错文本排序检索；不保证某条经验一定入选，也不自动证明经验适用于所有同类问题。
 
-### 5.4 代码在哪里？
+### 5.4 代码位置
 
 主要实现：[factory/agents/curator.py](../factory/agents/curator.py) 的 `record()`、`distill()`，以及 `_register_operators()`、`_write_runs()`、`_distill_lessons()`。Workflow 的 `_curate()` 调用 `record()`，并把其返回值赋给 `state.kg_writes`。
 
 **一句话总结：Curator 保存符合条件的实现、验证结果和修复经验，为下一次任务提供可检索、可复用的材料。**
 
-## 6. Workflow：谁决定修复、重新规划和结束？
+## 6. Workflow：阶段调度与诊断路由
 
-各阶段由 [factory/workflow.py](../factory/workflow.py) 的 `Workflow.run()` 统一调度，运行数据记录在 `RunState`。可把 `RunState` 理解为这次任务的公共记录本，`ctx` 则保存画像、检索上下文和待修复队列等运行期对象。
+各阶段由 [factory/workflow.py](../factory/workflow.py) 的 `Workflow.run()` 统一调度。`RunState` 保存可持久化的共享运行状态，`ctx` 保存画像、检索上下文和待修复队列等运行期对象。
 
 ### 6.1 根据诊断选择下一步
 
@@ -378,7 +378,7 @@ Curator 负责记录运行成果。它的大部分操作由代码完成，只有
 
 因此，“`E_*` 一定修复、`M_*` 一定重规划”只是粗略理解。实际还取决于错误是否可定位、是否为本次生成的代码、是否已有候选通过，以及剩余重试次数。允许生成时，代码问题无法继续修复也可能进入重新规划。
 
-### 6.2 重新规划为什么叫 Beam Search？
+### 6.2 Beam Search 重新规划流程
 
 重新规划沿用已经得到的任务规格和检索上下文，再次调用 `Planner.propose()`，附上失败反馈与父方案摘要：
 
@@ -398,13 +398,13 @@ Curator 负责记录运行成果。它的大部分操作由代码完成，只有
 
 实现见 [factory/search.py](../factory/search.py) 和 Workflow 的 `_replan()`。实际执行记录与限制见 [Beam Search 样例](../examples/verification/README.md#beam-search)。
 
-### 6.3 最后输出什么？
+### 6.3 运行产物
 
 `_save()` 将状态和报告写入 `runs/<run_id>/`，并保存本次生成源码；有选中的方案和任务规格时还导出 `pipeline.py`。如果方案未通过，脚本会带失败警告，不能仅凭文件生成就认为任务成功。最终状态以 `state.status` 和验证报告为准。
 
 **一句话总结：Workflow 根据共享状态和验证结果安排下一步，各 Agent 提供本阶段的规划、源码、诊断或记录。**
 
-## 7. 补充：历史代码和文档如何进入知识图谱？
+## 7. 补充：历史代码与文档的知识抽取
 
 前面使用的历史能力和经验来自单独的批量抽取流程，不属于每次任务运行的必经阶段。“离线构建”指任务运行前准备知识，不等于一定不请求 API，是否请求仍取决于 LLM 模式和缓存。
 
@@ -462,36 +462,122 @@ Synthesizer 的 `synthesize()` 和 `repair()` 使用 `LLM.chat()` 返回源码�
 
 ### 算子接口与执行
 
-算子通过 `meta` 描述名称、版本、类型、条件、依赖和参数，并实现 sklearn 兼容接口。以下是接口示意，省略号需由具体实现替换：
+算子负责执行 Pipeline 中的一个步骤。Planner 通过 `Step` 描述使用哪个算子及其参数，执行层通过注册表创建实例，再调用其 sklearn 兼容接口处理数据。**实例化、拟合、变换和预测本身都不调用 LLM。**
+
+#### ① 接口的输入与输出
+
+`X` 表示特征数据，不包含目标列；`y` 表示目标标签。表格预处理通常返回 DataFrame，文本向量化可以返回稀疏矩阵，后续步骤必须支持对应格式。
+
+| 阶段 / 方法 | 输入 | 输出 | 作用 |
+| --- | --- | --- | --- |
+| `registry.create(ref, **params)` | 算子引用、步骤参数 | 算子实例 | 从注册表取得类，合并 `meta.params` 默认值与步骤参数；同名参数以步骤参数为准 |
+| 预处理 `fit(X_train, y=None)` | 训练特征，可选的标签 | 算子自身 `self` | 学习中位数、编码词表或缩放参数等状态 |
+| 预处理 `transform(X)` | 与接口兼容的特征 | 变换后的特征，样本行数不变 | 使用已学习的状态处理数据 |
+| 模型 `fit(X_train, y_train)` | 经过前置处理的训练特征、标签 | 模型算子自身 `self` | 训练分类模型，保存模型状态与 `classes_` |
+| 模型 `predict(X)` | 与模型输入兼容的特征 | 形状为 `(n_samples,)` 的标签数组 | 返回预测类别 |
+| 模型 `predict_proba(X)` | 与模型输入兼容的特征 | 形状为 `(n_samples, n_classes)` 的概率数组 | 概率列顺序对应 `classes_`，每行概率和为 1 |
+| `build_pipeline(plan)` | 算子均已注册、步骤顺序与数据格式兼容的方案 | sklearn `Pipeline` | 将步骤按顺序实例化并组合 |
+
+`meta` 声明的是能力描述与默认配置，包括 `name`、`version`、`kind`、`modalities`、`inputs`、`outputs`、`conditions`、`dependencies`、`params` 等。`fit()` 学到的状态保存在实例中，例如 `fill_values_`、`encoder_`、`model_`，不属于 `meta.params`。
+
+#### ② 示例：缺失值处理算子
+
+以下示例在已安装项目依赖的环境中、仓库根目录下运行，仅使用已有算子，不调用 LLM：
 
 ```python
-@register
-class MissingValueImputer(TransformerMixin, Operator):
-    meta = OperatorMeta(
-        name="MissingValueImputer",
-        kind=OperatorKind.IMPUTER,
-        description="数值列用中位数、类别列用众数填补缺失值。",
-        conditions=["has_missing_values"],
-        dependencies=["pandas"],
-    )
+import pandas as pd
+from factory.operators import registry
 
-    def fit(self, X, y=None): ...
-    def transform(self, X): ...
+X_train = pd.DataFrame({
+    "age": [20.0, None, 40.0, 30.0],
+    "city": ["A", "B", None, "A"],
+})
+y_train = pd.Series([0, 1, 0, 1])
+
+imputer = registry.create("MissingValueImputer@1")
+imputer.fit(X_train, y_train)       # 学习 age 中位数 30.0、city 众数 A
+X_filled = imputer.transform(X_train)
+print(X_filled)
 ```
 
-完整算子见 [tabular.py](../factory/operators/tabular.py)。内置算子导入时注册；生成算子先在验证子进程中加载，最优且通过的方案所用新算子经复查后由 Curator 注册，启用回写时同时保存源码。
+输出：
 
-执行层通过注册表实例化各步骤，再组装为 sklearn Pipeline，关键逻辑为：
+```text
+    age city
+0  20.0    A
+1  30.0    B
+2  40.0    A
+3  30.0    A
+```
+
+`fit()` 返回算子自身并保存填补规则，`transform()` 返回变换后的数据。新数据也使用训练时学到的中位数和众数，不重新估计这些值，输入 DataFrame 保持不变。
+
+#### ③ 示例：从方案组装并执行 Pipeline
+
+继续使用上面的 `X_train` 和 `y_train`，将缺失值处理、编码、标准化和模型串联起来：
 
 ```python
-steps = []
-for i, step in enumerate(plan.steps):
-    ref = step.operator_ref or step.synth_spec.name
-    steps.append((f"{i}_{step.kind.value}", registry.create(ref, **step.params)))
-pipe = Pipeline(steps)
+from factory.operators import build_pipeline
+from factory.schemas import PipelinePlan, Step
+
+plan = PipelinePlan(
+    name="lr_interface_example",
+    steps=[
+        Step(kind="imputer", action="reuse", operator_ref="MissingValueImputer@1"),
+        Step(kind="encoder", action="reuse", operator_ref="OneHotCategoricalEncoder@1"),
+        Step(kind="scaler", action="reuse", operator_ref="StandardFeatureScaler@1"),
+        Step(kind="model", action="reuse", operator_ref="LogisticRegressionModel@1",
+             params={"C": 0.5, "class_weight": "balanced"}),
+    ],
+    rationale="演示已有算子的实例化、拟合与预测接口。",
+)
+
+pipe = build_pipeline(plan)
+pipe.fit(X_train, y_train)
+labels = pipe.predict(X_train)              # shape: (4,)
+probabilities = pipe.predict_proba(X_train)  # shape: (4, 2)
 ```
 
-实现见 [operators/__init__.py](../factory/operators/__init__.py)。只有输入输出和步骤顺序兼容的算子才能组合。Reuse 复用实现与参数配置，在当前训练数据上重新拟合；生成源码和训练后的模型权重是不同产物。
+这段代码手工构造方案，用于说明接口；实际任务由 Planner 生成方案，再交给 Verifier 验证。`build_pipeline()` 只负责创建和组合实例，不会自行生成缺失代码或训练模型。
+
+执行顺序为：
+
+```text
+fit(X_train, y_train)
+  MissingValueImputer：fit → transform
+      ↓
+  OneHotCategoricalEncoder：fit → transform
+      ↓
+  StandardFeatureScaler：fit → transform
+      ↓
+  LogisticRegressionModel：fit
+
+predict(X_new) / predict_proba(X_new)
+  依次调用已拟合预处理步骤的 transform
+      ↓
+  调用模型的 predict / predict_proba
+```
+
+验证时，每个交叉验证折都会创建并拟合独立 Pipeline，预处理规则只从该折训练集学习。上面的四行数据只用于展示接口，性能验收使用任务配置中的验证流程。
+
+#### ④ Reuse、Synthesize 与注册时机
+
+| 步骤标记 | 实现从哪里来 | 何时可实例化 |
+| --- | --- | --- |
+| `reuse` | 注册表中已有的内置算子或已加载的历史生成算子 | 注册类可用后，通过 `operator_ref` 创建实例 |
+| `synthesize` | Synthesizer 按 `SynthSpec` 返回源码 | 静态检查后，在验证子进程中执行源码并注册类，再按名称创建实例 |
+
+Reuse 复用实现与参数配置，在当前训练数据上重新拟合。Synthesize 补齐实现后也走相同的拟合与预测接口。只有最优且通过验证的方案所使用的新算子，经 Curator 静态复查后才注册进主进程能力库；启用回写时同时保存源码，供后续任务加载。
+
+#### ⑤ 代码位置
+
+- [operators/base.py](../factory/operators/base.py)：`Operator`、`OperatorMeta`、`OperatorRegistry.create()` 和 `register()`。
+- [operators/tabular.py](../factory/operators/tabular.py)：缺失值处理、类别编码和标准化的完整实现。
+- [operators/models.py](../factory/operators/models.py)、[operators/text.py](../factory/operators/text.py)：分类模型与文本向量化实现。
+- [operators/__init__.py](../factory/operators/__init__.py)：`build_pipeline()`，按步骤创建并组装实例。
+- [operators/synthesized.py](../factory/operators/synthesized.py)：生成源码的加载、注册与保存。
+- [verify/checks.py](../factory/verify/checks.py)：`smoke_and_contract()` 逐步检查接口，`evaluate()` 执行交叉验证。
+- [codegen.py](../factory/codegen.py)：导出包含训练和预测入口的 `pipeline.py`；导出脚本将拟合后的完整 Pipeline 保存为 `model.joblib`，其中包含预处理状态和模型参数。
 
 ### 共享状态 RunState
 
