@@ -208,6 +208,25 @@ flowchart LR
 
 可视化：`python -m factory.cli kg viz` 同时生成**概览**（只画场景 / 指标 / 算子 / 经验四类主干节点，演示后为 33 个节点 / 39 条边）与**完整视图**（81 / 174）；`--focus <节点 id>` 只看某个节点的邻域。Web 界面中可以切换。
 
+下面并排展示**初始图谱**与**三个演示任务完成后的图谱概览**，点击图片可查看原图。
+
+<table>
+  <tr>
+    <th width="50%">初始图谱</th>
+    <th width="50%">演示后的图谱概览</th>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <a href="pic/初始图谱.png"><img src="pic/初始图谱.png" alt="初始能力知识图谱概览，包含客户流失场景及历史算子与经验" width="100%"></a>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <a href="pic/演示后的图谱概览.png"><img src="pic/演示后的图谱概览.png" alt="演示后新增工单场景、生成算子和版本派生关系的知识图谱概览" width="100%"></a>
+    </td>
+  </tr>
+</table>
+
+右图新增了 `tickets` 场景，以及 `TotalChargesCleaner@2`、`TenureBucketizer@2`、`IdColumnDropper@2` 三个生成并注册的算子；虚线连接新旧版本，展示能力沉淀后的版本谱系。
+
 ## 4. Agent 工作流：四个角色，一个中央控制器
 
 ### 为什么是四个角色
