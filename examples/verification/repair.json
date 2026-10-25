@@ -1,0 +1,110 @@
+{
+  "source_test": "tests/test_synthesis.py::test_synthesize_repair_register_then_reuse",
+  "llm_mode": "mock",
+  "data_source": "tests/conftest.py::churn_csv (600 rows, RNG seed 0)",
+  "request": "预测流失，需可解释，召回率不低于0.4",
+  "verify_config": {
+    "cv_folds": 3,
+    "seeds": [
+      0,
+      1
+    ],
+    "smoke_rows": 120,
+    "timeout_seconds": 60.0,
+    "memory_mb": 8192,
+    "max_metric_std": 0.1,
+    "leakage_ceiling": 0.995,
+    "report_metrics": [
+      "roc_auc"
+    ],
+    "n_threads": 1
+  },
+  "first_run": {
+    "status": "succeeded",
+    "primary_metric": {
+      "name": "recall",
+      "threshold": 0.4,
+      "primary": true
+    },
+    "history": [
+      {
+        "plan_name": "logistic_regression_pipeline",
+        "passed": false,
+        "diagnostics": [
+          {
+            "code": "E_NAN",
+            "stage": "contract",
+            "message": "输出引入了新的 NaN/Inf",
+            "operator": "TotalChargesCleaner@2",
+            "hint": "本算子产生的缺失值或无穷值需要在本算子内处理（如 fillna）"
+          }
+        ],
+        "metrics": {},
+        "metric_std": {},
+        "notes": []
+      }
+    ],
+    "repair": {
+      "operator": "TotalChargesCleaner@2",
+      "revision": 1,
+      "diagnostic": {
+        "code": "E_NAN",
+        "stage": "contract",
+        "message": "输出引入了新的 NaN/Inf",
+        "operator": "TotalChargesCleaner@2",
+        "hint": "本算子产生的缺失值或无穷值需要在本算子内处理（如 fillna）"
+      },
+      "fixed": true
+    },
+    "source_diff": "--- before.py\n+++ after.py\n@@ -11,10 +11,10 @@\n         name=\"TotalChargesCleaner\", kind=OperatorKind.IMPUTER, version=2, origin=\"synthesized\",\n         description=\"把被读成字符串的数值列（含空白值）转为 float 并填补缺失\",\n         conditions=[\"string_typed_numeric\", \"has_missing_values\"], dependencies=[\"pandas\"],\n-        params={\"columns\": ['total_charges'], \"fill_value\": None}, parent=\"TotalChargesCleaner@1\",\n+        params={\"columns\": ['total_charges'], \"fill_value\": 0.0}, parent=\"TotalChargesCleaner@1\",\n     )\n \n-    def __init__(self, columns=['total_charges'], fill_value=None):\n+    def __init__(self, columns=['total_charges'], fill_value=0.0):\n         self.columns = columns\n         self.fill_value = fill_value\n ",
+    "reports": [
+      {
+        "plan_name": "logistic_regression_pipeline",
+        "passed": true,
+        "diagnostics": [],
+        "metrics": {
+          "recall": 0.5985,
+          "roc_auc": 0.6398
+        },
+        "metric_std": {
+          "recall": 0.0227,
+          "roc_auc": 0.0043
+        }
+      }
+    ],
+    "registered": [
+      "TotalChargesCleaner@2"
+    ],
+    "lessons_learned": [
+      "Lesson:a63cbbeb"
+    ]
+  },
+  "second_run": {
+    "status": "succeeded",
+    "generated": [],
+    "repair_rounds": 0,
+    "registered": [],
+    "reused_operators": [
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "StandardFeatureScaler@1",
+      "TotalChargesCleaner@2"
+    ],
+    "reports": [
+      {
+        "plan_name": "logistic_regression_pipeline",
+        "passed": true,
+        "diagnostics": [],
+        "metrics": {
+          "recall": 0.5985,
+          "roc_auc": 0.6398
+        },
+        "metric_std": {
+          "recall": 0.0227,
+          "roc_auc": 0.0043
+        }
+      }
+    ]
+  }
+}

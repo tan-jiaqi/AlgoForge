@@ -1,0 +1,154 @@
+{
+  "source_test": "tests/test_search.py::test_workflow_replan_runs_beam_search",
+  "llm_mode": "mock",
+  "data_source": "tests/conftest.py::churn_csv (600 rows, RNG seed 0)",
+  "request": "预测流失，召回率不低于0.99",
+  "status": "failed",
+  "scenario": null,
+  "workflow_config": {
+    "n_candidates": 1,
+    "max_replans": 1,
+    "beam_expand": 3
+  },
+  "verify_config": {
+    "cv_folds": 3,
+    "seeds": [
+      0,
+      1
+    ],
+    "smoke_rows": 120,
+    "timeout_seconds": 60.0,
+    "memory_mb": 8192,
+    "max_metric_std": 0.1,
+    "leakage_ceiling": 0.995,
+    "report_metrics": [
+      "roc_auc"
+    ],
+    "n_threads": 1
+  },
+  "search": [
+    {
+      "round": 1,
+      "parents": [
+        "random_forest_pipeline"
+      ],
+      "width": 1,
+      "candidates": [
+        {
+          "plan": "random_forest_pipeline_max_depth8",
+          "chain": "生成:TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → RandomForestModel",
+          "prior": 0.6996,
+          "evidence": {
+            "TotalChargesCleaner": "0.700（本次 1 条）",
+            "MissingValueImputer@1": "0.700（本次 1 条）",
+            "OneHotCategoricalEncoder@1": "0.700（本次 1 条）",
+            "RandomForestModel@1": "0.700（本次 1 条）"
+          },
+          "selected": false,
+          "reason": "先验第 2，超出 beam 宽度 1，剪枝"
+        },
+        {
+          "plan": "random_forest_pipeline_n_estimators500_max_depth12",
+          "chain": "生成:TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → RandomForestModel",
+          "prior": 0.6996,
+          "evidence": {
+            "TotalChargesCleaner": "0.700（本次 1 条）",
+            "MissingValueImputer@1": "0.700（本次 1 条）",
+            "OneHotCategoricalEncoder@1": "0.700（本次 1 条）",
+            "RandomForestModel@1": "0.700（本次 1 条）"
+          },
+          "selected": false,
+          "reason": "先验第 3，超出 beam 宽度 1，剪枝"
+        },
+        {
+          "plan": "random_forest_pipeline_to_logisticregression",
+          "chain": "生成:TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → LogisticRegressionModel",
+          "prior": 0.8448,
+          "evidence": {
+            "TotalChargesCleaner": "0.700（本次 1 条）",
+            "MissingValueImputer@1": "0.700（本次 1 条）",
+            "OneHotCategoricalEncoder@1": "0.700（本次 1 条）",
+            "LogisticRegressionModel@1": "0.990（无记录，按阈值）"
+          },
+          "selected": true,
+          "reason": "先验第 1，进入验证"
+        }
+      ]
+    }
+  ],
+  "reports": [
+    {
+      "plan_name": "random_forest_pipeline",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "M_THRESHOLD",
+          "stage": "metric",
+          "message": "recall = 0.4091 低于阈值 0.99",
+          "operator": "RandomForestModel@1",
+          "hint": "考虑 class_weight、换模型、调参或调整决策阈值"
+        }
+      ],
+      "metrics": {
+        "recall": 0.4091,
+        "roc_auc": 0.6411
+      },
+      "metric_std": {
+        "recall": 0.0227,
+        "roc_auc": 0.0094
+      }
+    },
+    {
+      "plan_name": "random_forest_pipeline_to_logisticregression",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "M_THRESHOLD",
+          "stage": "metric",
+          "message": "recall = 0.6061 低于阈值 0.99",
+          "operator": "LogisticRegressionModel@1",
+          "hint": "考虑 class_weight、换模型、调参或调整决策阈值"
+        }
+      ],
+      "metrics": {
+        "recall": 0.6061,
+        "roc_auc": 0.6373
+      },
+      "metric_std": {
+        "recall": 0.0227,
+        "roc_auc": 0.0076
+      }
+    }
+  ],
+  "kg_prior_unit_example": {
+    "source_test": "tests/test_search.py::test_prior_uses_kg_history_and_skips_invalidated",
+    "scenario": "telecom_churn",
+    "metric": "recall",
+    "threshold": 0.75,
+    "historical_observations": {
+      "LogisticRegressionModel@1": [
+        0.8
+      ],
+      "RandomForestModel@1": [
+        0.6
+      ],
+      "invalidated_history_excluded": [
+        0.99
+      ]
+    },
+    "logistic_regression": {
+      "prior": 0.7688,
+      "evidence": {
+        "MissingValueImputer@1": "0.750（无记录，按阈值）",
+        "LogisticRegressionModel@1": "0.775（KG 1 条）"
+      }
+    },
+    "random_forest": {
+      "prior": 0.6938,
+      "evidence": {
+        "MissingValueImputer@1": "0.750（无记录，按阈值）",
+        "RandomForestModel@1": "0.675（KG 1 条）"
+      }
+    }
+  }
+}
