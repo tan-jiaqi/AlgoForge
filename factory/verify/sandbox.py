@@ -1,7 +1,8 @@
 """沙箱：在独立子进程中执行检查，限制超时与内存，并清除环境变量中的密钥。
 
-说明：这是进程级隔离（资源限制 + 干净环境 + 临时工作目录），不是安全容器；
-真正的第一道防线是 static.py 的白名单检查。生产环境应换成容器或 gVisor 等方案。
+三道防线：static.py 的静态检查（执行前）→ guard.py 的审计钩子（子进程内，拦截越权的文件、
+网络与进程操作）→ 本模块的进程级隔离（资源限制 + 去掉密钥的环境变量 + 临时工作目录）。
+这仍不是操作系统级的安全容器，生产环境应换成容器或 gVisor 等方案。
 
 跨平台的内存限制：
 - Linux / macOS：子进程启动前用 ``resource.setrlimit(RLIMIT_AS)`` 设置地址空间上限（由内核强制）；
@@ -105,7 +106,7 @@ def run_job(job: dict, *, timeout: float, memory_mb: int, n_threads: int) -> tup
         proc = subprocess.Popen(
             [sys.executable, "-m", "factory.verify", str(job_path), str(out_path)],
             cwd=tmp,
-            env=child_env(n_threads),
+            env={**child_env(n_threads), "TMPDIR": tmp, "TEMP": tmp, "TMP": tmp},  # 临时文件也留在沙箱目录
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

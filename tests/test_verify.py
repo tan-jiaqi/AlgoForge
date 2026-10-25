@@ -56,6 +56,24 @@ def _synth_step(gen: GeneratedOperator) -> Step:
     ("x = eval('1')", DiagnosticCode.UNSAFE_CODE),
     ("x = (1).__class__.__bases__", DiagnosticCode.UNSAFE_CODE),
     ("def broken(:", DiagnosticCode.SYNTAX_ERROR),
+    # 库自带的文件读写 / 下载 / 字符串求值入口
+    ("x = pd.read_csv('/repo/.env')", DiagnosticCode.UNSAFE_CODE),
+    ("import numpy as np\nx = np.load('a.npy', allow_pickle=True)", DiagnosticCode.UNSAFE_CODE),
+    ("pd.DataFrame().to_pickle('a.pkl')", DiagnosticCode.UNSAFE_CODE),
+    ("from pandas import read_pickle", DiagnosticCode.UNSAFE_CODE),
+    ("from pandas import *", DiagnosticCode.UNSAFE_CODE),
+    ("from sklearn.datasets import fetch_openml", DiagnosticCode.UNSAFE_CODE),
+    ("import scipy.io", DiagnosticCode.UNSAFE_CODE),
+    ("x = pd.DataFrame({'a': [1]}).query('a > 0')", DiagnosticCode.UNSAFE_CODE),
+    ("x = pd.io", DiagnosticCode.UNSAFE_CODE),
+    # 绕过名字检查的写法
+    ("f = open", DiagnosticCode.UNSAFE_CODE),
+    ("x = __builtins__", DiagnosticCode.UNSAFE_CODE),
+    ("x = '{0.__class__}'.format(1)", DiagnosticCode.UNSAFE_CODE),
+    ("import factory.operators.synthesized", DiagnosticCode.UNSAFE_CODE),
+    ("from factory.operators.synthesized import exec_operator_source", DiagnosticCode.UNSAFE_CODE),
+    ("from factory.utils import ROOT", DiagnosticCode.UNSAFE_CODE),
+    ("import lightgbm as lgb\nb = lgb.Booster(model_file='m.txt')", DiagnosticCode.UNSAFE_CODE),
 ])
 def test_static_rejects(snippet, code):
     src = _gen("Ok", "        return X.copy()").source + "\n" + snippet

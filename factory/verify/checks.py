@@ -24,6 +24,7 @@ from factory.operators import build_pipeline
 from factory.operators.synthesized import exec_operator_source
 from factory.profile import load_table
 from factory.schemas import Diagnostic, DiagnosticCode, OperatorKind, PipelinePlan, TaskSpec, canonical_metric
+from factory.verify import guard
 from factory.verify.config import VerifyConfig
 
 # ---------------------------------------------------------------------------
@@ -81,26 +82,38 @@ def resolve_metric(name: str, n_classes: int) -> str:
 
 def run_checks(job: dict) -> dict:
     """执行冒烟、契约与指标检查，返回可 JSON 序列化的结果。"""
-    for src in job.get("sources", []):
-        exec_operator_source(src)
     plan = PipelinePlan.model_validate(job["plan"])
     spec = TaskSpec.model_validate(job["spec"])
     cfg = VerifyConfig.model_validate(job["config"])
-
-    df = load_table(job["data_path"])
-    y = df[spec.target_column].to_numpy()
-    X = df.drop(columns=[spec.target_column])
-    classes = sorted(pd.unique(y).tolist(), key=str)
-    counts = pd.Series(y).value_counts()
-    pos = counts.idxmin() if len(classes) == 2 else None  # 二分类以少数类为正类（如 churn=1）
-
     result: dict[str, Any] = {"diagnostics": [], "metrics": {}, "metric_std": {}, "resources": {}, "notes": []}
-    diags = smoke_and_contract(plan, X, y, classes, cfg)
-    if not diags:
-        diags = evaluate(plan, spec, X, y, classes, pos, cfg, result)
+    try:
+        for src in job.get("sources", []):
+            exec_operator_source(src)
+    except Exception as exc:  # noqa: BLE001 - 模块级代码出错（含被沙箱拦截）
+        diags = [_diag(DiagnosticCode.RUNTIME_ERROR, "sandbox", "加载生成算子失败：" + _short_exc(exc))]
+    else:
+        df = load_table(job["data_path"])
+        y = df[spec.target_column].to_numpy()
+        X = df.drop(columns=[spec.target_column])
+        classes = sorted(pd.unique(y).tolist(), key=str)
+        counts = pd.Series(y).value_counts()
+        pos = counts.idxmin() if len(classes) == 2 else None  # 二分类以少数类为正类（如 churn=1）
+        diags = smoke_and_contract(plan, X, y, classes, cfg)
+        if not diags:
+            diags = evaluate(plan, spec, X, y, classes, pos, cfg, result)
+    if guard.VIOLATIONS:  # 生成代码越权：无论它是否吞掉了异常，都判为不安全
+        diags = [_violation_diag(guard.VIOLATIONS)]
+        result["metrics"], result["metric_std"] = {}, {}
     result["diagnostics"] = [d.model_dump(mode="json") for d in diags]
     result["resources"]["peak_rss_mb"] = round(peak_rss_mb(), 1)
     return result
+
+
+def _violation_diag(violations: list[dict]) -> Diagnostic:
+    first = violations[0]
+    more = f"（共 {len(violations)} 次）" if len(violations) > 1 else ""
+    return _diag(DiagnosticCode.UNSAFE_CODE, "sandbox", f"运行时越权，已被沙箱拦截：{first['detail']}{more}",
+                 first["operator"], "算子只能处理传入的数据：不要读写文件、访问网络或启动进程")
 
 
 def peak_rss_mb() -> float:
