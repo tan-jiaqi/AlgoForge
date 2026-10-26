@@ -17,7 +17,9 @@
         "primary": true
       }
     ],
-    "constraints": []
+    "constraints": [
+      "imbalanced"
+    ]
   },
   "profile_tags": [
     "id_columns",
@@ -26,7 +28,7 @@
   ],
   "candidates": [
     {
-      "name": "tfidf_lr_baseline",
+      "name": "tfidf_logistic_baseline",
       "steps": [
         {
           "kind": "vectorizer",
@@ -39,10 +41,13 @@
             "ngram_range": [
               1,
               2
-            ],
-            "max_features": 20000
+            ]
           },
-          "rationale": "利用字符级 1-2 gram TF-IDF 向量化提取中文工单文本特征，对中文具有良好稳健性。"
+          "rationale": "针对中文短文本，采用字符级 1-2 gram TF-IDF 向量化处理，符合最佳实践。",
+          "evidence_ids": [
+            "Operator:TfidfTextVectorizer@1",
+            "Lesson:631c1a72"
+          ]
         },
         {
           "kind": "model",
@@ -50,19 +55,38 @@
           "operator_ref": "LogisticRegressionModel@1",
           "synth_spec": null,
           "params": {
-            "C": 1.0,
             "class_weight": "balanced",
-            "max_iter": 1000,
-            "random_state": 42
+            "C": 1.0,
+            "max_iter": 1000
           },
-          "rationale": "基于稀疏文本特征的强基线分类器，配置 class_weight='balanced' 缓解工单类别不平衡。"
+          "rationale": "针对样本不平衡问题，设置 class_weight='balanced' 以提升宏平均 F1 分数。",
+          "evidence_ids": [
+            "Operator:LogisticRegressionModel@1",
+            "Lesson:9e9e77d6"
+          ]
         }
       ],
-      "rationale": "使用经典的字符级 TF-IDF 搭配平衡类权重的逻辑回归，作为工单文本多分类的高效基准方案。"
+      "rationale": "使用高效的文本向量化方案配合平衡权重逻辑回归，是处理中文短文本分类的经典基线方案。"
     },
     {
-      "name": "tfidf_ngram3_lr_tuned",
+      "name": "tfidf_logistic_optimized",
       "steps": [
+        {
+          "kind": "feature",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "IdColumnDropper",
+            "kind": "feature",
+            "purpose": "删除数据中的 ID 类列，防止过拟合",
+            "inputs": "含 ticket_id 的数据集",
+            "outputs": "排除标识列后的数据集",
+            "reference": null
+          },
+          "params": {},
+          "rationale": "在建模前移除与任务无关的标识符列，防止模型过拟合。",
+          "evidence_ids": []
+        },
         {
           "kind": "vectorizer",
           "action": "reuse",
@@ -73,11 +97,14 @@
             "analyzer": "char_wb",
             "ngram_range": [
               1,
-              3
+              2
             ],
             "max_features": 30000
           },
-          "rationale": "扩展 n-gram 范围至 1-3 gram 并增加特征维度，更好捕捉工单特定词组与长搭配语义。"
+          "rationale": "通过增加最大特征数，捕获更多词汇信息，进一步提升文本表达能力。",
+          "evidence_ids": [
+            "Operator:TfidfTextVectorizer@1"
+          ]
         },
         {
           "kind": "model",
@@ -85,21 +112,38 @@
           "operator_ref": "LogisticRegressionModel@1",
           "synth_spec": null,
           "params": {
-            "C": 2.0,
             "class_weight": "balanced",
-            "max_iter": 1000,
-            "random_state": 42
+            "C": 0.5,
+            "max_iter": 1000
           },
-          "rationale": "适度减小 L2 正则化约束（增大 C 值）配合更高维文本特征，同时保留平衡权重处理不平衡数据。"
+          "rationale": "通过调整正则化系数 C，降低过拟合风险，并继续使用平衡权重解决类别不平衡。",
+          "evidence_ids": [
+            "Operator:LogisticRegressionModel@1",
+            "Lesson:9e9e77d6"
+          ]
         }
       ],
-      "rationale": "通过扩大 n-gram 窗口提升特征表现力，结合微调后的正则化强度，力求达到 F1-macro 0.8 以上目标。"
+      "rationale": "在基线基础上引入标识列剔除算子并微调正则化参数，旨在提高模型泛化能力以满足 F1 指标需求。"
     }
   ],
-  "generated": {},
+  "generated": {
+    "IdColumnDropper": {
+      "spec": {
+        "name": "IdColumnDropper",
+        "kind": "feature",
+        "purpose": "删除数据中的 ID 类列，防止过拟合",
+        "inputs": "含 ticket_id 的数据集",
+        "outputs": "排除标识列后的数据集",
+        "reference": null
+      },
+      "source": "import pandas as pd\nimport numpy as np\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass IdColumnDropper(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"IdColumnDropper\",\n        kind=OperatorKind.FEATURE,\n        version=2,\n        origin=\"synthesized\",\n        description=\"删除指定的ID列或包含ID特征的列，以防止模型在ID上过拟合。\",\n        conditions=[\"数据集中存在标识性列（如ticket_id）\"],\n        dependencies=[],\n        params={\"columns\": None}\n    )\n\n    def __init__(self, columns=None):\n        \"\"\"\n        初始化 IdColumnDropper。\n        \n        Args:\n            columns (list of str, optional): 需要删除的列名列表。\n        \"\"\"\n        self.columns = columns\n\n    def fit(self, X, y=None):\n        \"\"\"\n        保存状态。\n        \"\"\"\n        self.columns_ = self.columns\n        return self\n\n    def transform(self, X):\n        \"\"\"\n        删除指定的列，返回剔除后的数据集副本。\n        \"\"\"\n        if not isinstance(X, pd.DataFrame):\n            raise ValueError(\"Input must be a pandas DataFrame.\")\n            \n        X = X.copy()\n        \n        # 如果没有明确指定列，尝试自动识别常见的ID列名，或者如果已指定则执行删除\n        if self.columns_ is not None:\n            cols_to_drop = [c for c in self.columns_ if c in X.columns]\n            X = X.drop(columns=cols_to_drop)\n        else:\n            # 默认逻辑：识别名称中含有 'id' 且不区分大小写的列\n            id_cols = [c for c in X.columns if 'id' in str(c).lower()]\n            X = X.drop(columns=id_cols)\n            \n        return X\n",
+      "version": 2,
+      "revision": 0
+    }
+  },
   "reports": [
     {
-      "plan_name": "tfidf_lr_baseline",
+      "plan_name": "tfidf_logistic_baseline",
       "passed": true,
       "diagnostics": [],
       "metrics": {
@@ -115,53 +159,52 @@
         "precision_macro": 0.004
       },
       "resources": {
-        "fit_seconds": 0.114,
-        "predict_ms_per_1k": 55.94,
-        "peak_rss_mb": 241.5
+        "fit_seconds": 0.105,
+        "predict_ms_per_1k": 51.97,
+        "peak_rss_mb": 241.2
       },
       "notes": []
     },
     {
-      "plan_name": "tfidf_ngram3_lr_tuned",
+      "plan_name": "tfidf_logistic_optimized",
       "passed": true,
       "diagnostics": [],
       "metrics": {
-        "f1_macro": 0.8284,
-        "accuracy": 0.8423,
-        "recall_macro": 0.8323,
-        "precision_macro": 0.8268
+        "f1_macro": 0.8204,
+        "accuracy": 0.8338,
+        "recall_macro": 0.829,
+        "precision_macro": 0.8154
       },
       "metric_std": {
-        "f1_macro": 0.0022,
-        "accuracy": 0.0018,
-        "recall_macro": 0.0025,
-        "precision_macro": 0.0016
+        "f1_macro": 0.0019,
+        "accuracy": 0.0017,
+        "recall_macro": 0.0015,
+        "precision_macro": 0.0019
       },
       "resources": {
-        "fit_seconds": 0.16,
-        "predict_ms_per_1k": 67.58,
-        "peak_rss_mb": 243.7
+        "fit_seconds": 0.119,
+        "predict_ms_per_1k": 64.46,
+        "peak_rss_mb": 241.1
       },
       "notes": []
     }
   ],
-  "best_plan": "tfidf_ngram3_lr_tuned",
+  "best_plan": "tfidf_logistic_baseline",
   "repair_rounds": 0,
   "replans": 0,
   "history": [],
   "repairs": [],
+  "search": [],
   "registered": [],
   "lessons_learned": [],
   "lessons_used": [
     "Lesson:9e9e77d6",
-    "Lesson:f2c1398b",
-    "Lesson:69d51358",
-    "Lesson:88299a38",
-    "Lesson:57718714"
+    "Lesson:631c1a72",
+    "Lesson:74e2da10"
   ],
   "kg_writes": [
-    "ValidationRun:01_tickets_transfer-tfidf_lr_baseline",
-    "ValidationRun:01_tickets_transfer-tfidf_ngram3_lr_tuned"
+    "ValidationRun:01_tickets_transfer-tfidf_logistic_baseline",
+    "ValidationRun:01_tickets_transfer-tfidf_logistic_optimized"
   ],
   "artifacts": {
     "pipeline": "examples/demo/runs/01_tickets_transfer/pipeline.py",
@@ -206,6 +249,10 @@
           },
           "evidence": [
             "匹配条件：text_input"
+          ],
+          "history_records": [],
+          "evidence_ids": [
+            "Operator:TfidfTextVectorizer@1"
           ]
         }
       ],
@@ -240,50 +287,283 @@
           },
           "evidence": [
             "历史验证 1 次，平均 f1_macro 0.765"
+          ],
+          "history_records": [],
+          "evidence_ids": [
+            "Operator:LogisticRegressionModel@1"
           ]
         }
       ]
     },
     "lessons": [
       {
+        "id": "Lesson:9e9e77d6",
         "title": "样本不平衡导致默认模型召回率偏低",
         "trigger": "流失场景存在正负样本不平衡，模型默认阈值或未配置样本权重时召回率达不到业务要求",
         "fix": "启用平衡类权重（如 class_weight='balanced' 或 BalancedLightGBMClassifier）以提升召回率",
         "error_code": "M_THRESHOLD"
       },
       {
-        "title": "LightGBM 调参及不平衡处理",
-        "trigger": "数据量在 5k 到 10w 之间，或者样本不平衡时",
-        "fix": "设置 num_leaves 15~63, learning_rate 0.03~0.1, n_estimators 200~600；不平衡时设置 class_weight='balanced'；树模型无需标准化。",
+        "id": "Lesson:631c1a72",
+        "title": "中文短文本字符级 TF-IDF 建模",
+        "trigger": "处理中文短文本分类任务时",
+        "fix": "直接使用字符级 TF-IDF（char 1~2 gram）配合逻辑回归，无需分词。",
         "error_code": null
       },
       {
-        "title": "数值列含空白字符导致类型转换失败",
-        "trigger": "新入网客户累计消费为空白字符串，读取为 object 类型，转 float 时抛出 ValueError: could not convert string to float: ' '",
-        "fix": "先 str.strip()，再 pd.to_numeric(errors='coerce')，缺失值填补为 0",
-        "error_code": "E_RUNTIME"
-      },
-      {
-        "title": "未剔除客户 ID 导致 One-Hot 编码后维度暴涨与内存溢出",
-        "trigger": "customer_id 等标识列未剔除，直接进行 One-Hot 编码导致特征维度暴涨并引发内存溢出",
-        "fix": "建模前剔除 ID 等标识列，并在编码器中设置最大类别数",
-        "error_code": "E_TIMEOUT"
-      },
-      {
-        "title": "随机森林防过拟合与召回优化",
-        "trigger": "使用随机森林模型，面临过拟合风险，或业务要求召回优先时",
-        "fix": "设置 n_estimators 300 左右，限制 max_depth 在 8~16 防止过拟合；召回优先时需配合调整分类阈值。",
+        "id": "Lesson:74e2da10",
+        "title": "逻辑回归标准化与可解释性",
+        "trigger": "使用逻辑回归模型，或者需要模型具有高可解释性时",
+        "fix": "必须先进行特征标准化（如 StandardFeatureScaler），在 0.1~10 之间搜索正则化强度 C，可直接输出系数给业务方。",
         "error_code": null
       }
     ],
+    "evidence_catalog": {
+      "Operator:TfidfTextVectorizer@1": {
+        "type": "operator",
+        "operator_refs": [
+          "TfidfTextVectorizer@1"
+        ]
+      },
+      "Operator:LogisticRegressionModel@1": {
+        "type": "operator",
+        "operator_refs": [
+          "LogisticRegressionModel@1"
+        ]
+      },
+      "Lesson:9e9e77d6": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:BalancedLightGBMClassifier@1",
+          "Operator:LogisticRegressionModel@1",
+          "Condition:imbalanced",
+          "Condition:recall_first",
+          "Operator:LightGBMModel@1"
+        ],
+        "matching_conditions": [
+          "Condition:imbalanced"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:631c1a72": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:TfidfTextVectorizer@1",
+          "Operator:LogisticRegressionModel@1",
+          "Condition:text_input"
+        ],
+        "matching_conditions": [
+          "Condition:text_input"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:74e2da10": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:LogisticRegressionModel@1",
+          "Operator:StandardFeatureScaler@1",
+          "Condition:scaled_features",
+          "Condition:interpretable",
+          "Condition:linear_model"
+        ],
+        "matching_conditions": [],
+        "scenario_match": false
+      }
+    },
     "lesson_ids": [
       "Lesson:9e9e77d6",
-      "Lesson:f2c1398b",
-      "Lesson:69d51358",
-      "Lesson:88299a38",
-      "Lesson:57718714"
+      "Lesson:631c1a72",
+      "Lesson:74e2da10"
     ]
   },
+  "evidence_checks": [
+    {
+      "plan": "tfidf_logistic_baseline",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:TfidfTextVectorizer@1",
+        "Lesson:631c1a72"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "tfidf_logistic_baseline",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:LogisticRegressionModel@1",
+        "Lesson:9e9e77d6"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "tfidf_logistic_optimized",
+      "step": 1,
+      "evidence_ids": [],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "tfidf_logistic_optimized",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:TfidfTextVectorizer@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "tfidf_logistic_optimized",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:LogisticRegressionModel@1",
+        "Lesson:9e9e77d6"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    }
+  ],
+  "llm_calls": [
+    {
+      "tag": "plan_spec",
+      "request_hash": "6297e597287c766c",
+      "model": "gemini-3.5-flash",
+      "source": "replay",
+      "seconds": 0.00013293325901031494,
+      "recorded_seconds": 2.131407968699932,
+      "usage": {
+        "completion_tokens": 142,
+        "prompt_tokens": 1163,
+        "total_tokens": 1305,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 142,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 1163
+        },
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "input_tokens_details": null,
+        "claude_cache_creation_5_m_tokens": 0,
+        "claude_cache_creation_1_h_tokens": 0
+      }
+    },
+    {
+      "tag": "plan",
+      "request_hash": "d6f8713817d17cf9",
+      "model": "gemini-3.5-flash",
+      "source": "replay",
+      "seconds": 0.00020094960927963257,
+      "recorded_seconds": 6.673073507845402,
+      "usage": {
+        "completion_tokens": 941,
+        "prompt_tokens": 3548,
+        "total_tokens": 4489,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 941,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 3548
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "plan",
+      "request_hash": "94fa9d7403832fd3",
+      "model": "gemini-3.5-flash",
+      "source": "replay",
+      "seconds": 0.00020644068717956543,
+      "recorded_seconds": 3.447732761502266,
+      "usage": {
+        "completion_tokens": 937,
+        "prompt_tokens": 4596,
+        "total_tokens": 5533,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 937,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 4596
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "synthesize",
+      "request_hash": "98912f1a82aeb9cf",
+      "model": "gemini-3.5-flash",
+      "source": "replay",
+      "seconds": 0.0001270696520805359,
+      "recorded_seconds": 25.817289032042027,
+      "usage": {
+        "completion_tokens": 1130,
+        "prompt_tokens": 1419,
+        "total_tokens": 2549,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 633,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 497,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 1419
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    }
+  ],
+  "knowledge_mode": "full",
   "verify_config": {
     "cv_folds": 5,
     "seeds": [
@@ -305,21 +585,22 @@
     "n_threads": 4
   },
   "timings": {
-    "PLAN": 8.75,
+    "PLAN": 0.05,
     "BUILD": 0.0,
-    "VERIFY": 8.2,
+    "VERIFY": 7.5,
     "ROUTE": 0.0,
     "CURATE": 0.01
   },
   "log": [
     "[PLAN] 场景 新场景；画像标签 ['id_columns', 'text_input', 'imbalanced']",
     "[PLAN] TaskSpec：multiclass_classification，目标 label，主指标 f1_macro >= 0.8",
-    "[PLAN] 候选方案：['tfidf_lr_baseline(TfidfTextVectorizer → LogisticRegressionModel)', 'tfidf_ngram3_lr_tuned(TfidfTextVectorizer → LogisticRegressionModel)']",
-    "[PLAN] 完成，用时 8.7s → BUILD",
+    "[PLAN] 候选方案：['tfidf_logistic_baseline(TfidfTextVectorizer → LogisticRegressionModel)', 'tfidf_logistic_optimized(*IdColumnDropper → TfidfTextVectorizer → LogisticRegressionModel)']",
+    "[PLAN] 完成，用时 0.0s → BUILD",
+    "[BUILD] 生成算子 IdColumnDropper@2：删除数据中的 ID 类列，防止过拟合",
     "[BUILD] 完成，用时 0.0s → VERIFY",
-    "[VERIFY] tfidf_lr_baseline：通过，f1_macro=0.8244",
-    "[VERIFY] tfidf_ngram3_lr_tuned：通过，f1_macro=0.8284",
-    "[VERIFY] 完成，用时 8.2s → ROUTE",
+    "[VERIFY] tfidf_logistic_baseline：通过，f1_macro=0.8244",
+    "[VERIFY] tfidf_logistic_optimized：通过，f1_macro=0.8204",
+    "[VERIFY] 完成，用时 7.5s → ROUTE",
     "[ROUTE] 完成，用时 0.0s → CURATE",
     "[CURATE] 写入 KG：2 条 ValidationRun；注册新算子 []；新增经验 0 条",
     "[CURATE] 完成，用时 0.0s → DONE"

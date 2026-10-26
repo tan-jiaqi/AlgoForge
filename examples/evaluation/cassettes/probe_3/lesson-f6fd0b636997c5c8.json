@@ -1,0 +1,47 @@
+{
+  "tag": "lesson",
+  "model": "gemini-3.5-flash",
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是算法能力工厂的 Curator。下面是一次被验证器发现、随后修复成功的代码问题。把它提炼为一条可复用的经验（LessonRecord）：title 一句话概括，trigger 写现象/报错，fix 写通用的修复方法（不要只描述这一处改动），applies_to 填相关的条件标签（从 condition_tags 中选）。error_code 与诊断码一致。"
+    },
+    {
+      "role": "user",
+      "content": "<<CONTEXT>>\n{\n \"operator_purpose\": \"统计业务粘性特征\",\n \"diagnostic\": {\n  \"code\": \"E_INTERFACE\",\n  \"stage\": \"static\",\n  \"message\": \"meta.params 与 __init__ 默认值不一致：[\\\"service_cols: meta=['online_security', 'tech_support', 'streaming_tv'], __init__=('online_security', 'tech_support', 'streaming_tv')\\\"]\",\n  \"operator\": \"ServiceCountFeature\",\n  \"hint\": \"实例化时 meta.params 会覆盖 __init__ 默认值，两处必须一致\"\n },\n \"code_diff\": \"--- \\n+++ \\n@@ -15,3 +15,7 @@\\n         dependencies=[\\\"numpy\\\", \\\"pandas\\\", \\\"sklearn\\\"],\\n-        params={\\\"service_cols\\\": [\\\"online_security\\\", \\\"tech_support\\\", \\\"streaming_tv\\\"], \\\"monthly_col\\\": \\\"monthly_charges\\\", \\\"total_col\\\": \\\"total_charges\\\"},\\n+        params={\\n+            \\\"service_cols\\\": [\\\"online_security\\\", \\\"tech_support\\\", \\\"streaming_tv\\\"],\\n+            \\\"monthly_col\\\": \\\"monthly_charges\\\",\\n+            \\\"total_col\\\": \\\"total_charges\\\"\\n+        },\\n         parent=\\\"ServiceCountFeature@1\\\"\\n@@ -19,3 +23,3 @@\\n \\n-    def __init__(self, service_cols=(\\\"online_security\\\", \\\"tech_support\\\", \\\"streaming_tv\\\"), monthly_col=\\\"monthly_charges\\\", total_col=\\\"total_charges\\\"):\\n+    def __init__(self, service_cols=[\\\"online_security\\\", \\\"tech_support\\\", \\\"streaming_tv\\\"], monthly_col=\\\"monthly_charges\\\", total_col=\\\"total_charges\\\"):\\n         self.service_cols = service_cols\",\n \"condition_tags\": [\n  \"has_missing_values\",\n  \"has_categorical_features\",\n  \"low_cardinality\",\n  \"high_cardinality\",\n  \"numeric_features\",\n  \"string_typed_numeric\",\n  \"id_columns\",\n  \"linear_model\",\n  \"scaled_features\",\n  \"nonlinear\",\n  \"mixed_features\",\n  \"large_tabular\",\n  \"imbalanced\",\n  \"recall_first\",\n  \"interpretable\",\n  \"feature_importance\",\n  \"sparse_features\",\n  \"text_input\",\n  \"time_tenure\"\n ]\n}\n<</CONTEXT>>"
+    },
+    {
+      "role": "system",
+      "content": "Respond with a single JSON object only, no prose, conforming to this JSON schema:\n{\"$defs\": {\"DiagnosticCode\": {\"enum\": [\"E_SYNTAX\", \"E_UNSAFE\", \"E_INTERFACE\", \"E_RUNTIME\", \"E_TIMEOUT\", \"E_SHAPE\", \"E_PROBA\", \"E_MUTATION\", \"E_NAN\", \"M_THRESHOLD\", \"M_UNSTABLE\"], \"title\": \"DiagnosticCode\", \"type\": \"string\"}}, \"properties\": {\"title\": {\"title\": \"Title\", \"type\": \"string\"}, \"trigger\": {\"description\": \"什么情况下会出现这个问题（现象/报错）\", \"title\": \"Trigger\", \"type\": \"string\"}, \"fix\": {\"description\": \"如何修复或规避\", \"title\": \"Fix\", \"type\": \"string\"}, \"error_code\": {\"anyOf\": [{\"$ref\": \"#/$defs/DiagnosticCode\"}, {\"type\": \"null\"}], \"default\": null}, \"applies_to\": {\"description\": \"相关的算子名、条件标签或场景名\", \"items\": {\"type\": \"string\"}, \"title\": \"Applies To\", \"type\": \"array\"}}, \"required\": [\"title\", \"trigger\", \"fix\"], \"title\": \"LessonRecord\", \"type\": \"object\"}"
+    }
+  ],
+  "response": "{\n  \"title\": \"确保算子元数据 params 与 __init__ 默认参数类型及结构严格对齐\",\n  \"trigger\": \"算子的 meta.params 定义与 __init__ 方法的默认参数定义在类型（如列表与元组）或结构上不一致时，实例化阶段会产生配置冲突。\",\n  \"fix\": \"在定义算子时，必须保持 meta.params 中的默认值与 __init__ 方法签名的默认值完全一致，特别注意容器类型（list vs tuple）的一致性，以避免实例化时的覆盖行为导致潜在的运行时异常。\",\n  \"error_code\": \"E_INTERFACE\",\n  \"applies_to\": [\n    \"mixed_features\",\n    \"feature_importance\"\n  ]\n}",
+  "json_mode": true,
+  "seconds": 2.8986758440732956,
+  "usage": {
+    "completion_tokens": 168,
+    "prompt_tokens": 1196,
+    "total_tokens": 1364,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 168,
+      "image_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": null,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 1196
+    },
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "input_tokens_details": null,
+    "claude_cache_creation_5_m_tokens": 0,
+    "claude_cache_creation_1_h_tokens": 0
+  },
+  "source": "remote"
+}

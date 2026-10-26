@@ -1,0 +1,43 @@
+{
+  "tag": "synthesize",
+  "model": "gemini-3.5-flash",
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是算法能力工厂的 Synthesizer，负责按规格编写可复用的算法算子。有 reference_code 时，把它改写为符合规范的算子类；lessons 是历史踩坑经验，务必遵守。\n算子代码规范：\n1. 只输出一个 ```python 代码块；只定义一个类，类名必须是 StringNumericCleaner；\n2. 类继承 (TransformerMixin, Operator)，模型类继承 (ClassifierMixin, Operator)；\n   导入：from factory.operators.base import Operator, OperatorMeta；from factory.schemas import OperatorKind, Modality；\n3. 类属性 meta = OperatorMeta(name=\"StringNumericCleaner\", kind=OperatorKind.FEATURE, version=1, origin=\"synthesized\",\n   description=中文一句话, conditions=[适用条件标签], dependencies=[pip 包名], params={与 __init__ 默认值一致})；\n4. __init__ 只把参数原样保存为同名属性（sklearn 约定），不做计算；fit 学到的状态用下划线结尾命名并 return self；\n5. transform 必须先 X = X.copy()，不能修改输入；输入输出都是 pandas DataFrame，行数不变；\n6. 本算子新产生的缺失值/无穷值要在本算子内处理；预测时可能出现未见类别和缺失值，不能报错；\n7. 模型类：fit 后设置 classes_；predict_proba 返回 shape (n, n_classes) 的 numpy 数组，predict 返回 shape (n,) 的 numpy 数组；\n8. 只能导入 numpy、pandas、sklearn、scipy、lightgbm、math、re 等，禁止 os/sys/subprocess/socket/open/eval/exec。"
+    },
+    {
+      "role": "user",
+      "content": "<<CONTEXT>>\n{\n \"synth_spec\": {\n  \"name\": \"StringNumericCleaner\",\n  \"kind\": \"feature\",\n  \"purpose\": \"将字符串格式的数值列转换为浮点数，并处理非法字符\",\n  \"inputs\": \"包含脏数据字符串列的 DataFrame\",\n  \"outputs\": \"数值类型列的 DataFrame\",\n  \"reference\": null\n },\n \"task\": {\n  \"description\": \"预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75\",\n  \"target\": \"churn\",\n  \"constraints\": [\n   \"interpretable\",\n   \"recall_first\"\n  ]\n },\n \"data_profile\": {\n  \"rows\": 5000,\n  \"target\": \"churn\",\n  \"class_counts\": {\n   \"0\": 3671,\n   \"1\": 1329\n  },\n  \"tags\": {\n   \"has_missing_values\": \"数据存在缺失值\",\n   \"numeric_features\": \"存在数值型特征\",\n   \"has_categorical_features\": \"存在类别型特征\",\n   \"low_cardinality\": \"类别基数较低（适合 one-hot）\",\n   \"string_typed_numeric\": \"数值列被读成字符串（含空白等脏值）\",\n   \"id_columns\": \"数据含客户 ID 等标识列\",\n   \"imbalanced\": \"正负样本不平衡\",\n   \"time_tenure\": \"存在在网时长等时间长度字段\",\n   \"mixed_features\": \"数值与类别特征混合\"\n  },\n  \"columns\": [\n   \"customer_id: id, str, missing 0.0%, unique 5000\",\n   \"region: categorical, str, missing 0.0%, unique 6\",\n   \"senior_citizen: numeric, int64, missing 0.0%, unique 2\",\n   \"partner: categorical, str, missing 0.0%, unique 2\",\n   \"tenure: numeric, int64, missing 0.0%, unique 73\",\n   \"contract: categorical, str, missing 0.0%, unique 3\",\n   \"internet_service: categorical, str, missing 0.0%, unique 3\",\n   \"online_security: categorical, str, missing 0.0%, unique 3\",\n   \"tech_support: categorical, str, missing 0.0%, unique 3\",\n   \"streaming_tv: categorical, str, missing 0.0%, unique 3\",\n   \"paperless_billing: categorical, str, missing 0.0%, unique 2\",\n   \"payment_method: categorical, str, missing 2.0%, unique 4\",\n   \"monthly_charges: numeric, float64, missing 2.9%, unique 3269\",\n   \"total_charges: string_numeric, str, missing 0.0%, unique 4830\"\n  ]\n },\n \"reference_code\": null,\n \"lessons\": []\n}\n<</CONTEXT>>"
+    }
+  ],
+  "response": "```python\nimport pandas as pd\nimport numpy as np\nimport re\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass StringNumericCleaner(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"StringNumericCleaner\",\n        kind=OperatorKind.FEATURE,\n        version=1,\n        origin=\"synthesized\",\n        description=\"将字符串格式的数值列清洗并转换为浮点数，自动处理非法字符和空值\",\n        conditions=[\"数据包含数值特征被错误读取为字符串\"],\n        dependencies=[\"pandas\", \"numpy\", \"sklearn\"],\n        params={\"columns\": None}\n    )\n\n    def __init__(self, columns=None):\n        self.columns = columns\n\n    def fit(self, X, y=None):\n        # 记录需要处理的列，若未指定则自动识别 object 类型列\n        if self.columns is None:\n            self.numeric_cols_ = X.select_dtypes(include=['object']).columns.tolist()\n        else:\n            self.numeric_cols_ = self.columns\n        return self\n\n    def transform(self, X):\n        X = X.copy()\n        \n        for col in self.numeric_cols_:\n            if col not in X.columns:\n                continue\n                \n            # 将列转换为字符串并清除前后空格\n            col_data = X[col].astype(str).str.strip()\n            \n            # 替换为空字符串或仅包含空格的字段为 NaN\n            col_data = col_data.replace(r'^\\s*$', np.nan, regex=True)\n            \n            # 使用 pd.to_numeric 将数据转换为 float，将无法解析的非法字符设为 NaN\n            # errors='coerce' 自动处理非数字字符串为缺失值\n            X[col] = pd.to_numeric(col_data, errors='coerce')\n            \n            # 补全转换过程中产生的缺失值（采用中位数填充，避免异常值干扰）\n            if X[col].isnull().sum() > 0:\n                median_val = X[col].median()\n                X[col] = X[col].fillna(median_val)\n                \n            # 处理无穷值（若转换产生 inf）\n            X[col] = X[col].replace([np.inf, -np.inf], np.nan)\n            X[col] = X[col].fillna(X[col].median())\n            \n        return X\n```",
+  "json_mode": false,
+  "seconds": 3.1281541287899017,
+  "usage": {
+    "completion_tokens": 627,
+    "prompt_tokens": 1466,
+    "total_tokens": 2093,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 627,
+      "image_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": null,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 1466
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "input_tokens": 0,
+    "input_tokens_details": null,
+    "output_tokens": 0
+  },
+  "source": "remote"
+}

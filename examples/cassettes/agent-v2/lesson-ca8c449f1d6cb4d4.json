@@ -1,0 +1,51 @@
+{
+  "tag": "lesson",
+  "model": "gemini-3.5-flash",
+  "messages": [
+    {
+      "role": "system",
+      "content": "trial=demo-3（独立重复实验编号，与任务无关）"
+    },
+    {
+      "role": "system",
+      "content": "你是算法能力工厂的 Curator。下面是一次被验证器发现、随后修复成功的代码问题。把它提炼为一条可复用的经验（LessonRecord）：title 一句话概括，trigger 写现象/报错，fix 写通用的修复方法（不要只描述这一处改动），applies_to 填相关的条件标签（从 condition_tags 中选）。error_code 与诊断码一致。"
+    },
+    {
+      "role": "user",
+      "content": "<<CONTEXT>>\n{\n \"operator_purpose\": \"生成消费比率特征\",\n \"diagnostic\": {\n  \"code\": \"E_RUNTIME\",\n  \"stage\": \"sandbox\",\n  \"message\": \"ValueError: could not convert string to float: ' ' (at to_numpy:1803)\",\n  \"operator\": \"ChargeRatioFeatureGenerator@2\",\n  \"hint\": \"\"\n },\n \"code_diff\": \"--- \\n+++ \\n@@ -40,9 +40,13 @@\\n         def clean_numeric(series):\\n-            # 确保列被转换为数值型，包含空格或特殊字符会被强制转为 NaN\\n+            # 严格处理：先转字符串，去除空格，再转数值，强制coerce无法转换的为NaN\\n             if series.dtype == 'object':\\n                 series = series.astype(str).str.strip()\\n+                # 排除可能存在的空字符串，将其视为 NaN\\n+                series = series.replace(r'^\\\\s*$', np.nan, regex=True)\\n                 series = pd.to_numeric(series, errors='coerce')\\n-            return series.fillna(0.0).astype(float)\\n+            else:\\n+                series = pd.to_numeric(series, errors='coerce')\\n+            return series.fillna(0.0)\\n \\n-        # 获取并清洗数据，确保所有列均为 float 类型\\n+        # 获取并清洗数据\\n         monthly_series = clean_numeric(X[self.monthly])\\n@@ -51,14 +55,13 @@\\n \\n-        # 计算 avg = total / tenure。处理 tenure=0 的情况（置为 NaN）\\n-        # 使用 replace 避免除以 0\\n-        tenure_safe = tenure_series.replace(0, np.nan)\\n-        avg_series = total_series / tenure_safe\\n-        \\n-        # 计算 ratio = avg / monthly。处理 monthly=0 的情况\\n-        monthly_safe = monthly_series.replace(0, np.nan)\\n-        ratio = avg_series / monthly_safe\\n+        # 计算 avg = total / tenure。\\n+        # tenure 为 0 时结果为 inf，后续统一处理\\n+        with np.errstate(divide='ignore', invalid='ignore'):\\n+            avg_series = total_series / tenure_series\\n+            # 计算 ratio = avg / monthly\\n+            ratio = avg_series / monthly_series\\n \\n-        # 处理计算产生的无穷值和缺失值，保证算子鲁棒性\\n-        # 如果无法计算（例如 tenure 和 monthly 均为 0），默认填充 1.0\\n-        ratio = ratio.replace([np.inf, -np.inf], np.nan).fillna(1.0)\\n+        # 处理 inf, -inf 和 NaN，保证鲁棒性\\n+        # 如果无法计算（例如 tenure 或 monthly 均为 0），默认填充 1.0 代表比率持平\\n+        ratio = ratio.replace([np.inf, -np.inf], np.nan)\\n+        ratio = ratio.fillna(1.0)\\n         \",\n \"condition_tags\": [\n  \"has_missing_values\",\n  \"has_categorical_features\",\n  \"low_cardinality\",\n  \"high_cardinality\",\n  \"numeric_features\",\n  \"string_typed_numeric\",\n  \"id_columns\",\n  \"linear_model\",\n  \"scaled_features\",\n  \"nonlinear\",\n  \"mixed_features\",\n  \"large_tabular\",\n  \"imbalanced\",\n  \"recall_first\",\n  \"interpretable\",\n  \"feature_importance\",\n  \"sparse_features\",\n  \"text_input\",\n  \"time_tenure\"\n ]\n}\n<</CONTEXT>>"
+    },
+    {
+      "role": "system",
+      "content": "Respond with a single JSON object only, no prose, conforming to this JSON schema:\n{\"$defs\": {\"DiagnosticCode\": {\"enum\": [\"E_SYNTAX\", \"E_UNSAFE\", \"E_INTERFACE\", \"E_RUNTIME\", \"E_TIMEOUT\", \"E_SHAPE\", \"E_PROBA\", \"E_MUTATION\", \"E_NAN\", \"M_THRESHOLD\", \"M_UNSTABLE\"], \"title\": \"DiagnosticCode\", \"type\": \"string\"}}, \"properties\": {\"title\": {\"title\": \"Title\", \"type\": \"string\"}, \"trigger\": {\"description\": \"什么情况下会出现这个问题（现象/报错）\", \"title\": \"Trigger\", \"type\": \"string\"}, \"fix\": {\"description\": \"如何修复或规避\", \"title\": \"Fix\", \"type\": \"string\"}, \"error_code\": {\"anyOf\": [{\"$ref\": \"#/$defs/DiagnosticCode\"}, {\"type\": \"null\"}], \"default\": null}, \"applies_to\": {\"description\": \"相关的算子名、条件标签或场景名\", \"items\": {\"type\": \"string\"}, \"title\": \"Applies To\", \"type\": \"array\"}}, \"required\": [\"title\", \"trigger\", \"fix\"], \"title\": \"LessonRecord\", \"type\": \"object\"}"
+    }
+  ],
+  "response": "{\n  \"title\": \"数值特征清洗需显式处理空白字符与零除异常\",\n  \"trigger\": \"在对包含字符串类型的数值列进行清洗时，若存在空字符串或仅由空格构成的字符串，直接调用 pd.to_numeric 会抛出 ValueError；同时在后续算术运算中若未处理除以零的情况，会导致 inf/NaN 产生。\",\n  \"fix\": \"在数据清洗阶段，应显式将空/空白字符串替换为 np.nan，并使用 pd.to_numeric(errors='coerce') 转换；在数值运算阶段，应使用 np.errstate 上下文管理器捕获溢出/除零异常，并统一使用 replace/fillna 对 inf 和 NaN 进行健壮性填充。\",\n  \"error_code\": \"E_RUNTIME\",\n  \"applies_to\": [\n    \"string_typed_numeric\",\n    \"numeric_features\",\n    \"has_missing_values\"\n  ]\n}",
+  "json_mode": true,
+  "seconds": 2.2823633402585983,
+  "usage": {
+    "completion_tokens": 237,
+    "prompt_tokens": 1682,
+    "total_tokens": 1919,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 237,
+      "image_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": null,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 1682
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "input_tokens": 0,
+    "input_tokens_details": null,
+    "output_tokens": 0
+  },
+  "source": "remote"
+}

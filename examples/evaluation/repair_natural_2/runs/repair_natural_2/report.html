@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>AlgoForge 验证报告</title><style>
+:root { --fg:#1f2328; --muted:#59636e; --bg:#ffffff; --line:#d1d9e0; --code:#f6f8fa; --accent:#0969da; }
+@media (prefers-color-scheme: dark) {
+  :root { --fg:#e6edf3; --muted:#9198a1; --bg:#0d1117; --line:#3d444d; --code:#151b23; --accent:#4493f8; }
+}
+body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color:var(--fg);
+       background:var(--bg); max-width: 1100px; margin: 0 auto; padding: 24px 16px; line-height: 1.6; }
+h1 { border-bottom: 2px solid var(--line); padding-bottom: 8px; }
+h2 { border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-top: 32px; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+th { background: var(--code); }
+pre { background: var(--code); padding: 12px; overflow-x: auto; border-radius: 6px; font-size: 13px; }
+code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; }
+p code, li code, td code { background: var(--code); padding: 1px 4px; border-radius: 4px; }
+</style></head>
+<body>
+<h1>AlgoForge 验证报告</h1>
+<table><thead><tr><th>项目</th><th>内容</th></tr></thead><tbody><tr><td>需求</td><td>预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；将 total_charges 的空白字符串转换并填补为合理数值。</td></tr><tr><td>数据</td><td>data/churn.csv</td></tr><tr><td>运行 ID</td><td>repair_natural_2</td></tr><tr><td>LLM</td><td>gemini-3.5-flash</td></tr><tr><td>状态</td><td>❌ 未通过</td></tr><tr><td>最优方案</td><td>random_forest_pipeline</td></tr><tr><td>总耗时</td><td>80.3 s</td></tr></tbody></table>
+<p>共验证 3 个候选方案，0 个通过；重新规划 0 次，修复 1 轮。最优方案 <code>random_forest_pipeline</code> 的 recall = 0.677（要求 ≥ 0.75）。</p>
+<h2>1. 需求理解（TaskSpec）</h2>
+<table><thead><tr><th>字段</th><th>值</th></tr></thead><tbody><tr><td>任务类型</td><td>binary_classification</td></tr><tr><td>数据模态</td><td>tabular</td></tr><tr><td>目标列</td><td>churn</td></tr><tr><td>评价指标</td><td>recall ≥ 0.75（主）</td></tr><tr><td>业务约束</td><td>interpretable、recall_first</td></tr><tr><td>数据画像标签</td><td>has_missing_values、numeric_features、has_categorical_features、low_cardinality、string_typed_numeric、id_columns、imbalanced、time_tenure、mixed_features</td></tr></tbody></table>
+<h2>2. 知识检索（设计依据）</h2>
+<p>匹配场景：telecom_churn。每类步骤从知识图谱检索候选算子，得分 = 0.4 × 文本相关度 + 0.3 × 条件匹配 + 0.3 × 历史验证分。</p>
+<table><thead><tr><th>步骤</th><th>候选算子</th><th>可直接复用</th><th>得分</th><th>文本/条件/历史</th><th>证据</th></tr></thead><tbody><tr><td>imputer</td><td>MissingValueImputer@1</td><td>是</td><td>0.491</td><td>0.62 / 0.09 / 0.72</td><td>匹配条件：has_missing_values；历史验证 3 次，平均 recall 0.717</td></tr><tr><td>imputer</td><td>TotalChargesCleaner@1</td><td>否（历史实现，可参考生成）</td><td>0.482</td><td>1.00 / 0.27 / 0.00</td><td>匹配条件：has_missing_values、numeric_features、string_typed_numeric</td></tr><tr><td>feature</td><td>TenureBucketizer@1</td><td>否（历史实现，可参考生成）</td><td>0.722</td><td>1.00 / 0.27 / 0.80</td><td>匹配条件：interpretable、numeric_features、time_tenure；历史验证 1 次，平均 recall 0.800</td></tr><tr><td>feature</td><td>ChargeRatioFeatureGenerator@1</td><td>否（历史实现，可参考生成）</td><td>0.617</td><td>0.81 / 0.18 / 0.80</td><td>匹配条件：numeric_features、time_tenure；历史验证 1 次，平均 recall 0.800</td></tr><tr><td>feature</td><td>ServiceCountFeature@1</td><td>否（历史实现，可参考生成）</td><td>0.416</td><td>0.97 / 0.09 / 0.00</td><td>匹配条件：has_categorical_features</td></tr><tr><td>feature</td><td>IdColumnDropper@1</td><td>否（历史实现，可参考生成）</td><td>0.385</td><td>0.89 / 0.09 / 0.00</td><td>匹配条件：id_columns</td></tr><tr><td>encoder</td><td>OneHotCategoricalEncoder@1</td><td>是</td><td>0.613</td><td>0.86 / 0.18 / 0.72</td><td>匹配条件：has_categorical_features、low_cardinality；历史验证 3 次，平均 recall 0.717</td></tr><tr><td>encoder</td><td>KFoldTargetEncoder@1</td><td>否（历史实现，可参考生成）</td><td>0.427</td><td>1.00 / 0.09 / 0.00</td><td>匹配条件：has_categorical_features</td></tr><tr><td>scaler</td><td>StandardFeatureScaler@1</td><td>是</td><td>0.640</td><td>1.00 / 0.09 / 0.71</td><td>匹配条件：numeric_features；历史验证 1 次，平均 recall 0.710</td></tr><tr><td>model</td><td>LogisticRegressionModel@1</td><td>是</td><td>0.640</td><td>1.00 / 0.09 / 0.71</td><td>匹配条件：interpretable；历史验证 1 次，平均 recall 0.710</td></tr><tr><td>model</td><td>BalancedLightGBMClassifier@1</td><td>否（历史实现，可参考生成）</td><td>0.601</td><td>0.85 / 0.09 / 0.78</td><td>匹配条件：imbalanced；历史验证 1 次，平均 recall 0.780</td></tr><tr><td>model</td><td>RandomForestModel@1</td><td>是</td><td>0.556</td><td>0.83 / 0.09 / 0.66</td><td>匹配条件：mixed_features；历史验证 1 次，平均 recall 0.660</td></tr><tr><td>model</td><td>LightGBMModel@1</td><td>是</td><td>0.546</td><td>0.70 / 0.09 / 0.80</td><td>匹配条件：imbalanced；历史验证 1 次，平均 recall 0.800</td></tr></tbody></table>
+<h3>参考的历史经验</h3>
+<ul><li><strong>数值列含空白字符导致类型转换失败</strong>（E_RUNTIME）：先 str.strip()，再 pd.to_numeric(errors=&#x27;coerce&#x27;)，缺失值填补为 0</li><li><strong>样本不平衡导致默认模型召回率偏低</strong>（M_THRESHOLD）：启用平衡类权重（如 class_weight=&#x27;balanced&#x27; 或 BalancedLightGBMClassifier）以提升召回率</li><li><strong>随机森林防过拟合与召回优化</strong>：设置 n_estimators 300 左右，限制 max_depth 在 8~16 防止过拟合；召回优先时需配合调整分类阈值。</li><li><strong>逻辑回归标准化与可解释性</strong>：必须先进行特征标准化（如 StandardFeatureScaler），在 0.1~10 之间搜索正则化强度 C，可直接输出系数给业务方。</li><li><strong>未剔除客户 ID 导致 One-Hot 编码后维度暴涨与内存溢出</strong>（E_TIMEOUT）：建模前剔除 ID 等标识列，并在编码器中设置最大类别数</li></ul>
+<h3>知识引用检查</h3>
+<p>检索并传入上下文不等于采纳。以下引用由模型声明，程序仅核对可见范围与结构化适用对象；不证明语义落实或指标收益。</p>
+<table><thead><tr><th>方案</th><th>步骤</th><th>模型引用</th><th>范围检查</th><th>语义落实</th></tr></thead><tbody><tr><td>lgbm_pipeline</td><td>1</td><td>Operator:TotalChargesCleaner@1、Lesson:69d51358</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_pipeline</td><td>2</td><td>Operator:MissingValueImputer@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_pipeline</td><td>3</td><td>Operator:IdColumnDropper@1、Lesson:88299a38</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_pipeline</td><td>4</td><td>Operator:OneHotCategoricalEncoder@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_pipeline</td><td>5</td><td>Operator:LightGBMModel@1、Lesson:9e9e77d6</td><td>通过</td><td>未验证</td></tr><tr><td>logistic_interpretable_pipeline</td><td>1</td><td>Operator:TotalChargesCleaner@1、Lesson:69d51358</td><td>通过</td><td>未验证</td></tr><tr><td>logistic_interpretable_pipeline</td><td>2</td><td>Operator:TenureBucketizer@1</td><td>通过</td><td>未验证</td></tr><tr><td>logistic_interpretable_pipeline</td><td>3</td><td>Operator:OneHotCategoricalEncoder@1</td><td>通过</td><td>未验证</td></tr><tr><td>logistic_interpretable_pipeline</td><td>4</td><td>Operator:StandardFeatureScaler@1、Lesson:74e2da10</td><td>通过</td><td>未验证</td></tr><tr><td>logistic_interpretable_pipeline</td><td>5</td><td>Operator:LogisticRegressionModel@1、Lesson:74e2da10、Lesson:9e9e77d6</td><td>通过</td><td>未验证</td></tr><tr><td>random_forest_pipeline</td><td>1</td><td>Operator:TotalChargesCleaner@1</td><td>通过</td><td>未验证</td></tr><tr><td>random_forest_pipeline</td><td>2</td><td>Operator:ChargeRatioFeatureGenerator@1</td><td>通过</td><td>未验证</td></tr><tr><td>random_forest_pipeline</td><td>3</td><td>Operator:OneHotCategoricalEncoder@1</td><td>通过</td><td>未验证</td></tr><tr><td>random_forest_pipeline</td><td>4</td><td>Operator:RandomForestModel@1、Lesson:57718714</td><td>通过</td><td>未验证</td></tr></tbody></table>
+<h2>3. 候选方案比较</h2>
+<p>排序规则：先看是否通过全部检查，再比主指标，再比次要指标之和，最后训练耗时短者优先。指标为多随机种子 × 分层 K 折交叉验证的均值 ± 种子间标准差。</p>
+<table><thead><tr><th>排名</th><th>方案</th><th>结果</th><th>recall</th><th>roc_auc</th><th>precision</th><th>f1</th><th>recall_at_20</th><th>单次训练 (s)</th><th>峰值内存 (MB)</th></tr></thead><tbody><tr><td>1</td><td>★ random_forest_pipeline</td><td>未通过</td><td>0.677 ± 0.006</td><td>0.801 ± 0.002</td><td>0.501 ± 0.004</td><td>0.576 ± 0.005</td><td>0.450 ± 0.002</td><td>0.900</td><td>292</td></tr><tr><td>2</td><td>lgbm_pipeline</td><td>未通过</td><td>0.654 ± 0.009</td><td>0.786 ± 0.004</td><td>0.491 ± 0.001</td><td>0.561 ± 0.004</td><td>0.426 ± 0.008</td><td>0.312</td><td>264</td></tr><tr><td>3</td><td>logistic_interpretable_pipeline</td><td>未通过</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>233</td></tr></tbody></table>
+<pre><code>recall（| 为阈值 0.75）
+random_forest_pipeline               ■■■■■■■■■■■■■■·|···· 0.677
+lgbm_pipeline                        ■■■■■■■■■■■■■··|···· 0.654
+logistic_interpretable_pipeline      ···············|···· -</code></pre>
+<h3>各方案的结构与诊断</h3>
+<ul><li><code>random_forest_pipeline</code>：生成:TotalChargesCleaner → 生成:ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → RandomForestModel。诊断：<code>M_THRESHOLD</code> recall = 0.6775 低于阈值 0.75</li><li><code>lgbm_pipeline</code>：生成:TotalChargesCleaner → MissingValueImputer → 生成:IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel。诊断：<code>M_THRESHOLD</code> recall = 0.6544 低于阈值 0.75</li><li><code>logistic_interpretable_pipeline</code>：生成:TotalChargesCleaner → 生成:TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel。诊断：<code>E_RUNTIME</code> ValueError: Input X contains NaN.
+LogisticRegression does not accept missing values encoded as NaN natively. For supervised learning, you might want to consider sklearn.ensemble.HistGradientBoostingClassifier and Regressor which accept missing values encoded as NaNs natively. Alternatively, it is possible to pr (at _assert_all_finite_element_wise:186)</li></ul>
+<h2>4. 最优方案：random_forest_pipeline</h2>
+<p>利用随机森林处理复杂的非线性关系，引入消费比值特征以捕捉流失信号。</p>
+<table><thead><tr><th>#</th><th>步骤</th><th>算子</th><th>参数</th><th>选择理由</th></tr></thead><tbody><tr><td>1</td><td>imputer</td><td>生成 TotalChargesCleaner</td><td>-</td><td>数据清洗第一步。</td></tr><tr><td>2</td><td>feature</td><td>生成 ChargeRatioFeatureGenerator</td><td>-</td><td>通过领域知识构造特征提升模型感知能力。</td></tr><tr><td>3</td><td>encoder</td><td>OneHotCategoricalEncoder@1</td><td>-</td><td>编码。</td></tr><tr><td>4</td><td>model</td><td>RandomForestModel@1</td><td>n_estimators=400, max_depth=12, class_weight=balanced</td><td>利用随机森林非线性拟合能力，通过调整深度控制过拟合。</td></tr></tbody></table>
+<h2>5. 能力生成与修复</h2>
+<table><thead><tr><th>生成算子</th><th>类型</th><th>用途</th><th>参考的历史实现</th><th>修复轮数</th><th>注册到能力库</th></tr></thead><tbody><tr><td>TotalChargesCleaner@2</td><td>imputer</td><td>将字符串类型的total_charges转换为数值，处理空白符并填补缺失值</td><td>TotalChargesCleaner@1</td><td>0</td><td>否</td></tr><tr><td>IdColumnDropper@2</td><td>feature</td><td>删除客户ID等标识列以避免编码后维度爆炸</td><td>IdColumnDropper@1</td><td>1</td><td>否</td></tr><tr><td>TenureBucketizer@2</td><td>feature</td><td>对tenure进行分箱以提升线性模型可解释性</td><td>TenureBucketizer@1</td><td>0</td><td>否</td></tr><tr><td>ChargeRatioFeatureGenerator@2</td><td>feature</td><td>生成消费趋势特征</td><td>ChargeRatioFeatureGenerator@1</td><td>0</td><td>否</td></tr></tbody></table>
+<h3>修复 IdColumnDropper@2 第 1 轮：✅ 已修复</h3>
+<ul><li>诊断：<code>E_INTERFACE</code>（static）meta.params 与 __init__ 默认值不一致：[&quot;id_cols: meta=[&#x27;customer_id&#x27;], __init__=(&#x27;customer_id&#x27;,)&quot;]</li><li>提示：实例化时 meta.params 会覆盖 __init__ 默认值，两处必须一致</li><li>参考经验：0 条</li></ul>
+<pre><code>--- 修复前
++++ 修复后
+@@ -19,4 +19,4 @@
+ 
+-    def __init__(self, id_cols=(&quot;customer_id&quot;,)):
+-        self.id_cols = list(id_cols)
++    def __init__(self, id_cols=[&quot;customer_id&quot;]):
++        self.id_cols = id_cols
+ 
+@@ -33,3 +33,3 @@
+         
+-        # 2. 处理 total_charges 等因读取产生的脏数据（符合 Lessons 经验）
++        # 2. 处理 total_charges 等因读取产生的脏数据
+         # 将空白字符串转换为数字并填补缺失值，防止后续下游编码器崩溃</code></pre>
+<h2>6. 验证机制</h2>
+<table><thead><tr><th>级别</th><th>检查内容</th><th>本次配置</th></tr></thead><tbody><tr><td>1 静态检查</td><td>语法、import 白名单、禁止危险调用、接口与 meta 一致性</td><td>仅针对生成的算子</td></tr><tr><td>2 沙箱执行</td><td>独立子进程，限制超时与内存，清除含 KEY/TOKEN 的环境变量</td><td>超时 180 s，内存 8192 MB</td></tr><tr><td>3 契约检查</td><td>不修改输入、行数一致、不引入 NaN/Inf、概率合法、能处理未见类别与缺失值</td><td>冒烟样本 300 行</td></tr><tr><td>4 指标检查</td><td>阈值、种子间稳定性、疑似泄漏、耗时与内存</td><td>5 折 × 种子 [42, 7, 2024]；std 上限 0.03</td></tr></tbody></table>
+<p>最优方案资源消耗：单次训练 0.900 s，预测 290.2 ms / 千行，峰值内存 292 MB。</p>
+<p>修复前的 1 次验证结果保留在 state.json 的 history 中。</p>
+<h2>7. 知识沉淀</h2>
+<ul><li>回写验证记录 ValidationRun：3 条</li><li>注册到能力库的新算子：无</li><li>新提炼的经验：确保算子元数据定义与构造函数默认值类型一致（E_INTERFACE）</li><li>本次提供的经验：7 条（累计检索命中，不代表采纳）</li></ul>
+<h2>附录 A. 生成的算法代码（pipeline.py）</h2>
+<pre><code># 警告：该方案未通过验证，仅为得分最高的候选，供人工参考。
+&quot;&quot;&quot;预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；将 tot —— 自动生成的算法流水线
+
+需求：预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；将 total_charges 的空白字符串转换并填补为合理数值。
+方案：random_forest_pipeline
+设计依据：利用随机森林处理复杂的非线性关系，引入消费比值特征以捕捉流失信号。
+主指标：recall &gt;= 0.75
+
+由 AlgoForge 自动生成。用法：
+    python pipeline.py --data &lt;train.csv&gt;                      # 训练并保存 model.joblib
+    python pipeline.py --predict &lt;new.csv&gt; --model model.joblib  # 预测
+&quot;&quot;&quot;
+
+import argparse
+
+import joblib
+import pandas as pd
+from sklearn.pipeline import Pipeline
+
+from factory.operators.models import RandomForestModel
+from factory.operators.tabular import OneHotCategoricalEncoder
+
+
+import pandas as pd
+import numpy as np
+from sklearn.base import TransformerMixin
+from factory.operators.base import Operator, OperatorMeta
+from factory.schemas import OperatorKind
+
+class TotalChargesCleaner(TransformerMixin, Operator):
+    meta = OperatorMeta(
+        name=&quot;TotalChargesCleaner&quot;,
+        kind=OperatorKind.IMPUTER,
+        version=2,
+        origin=&quot;synthesized&quot;,
+        description=&quot;将total_charges列中的脏字符串（含空白符）转换为数值，并用0填补缺失值&quot;,
+        conditions=[&quot;数据包含字符串类型的数值列&quot;, &quot;存在因空白符导致的转换错误&quot;],
+        dependencies=[&quot;pandas&quot;, &quot;numpy&quot;],
+        params={&quot;col&quot;: &quot;total_charges&quot;},
+        parent=&quot;TotalChargesCleaner@1&quot;
+    )
+
+    def __init__(self, col=&quot;total_charges&quot;):
+        self.col = col
+
+    def fit(self, X, y=None):
+        &quot;&quot;&quot;记录列名，该算子无需学习统计量&quot;&quot;&quot;
+        self.col_ = self.col
+        return self
+
+    def transform(self, X):
+        &quot;&quot;&quot;
+        执行转换：
+        1. 复制输入以保证不可变性
+        2. 处理字符串中的空白符并强制转换为浮点数
+        3. 处理转换产生的缺失值（赋值为0）
+        &quot;&quot;&quot;
+        X = X.copy()
+
+        if self.col_ in X.columns:
+            # 依据 Lessons 修复：先 strip，再 coerce，最后用 0 填充
+            # 确保转换过程不抛出异常
+            X[self.col_] = pd.to_numeric(
+                X[self.col_].astype(str).str.strip(), 
+                errors=&quot;coerce&quot;
+            ).fillna(0.0)
+
+            # 处理可能存在的无穷值，确保输出的数值稳定性
+            X[self.col_] = X[self.col_].replace([np.inf, -np.inf], 0.0)
+
+        return X
+
+import numpy as np
+import pandas as pd
+from sklearn.base import TransformerMixin, BaseEstimator
+from factory.operators.base import Operator, OperatorMeta
+from factory.schemas import OperatorKind
+
+class ChargeRatioFeatureGenerator(TransformerMixin, Operator):
+    meta = OperatorMeta(
+        name=&quot;ChargeRatioFeatureGenerator&quot;,
+        kind=OperatorKind.FEATURE,
+        version=2,
+        origin=&quot;synthesized&quot;,
+        description=&quot;生成消费比值特征，通过处理total_charges脏数据并计算总费与月费比例&quot;,
+        conditions=[&quot;数据中包含total_charges, monthly_charges, tenure字段&quot;],
+        dependencies=[&quot;pandas&quot;, &quot;numpy&quot;, &quot;sklearn&quot;],
+        params={&quot;monthly&quot;: &quot;monthly_charges&quot;, &quot;total&quot;: &quot;total_charges&quot;, &quot;tenure&quot;: &quot;tenure&quot;},
+        parent=&quot;ChargeRatioFeatureGenerator@1&quot;
+    )
+
+    def __init__(self, monthly=&quot;monthly_charges&quot;, total=&quot;total_charges&quot;, tenure=&quot;tenure&quot;):
+        self.monthly = monthly
+        self.total = total
+        self.tenure = tenure
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        X = X.copy()
+
+        # 处理 total_charges 脏数据 (Lesson:69d51358)
+        # 将空白字符串和非法字符转为数值，缺失值填补为 0
+        if self.total in X.columns:
+            X[self.total] = pd.to_numeric(X[self.total].astype(str).str.strip(), errors=&#x27;coerce&#x27;).fillna(0.0)
+
+        # 确保 monthly_charges 和 tenure 为数值类型
+        X[self.monthly] = pd.to_numeric(X[self.monthly], errors=&#x27;coerce&#x27;).fillna(0.0)
+        X[self.tenure] = pd.to_numeric(X[self.tenure], errors=&#x27;coerce&#x27;).fillna(0.0)
+
+        # 计算特征: avg_monthly = total / tenure (tenure=0时为0)
+        # 避免除以0，tenure为0时比值记为1
+        tenure_safe = X[self.tenure].replace(0, np.nan)
+        avg_calc = X[self.total] / tenure_safe
+
+        # 计算比值: (avg_calc / monthly)
+        # 处理无穷值和缺失值
+        ratio = avg_calc / X[self.monthly]
+        X[&quot;charge_ratio&quot;] = ratio.replace([np.inf, -np.inf], np.nan).fillna(1.0)
+
+        return X
+
+
+TARGET = &#x27;churn&#x27;
+
+
+def build_pipeline() -&gt; Pipeline:
+    return Pipeline([
+        (&quot;0_imputer&quot;, TotalChargesCleaner()),  # 数据清洗第一步。
+        (&quot;1_feature&quot;, ChargeRatioFeatureGenerator()),  # 通过领域知识构造特征提升模型感知能力。
+        (&quot;2_encoder&quot;, OneHotCategoricalEncoder(max_categories=20)),  # 编码。
+        (&quot;3_model&quot;, RandomForestModel(n_estimators=400, max_depth=12, class_weight=&#x27;balanced&#x27;, random_state=42)),  # 利用随机森林非线性拟合能力，通过调整深度控制过拟合。
+    ])
+
+
+def main() -&gt; None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(&quot;--data&quot;, help=&quot;训练数据 CSV&quot;)
+    parser.add_argument(&quot;--predict&quot;, help=&quot;待预测数据 CSV&quot;)
+    parser.add_argument(&quot;--model&quot;, default=&quot;model.joblib&quot;)
+    args = parser.parse_args()
+    if args.data:
+        df = pd.read_csv(args.data)
+        pipe = build_pipeline().fit(df.drop(columns=[TARGET]), df[TARGET])
+        joblib.dump(pipe, args.model)
+        print(f&quot;模型已保存到 {args.model}&quot;)
+    if args.predict:
+        pipe = joblib.load(args.model)
+        df = pd.read_csv(args.predict)
+        X = df.drop(columns=[TARGET], errors=&quot;ignore&quot;)
+        out = pd.DataFrame(pipe.predict_proba(X), columns=[f&quot;proba_{c}&quot; for c in pipe.classes_])
+        out[&quot;prediction&quot;] = pipe.predict(X)
+        print(out.head().to_string())
+
+
+if __name__ == &quot;__main__&quot;:
+    main()
+</code></pre>
+<h2>附录 B. 运行记录</h2>
+<p>各阶段耗时：PLAN 7.3s，BUILD 37.4s，VERIFY 29.8s，ROUTE 0.0s，REPAIR 3.1s，CURATE 2.6s</p>
+<pre><code>[PLAN] 场景 telecom_churn；画像标签 [&#x27;has_missing_values&#x27;, &#x27;numeric_features&#x27;, &#x27;has_categorical_features&#x27;, &#x27;low_cardinality&#x27;, &#x27;string_typed_numeric&#x27;, &#x27;id_columns&#x27;, &#x27;imbalanced&#x27;, &#x27;time_tenure&#x27;, &#x27;mixed_features&#x27;]
+[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall &gt;= 0.75
+[PLAN] 候选方案：[&#x27;lgbm_pipeline(*TotalChargesCleaner → MissingValueImputer → *IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel)&#x27;, &#x27;logistic_interpretable_pipeline(*TotalChargesCleaner → *TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)&#x27;, &#x27;random_forest_pipeline(*TotalChargesCleaner → *ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → RandomForestModel)&#x27;]
+[PLAN] 完成，用时 7.3s → BUILD
+[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将字符串类型的total_charges转换为数值，处理空白符并填补缺失值
+[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：删除客户ID等标识列以避免编码后维度爆炸
+[BUILD] 生成算子 TenureBucketizer@2（参考 TenureBucketizer@1）：对tenure进行分箱以提升线性模型可解释性
+[BUILD] 生成算子 ChargeRatioFeatureGenerator@2（参考 ChargeRatioFeatureGenerator@1）：生成消费趋势特征
+[BUILD] 完成，用时 37.4s → VERIFY
+[VERIFY] lgbm_pipeline：未通过，recall=nan；E_INTERFACE meta.params 与 __init__ 默认值不一致：[&quot;id_cols: meta=[&#x27;customer_id&#x27;], __init__=(&#x27;customer_id&#x27;,)&quot;]
+[VERIFY] logistic_interpretable_pipeline：未通过，recall=nan；E_RUNTIME ValueError: Input X contains NaN.
+LogisticRegression does not accept missing values encoded as NaN natively. For supervised learning, you might want to consider sklearn.ensemble.HistGradientBoostingClassifier and Regressor which accept missing values encoded as NaNs natively. Alternatively, it is possible to pr (at _assert_all_finite_element_wise:186)
+[VERIFY] random_forest_pipeline：未通过，recall=0.6775；M_THRESHOLD recall = 0.6775 低于阈值 0.75
+[VERIFY] 完成，用时 22.5s → ROUTE
+[ROUTE] 完成，用时 0.0s → REPAIR
+[REPAIR] 修复 IdColumnDropper@2 第 1 轮：E_INTERFACE meta.params 与 __init__ 默认值不一致：[&quot;id_cols: meta=[&#x27;customer_id&#x27;], __init__=(&#x27;custom
+[REPAIR] 完成，用时 3.1s → VERIFY
+[VERIFY] lgbm_pipeline：未通过，recall=0.6544；M_THRESHOLD recall = 0.6544 低于阈值 0.75
+[VERIFY] 完成，用时 7.3s → ROUTE
+[ROUTE] 没有方案通过验证
+[ROUTE] 完成，用时 0.0s → CURATE
+[CURATE] 写入 KG：3 条 ValidationRun；注册新算子 []；新增经验 1 条
+[CURATE] 完成，用时 2.7s → FAILED</code></pre>
+<h3>LLM 调用来源</h3>
+<table><thead><tr><th>阶段</th><th>请求哈希</th><th>来源</th><th>本次耗时(s)</th><th>录制耗时(s)</th><th>tokens</th></tr></thead><tbody><tr><td>plan</td><td>50b3ded985c73e1a</td><td>remote</td><td>7.130</td><td>-</td><td>11709</td></tr><tr><td>synthesize</td><td>14165a56ca9696fd</td><td>remote</td><td>2.839</td><td>-</td><td>2542</td></tr><tr><td>synthesize</td><td>9841e20786f21535</td><td>remote</td><td>3.239</td><td>-</td><td>2460</td></tr><tr><td>synthesize</td><td>3ea0eb19929c75bb</td><td>remote</td><td>3.012</td><td>-</td><td>2636</td></tr><tr><td>synthesize</td><td>4207dd75ff0369e9</td><td>remote</td><td>28.273</td><td>-</td><td>2682</td></tr><tr><td>repair</td><td>ff562e78c2f145c8</td><td>remote</td><td>3.127</td><td>-</td><td>2064</td></tr><tr><td>lesson</td><td>4c6c97268e37bf60</td><td>remote</td><td>2.636</td><td>-</td><td>1223</td></tr></tbody></table>
+</body></html>

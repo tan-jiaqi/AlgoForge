@@ -116,6 +116,30 @@
       "description": "存在在网时长等时间长度字段"
     },
     {
+      "id": "Condition:存在包含空白字符的缺失值",
+      "type": "Condition",
+      "key": "存在包含空白字符的缺失值",
+      "description": "存在包含空白字符的缺失值"
+    },
+    {
+      "id": "Condition:数据包含标识列",
+      "type": "Condition",
+      "key": "数据包含标识列",
+      "description": "数据包含标识列"
+    },
+    {
+      "id": "Condition:数据存在字符串格式的数值列",
+      "type": "Condition",
+      "key": "数据存在字符串格式的数值列",
+      "description": "数据存在字符串格式的数值列"
+    },
+    {
+      "id": "Condition:输入必须包含数值型tenure列",
+      "type": "Condition",
+      "key": "输入必须包含数值型tenure列",
+      "description": "输入必须包含数值型tenure列"
+    },
+    {
       "id": "Dependency:lightgbm",
       "type": "Dependency",
       "key": "lightgbm",
@@ -140,6 +164,12 @@
       "package": "scikit-learn"
     },
     {
+      "id": "Dependency:sklearn",
+      "type": "Dependency",
+      "key": "sklearn",
+      "package": "sklearn"
+    },
+    {
       "id": "Lesson:0d5e3eb1",
       "type": "Lesson",
       "key": "0d5e3eb1",
@@ -147,7 +177,7 @@
       "trigger": "线上/测试集出现未见类别，OneHotEncoder 抛出 ValueError: Found unknown categories",
       "fix": "编码器配置 handle_unknown='ignore' 或 infrequent_if_exist 忽略未知类别",
       "error_code": "E_RUNTIME",
-      "hits": 1
+      "hits": 2
     },
     {
       "id": "Lesson:57718714",
@@ -157,7 +187,7 @@
       "trigger": "使用随机森林模型，面临过拟合风险，或业务要求召回优先时",
       "fix": "设置 n_estimators 300 左右，限制 max_depth 在 8~16 防止过拟合；召回优先时需配合调整分类阈值。",
       "error_code": null,
-      "hits": 3
+      "hits": 1
     },
     {
       "id": "Lesson:631c1a72",
@@ -167,7 +197,7 @@
       "trigger": "处理中文短文本分类任务时",
       "fix": "直接使用字符级 TF-IDF（char 1~2 gram）配合逻辑回归，无需分词。",
       "error_code": null,
-      "hits": 0
+      "hits": 1
     },
     {
       "id": "Lesson:69d51358",
@@ -177,7 +207,7 @@
       "trigger": "新入网客户累计消费为空白字符串，读取为 object 类型，转 float 时抛出 ValueError: could not convert string to float: ' '",
       "fix": "先 str.strip()，再 pd.to_numeric(errors='coerce')，缺失值填补为 0",
       "error_code": "E_RUNTIME",
-      "hits": 3
+      "hits": 2
     },
     {
       "id": "Lesson:6a946c79",
@@ -187,7 +217,7 @@
       "trigger": "函数内直接对入参 DataFrame 进行原地赋值修改，交叉验证多折运行时特征列重复",
       "fix": "函数开头先执行 df = df.copy() 规避原地修改副作用",
       "error_code": "E_MUTATION",
-      "hits": 2
+      "hits": 0
     },
     {
       "id": "Lesson:74e2da10",
@@ -197,7 +227,7 @@
       "trigger": "使用逻辑回归模型，或者需要模型具有高可解释性时",
       "fix": "必须先进行特征标准化（如 StandardFeatureScaler），在 0.1~10 之间搜索正则化强度 C，可直接输出系数给业务方。",
       "error_code": null,
-      "hits": 2
+      "hits": 3
     },
     {
       "id": "Lesson:828ad675",
@@ -207,7 +237,7 @@
       "trigger": "在全量数据集上进行目标编码后再做交叉验证或训练，验证集指标虚高（AUC 达 0.97），上线后大幅下跌至 0.71",
       "fix": "必须使用按折目标编码（KFoldTargetEncoder）或严格在训练集/Fold内进行目标编码转换",
       "error_code": "M_UNSTABLE",
-      "hits": 2
+      "hits": 0
     },
     {
       "id": "Lesson:88299a38",
@@ -217,7 +247,7 @@
       "trigger": "customer_id 等标识列未剔除，直接进行 One-Hot 编码导致特征维度暴涨并引发内存溢出",
       "fix": "建模前剔除 ID 等标识列，并在编码器中设置最大类别数",
       "error_code": "E_TIMEOUT",
-      "hits": 3
+      "hits": 2
     },
     {
       "id": "Lesson:9e9e77d6",
@@ -233,6 +263,17 @@
       ]
     },
     {
+      "id": "Lesson:a3a47067",
+      "type": "Lesson",
+      "key": "a3a47067",
+      "title": "数值特征清洗需显式处理空白字符与零除异常",
+      "trigger": "在对包含字符串类型的数值列进行清洗时，若存在空字符串或仅由空格构成的字符串，直接调用 pd.to_numeric 会抛出 ValueError；同时在后续算术运算中若未处理除以零的情况，会导致 inf/NaN 产生。",
+      "fix": "在数据清洗阶段，应显式将空/空白字符串替换为 np.nan，并使用 pd.to_numeric(errors='coerce') 转换；在数值运算阶段，应使用 np.errstate 上下文管理器捕获溢出/除零异常，并统一使用 replace/fillna 对 inf 和 NaN 进行健壮性填充。",
+      "error_code": "E_RUNTIME",
+      "hits": 1,
+      "origin": "factory"
+    },
+    {
       "id": "Lesson:f2c1398b",
       "type": "Lesson",
       "key": "f2c1398b",
@@ -240,7 +281,7 @@
       "trigger": "数据量在 5k 到 10w 之间，或者样本不平衡时",
       "fix": "设置 num_leaves 15~63, learning_rate 0.03~0.1, n_estimators 200~600；不平衡时设置 class_weight='balanced'；树模型无需标准化。",
       "error_code": null,
-      "hits": 2
+      "hits": 1
     },
     {
       "id": "Metric:f1_macro",
@@ -344,17 +385,15 @@
       "modalities": [
         "tabular"
       ],
-      "description": "移除客户ID等无业务预测意义的标识列，防止编码维度暴涨和过拟合",
+      "description": "自动识别并剔除数据中的标识类(ID)特征，防止后续编码导致维度灾难。",
       "inputs": "pandas.DataFrame",
       "outputs": "pandas.DataFrame",
       "params": {
-        "id_cols": [
-          "customer_id"
-        ]
+        "id_columns": null
       },
       "origin": "synthesized",
       "executable": true,
-      "code": "from typing import Sequence\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\n\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\n\nclass IdColumnDropper(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"IdColumnDropper\",\n        kind=OperatorKind.FEATURE,\n        version=2,\n        origin=\"synthesized\",\n        description=\"移除客户ID等无业务预测意义的标识列，防止编码维度暴涨和过拟合\",\n        conditions=[\"id_columns\"],\n        dependencies=[],\n        params={\"id_cols\": (\"customer_id\",)},\n        parent=\"IdColumnDropper@1\",\n    )\n\n    def __init__(self, id_cols: Sequence[str] = (\"customer_id\",)):\n        self.id_cols = id_cols\n\n    def fit(self, X: pd.DataFrame, y=None):\n        cols_to_check = set(self.id_cols) if self.id_cols is not None else set()\n        self.drop_cols_ = [col for col in X.columns if col in cols_to_check]\n        return self\n\n    def transform(self, X: pd.DataFrame) -> pd.DataFrame:\n        X = X.copy()\n        cols_to_drop = [c for c in self.drop_cols_ if c in X.columns]\n        if cols_to_drop:\n            X = X.drop(columns=cols_to_drop)\n        return X\n"
+      "code": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass IdColumnDropper(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"IdColumnDropper\",\n        kind=OperatorKind.FEATURE,\n        version=2,\n        origin=\"synthesized\",\n        description=\"自动识别并剔除数据中的标识类(ID)特征，防止后续编码导致维度灾难。\",\n        conditions=[\"数据包含标识列\"],\n        dependencies=[],\n        params={\"id_columns\": None}\n    )\n\n    def __init__(self, id_columns=None):\n        self.id_columns = id_columns\n\n    def fit(self, X, y=None):\n        # 如果未指定id_columns，通过启发式规则自动识别：\n        # 若某列唯一值数量等于行数，或列名包含id且唯一值极高，则视为ID列\n        if self.id_columns is None:\n            n_rows = len(X)\n            self.id_columns_ = [\n                col for col in X.columns \n                if X[col].nunique() == n_rows or ('id' in col.lower() and X[col].nunique() > n_rows * 0.9)\n            ]\n        else:\n            self.id_columns_ = self.id_columns\n        return self\n\n    def transform(self, X):\n        X = X.copy()\n        # 移除标识列，过滤掉不存在于X中的列名以防报错\n        cols_to_drop = [c for c in self.id_columns_ if c in X.columns]\n        X = X.drop(columns=cols_to_drop)\n        \n        # 确保算子输出无无穷值(虽通常不产生，但按规范清理)\n        # 注意：此处仅处理数值列，类别列不受影响\n        numeric_cols = X.select_dtypes(include=[np.number]).columns\n        X[numeric_cols] = X[numeric_cols].replace([np.inf, -np.inf], np.nan)\n        \n        return X\n"
     },
     {
       "id": "Operator:KFoldTargetEncoder@1",
@@ -559,31 +598,15 @@
       "modalities": [
         "tabular"
       ],
-      "description": "将在网时长字段分箱为离散区间特征以增强线性模型的表达能力与业务可解释性",
+      "description": "将数值型在网时长特征划分为业务导向的区间，增强线性模型的解释性。",
       "inputs": "pandas.DataFrame",
       "outputs": "pandas.DataFrame",
       "params": {
-        "col": "tenure",
-        "bins": [
-          -Infinity,
-          6.0,
-          12.0,
-          24.0,
-          48.0,
-          Infinity
-        ],
-        "labels": [
-          "0-6",
-          "6-12",
-          "12-24",
-          "24-48",
-          "48+"
-        ],
-        "drop_original": false
+        "col": "tenure"
       },
       "origin": "synthesized",
       "executable": true,
-      "code": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\n\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\n\nclass TenureBucketizer(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"TenureBucketizer\",\n        kind=OperatorKind.FEATURE,\n        version=2,\n        origin=\"synthesized\",\n        description=\"将在网时长字段分箱为离散区间特征以增强线性模型的表达能力与业务可解释性\",\n        conditions=[\"time_tenure\", \"numeric_features\"],\n        dependencies=[\"pandas\", \"numpy\"],\n        params={\n            \"col\": \"tenure\",\n            \"bins\": (-float(\"inf\"), 6.0, 12.0, 24.0, 48.0, float(\"inf\")),\n            \"labels\": (\"0-6\", \"6-12\", \"12-24\", \"24-48\", \"48+\"),\n            \"drop_original\": False,\n        },\n        parent=\"TenureBucketizer@1\",\n    )\n\n    def __init__(\n        self,\n        col: str = \"tenure\",\n        bins: tuple = (-float(\"inf\"), 6.0, 12.0, 24.0, 48.0, float(\"inf\")),\n        labels: tuple = (\"0-6\", \"6-12\", \"12-24\", \"24-48\", \"48+\"),\n        drop_original: bool = False,\n    ):\n        self.col = col\n        self.bins = bins\n        self.labels = labels\n        self.drop_original = drop_original\n\n    def fit(self, X: pd.DataFrame, y=None):\n        self.feature_name_ = f\"{self.col}_bucket\"\n        self.bins_ = list(self.bins) if self.bins is not None else [-float(\"inf\"), 6.0, 12.0, 24.0, 48.0, float(\"inf\")]\n        self.labels_ = list(self.labels) if self.labels is not None else [\"0-6\", \"6-12\", \"12-24\", \"24-48\", \"48+\"]\n        return self\n\n    def transform(self, X: pd.DataFrame) -> pd.DataFrame:\n        X = X.copy()\n        if self.col not in X.columns:\n            return X\n\n        # 安全数值转换，兼顾脏数据、空白字符串与缺失值\n        tenure_series = X[self.col]\n        if tenure_series.dtype == object:\n            tenure_series = tenure_series.astype(str).str.strip()\n        numeric_tenure = pd.to_numeric(tenure_series, errors=\"coerce\")\n\n        # 分箱并处理缺失区间\n        bucketed = pd.cut(numeric_tenure, bins=self.bins_, labels=self.labels_)\n        bucketed_str = bucketed.astype(str)\n        bucketed_str = bucketed_str.replace(\"nan\", \"unknown\").fillna(\"unknown\")\n\n        X[self.feature_name_] = bucketed_str\n\n        if self.drop_original:\n            X = X.drop(columns=[self.col])\n\n        return X\n"
+      "code": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass TenureBucketizer(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"TenureBucketizer\",\n        kind=OperatorKind.FEATURE,\n        version=2,\n        origin=\"synthesized\",\n        description=\"将数值型在网时长特征划分为业务导向的区间，增强线性模型的解释性。\",\n        conditions=[\"输入必须包含数值型tenure列\"],\n        dependencies=[\"numpy\", \"pandas\", \"sklearn\"],\n        params={\"col\": \"tenure\"},\n        parent=\"TenureBucketizer@1\"\n    )\n\n    def __init__(self, col=\"tenure\"):\n        self.col = col\n\n    def fit(self, X, y=None):\n        \"\"\"记录算子状态，本算子为无状态转换，仅返回self。\"\"\"\n        self.bins_ = [-1, 6, 12, 24, 48, np.inf]\n        self.labels_ = [\"0-6\", \"6-12\", \"12-24\", \"24-48\", \"48+\"]\n        return self\n\n    def transform(self, X):\n        \"\"\"\n        将tenure列分桶，处理缺失值及非数值情况。\n        遵循数据清洗规范：先处理潜在脏数据，确保输出类型一致。\n        \"\"\"\n        X = X.copy()\n        \n        # 处理脏数据：先确保转为数值，无法转换的(含空值)处理为-1（即处于0-6区间内）\n        raw_tenure = pd.to_numeric(X[self.col].astype(str).str.strip(), errors='coerce')\n        raw_tenure = raw_tenure.fillna(-1)\n        \n        # 分桶操作\n        bucket_col = f\"{self.col}_bucket\"\n        X[bucket_col] = pd.cut(\n            raw_tenure, \n            bins=self.bins_, \n            labels=self.labels_\n        ).astype(str)\n        \n        # 确保分桶后的缺失值被处理（pd.cut可能在NaN输入下产生nan字符串）\n        X[bucket_col] = X[bucket_col].replace(\"nan\", \"0-6\")\n        \n        return X\n"
     },
     {
       "id": "Operator:TfidfTextVectorizer@1",
@@ -641,16 +664,15 @@
       "modalities": [
         "tabular"
       ],
-      "description": "安全清洗并转换含空白字符串的累计消费等数值列为浮点型，并填充缺失值为指定默认值",
+      "description": "清理包含空白符的total_charges列并转换为浮点型",
       "inputs": "pandas.DataFrame",
       "outputs": "pandas.DataFrame",
       "params": {
-        "col": "total_charges",
-        "fill_value": 0.0
+        "col": "total_charges"
       },
       "origin": "synthesized",
       "executable": true,
-      "code": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\n\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\n\nclass TotalChargesCleaner(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"TotalChargesCleaner\",\n        kind=OperatorKind.IMPUTER,\n        version=2,\n        origin=\"synthesized\",\n        description=\"安全清洗并转换含空白字符串的累计消费等数值列为浮点型，并填充缺失值为指定默认值\",\n        conditions=[\"string_typed_numeric\", \"has_missing_values\"],\n        dependencies=[],\n        params={\"col\": \"total_charges\", \"fill_value\": 0.0},\n        parent=\"TotalChargesCleaner@1\",\n    )\n\n    def __init__(self, col: str = \"total_charges\", fill_value: float = 0.0):\n        self.col = col\n        self.fill_value = fill_value\n\n    def fit(self, X: pd.DataFrame, y=None):\n        self.is_fitted_ = True\n        return self\n\n    def transform(self, X: pd.DataFrame) -> pd.DataFrame:\n        X = X.copy()\n        if self.col in X.columns:\n            cleaned_series = (\n                pd.to_numeric(X[self.col].astype(str).str.strip(), errors=\"coerce\")\n                .replace([np.inf, -np.inf], np.nan)\n                .fillna(self.fill_value)\n                .astype(float)\n            )\n            X[self.col] = cleaned_series\n        return X\n"
+      "code": "import pandas as pd\nimport numpy as np\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind, Modality\n\nclass TotalChargesCleaner(TransformerMixin, Operator):\n    \"\"\"\n    清理包含空白符或脏字符的total_charges列并转换为浮点型，缺失值默认为0。\n    \"\"\"\n    meta = OperatorMeta(\n        name=\"TotalChargesCleaner\",\n        kind=OperatorKind.IMPUTER,\n        version=2,\n        origin=\"synthesized\",\n        description=\"清理包含空白符的total_charges列并转换为浮点型\",\n        conditions=[\"数据存在字符串格式的数值列\", \"存在包含空白字符的缺失值\"],\n        dependencies=[\"pandas\", \"numpy\", \"sklearn\"],\n        params={\"col\": \"total_charges\"},\n        parent=\"TotalChargesCleaner@1\"\n    )\n\n    def __init__(self, col=\"total_charges\"):\n        self.col = col\n\n    def fit(self, X, y=None):\n        return self\n\n    def transform(self, X):\n        X = X.copy()\n        if self.col in X.columns:\n            # 根据Lesson:69d51358经验：先strip，再转数值（强制转换空值），最后填充缺失值\n            X[self.col] = pd.to_numeric(\n                X[self.col].astype(str).str.strip(), \n                errors=\"coerce\"\n            ).fillna(0.0)\n            \n            # 确保转换后没有无穷值，保持特征稳定性\n            X[self.col] = X[self.col].replace([np.inf, -np.inf], 0.0)\n            \n        return X\n"
     },
     {
       "id": "Scenario:telecom_churn",
@@ -678,7 +700,9 @@
       "modality": "text",
       "dataset": "data/tickets.csv",
       "target_column": "label",
-      "constraints": []
+      "constraints": [
+        "imbalanced"
+      ]
     },
     {
       "id": "Source:churn_v1/cleaning.py::clean_total_charges",
@@ -785,9 +809,9 @@
       "title": "tuning"
     },
     {
-      "id": "ValidationRun:01_tickets_transfer-tfidf_lr_baseline",
+      "id": "ValidationRun:01_tickets_transfer-tfidf_logistic_baseline",
       "type": "ValidationRun",
-      "key": "01_tickets_transfer-tfidf_lr_baseline",
+      "key": "01_tickets_transfer-tfidf_logistic_baseline",
       "metrics": {
         "f1_macro": 0.8244,
         "accuracy": 0.8377,
@@ -796,79 +820,57 @@
       },
       "passed": true,
       "origin": "factory",
-      "note": "run 01_tickets_transfer / tfidf_lr_baseline",
+      "note": "run 01_tickets_transfer / tfidf_logistic_baseline",
       "pipeline": [
         "Operator:TfidfTextVectorizer@1",
         "Operator:LogisticRegressionModel@1"
       ],
-      "created_at": "2026-10-23T11:06:20+00:00"
+      "created_at": "2026-10-26T07:30:33+00:00"
     },
     {
-      "id": "ValidationRun:01_tickets_transfer-tfidf_ngram3_lr_tuned",
+      "id": "ValidationRun:01_tickets_transfer-tfidf_logistic_optimized",
       "type": "ValidationRun",
-      "key": "01_tickets_transfer-tfidf_ngram3_lr_tuned",
+      "key": "01_tickets_transfer-tfidf_logistic_optimized",
       "metrics": {
-        "f1_macro": 0.8284,
-        "accuracy": 0.8423,
-        "recall_macro": 0.8323,
-        "precision_macro": 0.8268
+        "f1_macro": 0.8204,
+        "accuracy": 0.8338,
+        "recall_macro": 0.829,
+        "precision_macro": 0.8154
       },
       "passed": true,
       "origin": "factory",
-      "note": "run 01_tickets_transfer / tfidf_ngram3_lr_tuned",
+      "note": "run 01_tickets_transfer / tfidf_logistic_optimized",
       "pipeline": [
         "Operator:TfidfTextVectorizer@1",
         "Operator:LogisticRegressionModel@1"
       ],
-      "created_at": "2026-10-23T11:06:20+00:00"
+      "created_at": "2026-10-26T07:30:33+00:00"
     },
     {
-      "id": "ValidationRun:02_churn_synthesize-balanced_lightgbm_boosting",
+      "id": "ValidationRun:02_churn_synthesize-lgbm_feature_eng_pipeline",
       "type": "ValidationRun",
-      "key": "02_churn_synthesize-balanced_lightgbm_boosting",
+      "key": "02_churn_synthesize-lgbm_feature_eng_pipeline",
       "metrics": {
-        "recall": 0.6298,
-        "roc_auc": 0.783,
-        "precision": 0.4901,
-        "f1": 0.5511,
-        "recall_at_20": 0.4199
+        "recall": 0.6446,
+        "roc_auc": 0.7866,
+        "precision": 0.4969,
+        "f1": 0.5609,
+        "recall_at_20": 0.4221
       },
       "passed": false,
       "origin": "factory",
-      "note": "run 02_churn_synthesize / balanced_lightgbm_boosting / M_THRESHOLD",
+      "note": "run 02_churn_synthesize / lgbm_feature_eng_pipeline / M_THRESHOLD",
       "pipeline": [
-        "Operator:TotalChargesCleaner@2",
-        "Operator:MissingValueImputer@1",
-        "Operator:OneHotCategoricalEncoder@1"
-      ],
-      "created_at": "2026-10-23T11:07:23+00:00"
-    },
-    {
-      "id": "ValidationRun:02_churn_synthesize-cost_ratio_random_forest",
-      "type": "ValidationRun",
-      "key": "02_churn_synthesize-cost_ratio_random_forest",
-      "metrics": {
-        "recall": 0.7143,
-        "roc_auc": 0.8042,
-        "precision": 0.493,
-        "f1": 0.5833,
-        "recall_at_20": 0.4547
-      },
-      "passed": false,
-      "origin": "factory",
-      "note": "run 02_churn_synthesize / cost_ratio_random_forest / M_THRESHOLD",
-      "pipeline": [
-        "Operator:TotalChargesCleaner@2",
         "Operator:MissingValueImputer@1",
         "Operator:OneHotCategoricalEncoder@1",
-        "Operator:RandomForestModel@1"
+        "Operator:LightGBMModel@1"
       ],
-      "created_at": "2026-10-23T11:07:23+00:00"
+      "created_at": "2026-10-26T07:30:57+00:00"
     },
     {
-      "id": "ValidationRun:02_churn_synthesize-interpretable_logistic_regression",
+      "id": "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
       "type": "ValidationRun",
-      "key": "02_churn_synthesize-interpretable_logistic_regression",
+      "key": "02_churn_synthesize-logistic_regression_pipeline",
       "metrics": {
         "recall": 0.7778,
         "roc_auc": 0.8135,
@@ -878,7 +880,7 @@
       },
       "passed": true,
       "origin": "factory",
-      "note": "run 02_churn_synthesize / interpretable_logistic_regression",
+      "note": "run 02_churn_synthesize / logistic_regression_pipeline",
       "pipeline": [
         "Operator:TotalChargesCleaner@2",
         "Operator:MissingValueImputer@1",
@@ -887,54 +889,74 @@
         "Operator:StandardFeatureScaler@1",
         "Operator:LogisticRegressionModel@1"
       ],
-      "created_at": "2026-10-23T11:07:23+00:00"
+      "created_at": "2026-10-26T07:30:57+00:00"
     },
     {
-      "id": "ValidationRun:03_churn_reuse-balanced_lgbm_tree",
+      "id": "ValidationRun:02_churn_synthesize-target_encoded_lgbm_pipeline",
       "type": "ValidationRun",
-      "key": "03_churn_reuse-balanced_lgbm_tree",
+      "key": "02_churn_synthesize-target_encoded_lgbm_pipeline",
       "metrics": {
-        "recall": 0.6298,
-        "roc_auc": 0.783,
-        "precision": 0.4901,
-        "f1": 0.5511,
-        "recall_at_20": 0.4199
+        "recall": 0.6516,
+        "roc_auc": 0.7871,
+        "precision": 0.495,
+        "f1": 0.5621,
+        "recall_at_20": 0.4196
       },
       "passed": false,
       "origin": "factory",
-      "note": "run 03_churn_reuse / balanced_lgbm_tree / M_THRESHOLD",
+      "note": "run 02_churn_synthesize / target_encoded_lgbm_pipeline / M_THRESHOLD",
+      "pipeline": [
+        "Operator:MissingValueImputer@1",
+        "Operator:LightGBMModel@1"
+      ],
+      "created_at": "2026-10-26T07:30:57+00:00"
+    },
+    {
+      "id": "ValidationRun:03_churn_reuse-lightgbm_pipeline",
+      "type": "ValidationRun",
+      "key": "03_churn_reuse-lightgbm_pipeline",
+      "metrics": {
+        "recall": 0.6476,
+        "roc_auc": 0.7847,
+        "precision": 0.4914,
+        "f1": 0.5585,
+        "recall_at_20": 0.4271
+      },
+      "passed": false,
+      "origin": "factory",
+      "note": "run 03_churn_reuse / lightgbm_pipeline / M_THRESHOLD",
       "pipeline": [
         "Operator:IdColumnDropper@2",
         "Operator:TotalChargesCleaner@2",
-        "Operator:MissingValueImputer@1",
-        "Operator:OneHotCategoricalEncoder@1"
+        "Operator:TenureBucketizer@2",
+        "Operator:OneHotCategoricalEncoder@1",
+        "Operator:LightGBMModel@1"
       ],
-      "created_at": "2026-10-23T11:08:00+00:00"
+      "created_at": "2026-10-26T07:31:08+00:00"
     },
     {
-      "id": "ValidationRun:03_churn_reuse-linear_interpretable_lr",
+      "id": "ValidationRun:03_churn_reuse-logistic_regression_pipeline",
       "type": "ValidationRun",
-      "key": "03_churn_reuse-linear_interpretable_lr",
+      "key": "03_churn_reuse-logistic_regression_pipeline",
       "metrics": {
-        "recall": 0.7785,
-        "roc_auc": 0.8135,
-        "precision": 0.4818,
-        "f1": 0.5952,
-        "recall_at_20": 0.4565
+        "recall": 0.7768,
+        "roc_auc": 0.8143,
+        "precision": 0.4832,
+        "f1": 0.5957,
+        "recall_at_20": 0.457
       },
       "passed": true,
       "origin": "factory",
-      "note": "run 03_churn_reuse / linear_interpretable_lr",
+      "note": "run 03_churn_reuse / logistic_regression_pipeline",
       "pipeline": [
         "Operator:IdColumnDropper@2",
         "Operator:TotalChargesCleaner@2",
         "Operator:MissingValueImputer@1",
-        "Operator:TenureBucketizer@2",
         "Operator:OneHotCategoricalEncoder@1",
         "Operator:StandardFeatureScaler@1",
         "Operator:LogisticRegressionModel@1"
       ],
-      "created_at": "2026-10-23T11:08:00+00:00"
+      "created_at": "2026-10-26T07:31:08+00:00"
     },
     {
       "id": "ValidationRun:10b300d0",
@@ -1213,6 +1235,31 @@
       "rel": "LEARNED_FROM"
     },
     {
+      "source": "Lesson:a3a47067",
+      "target": "Condition:string_typed_numeric",
+      "rel": "APPLIES_TO"
+    },
+    {
+      "source": "Lesson:a3a47067",
+      "target": "Condition:numeric_features",
+      "rel": "APPLIES_TO"
+    },
+    {
+      "source": "Lesson:a3a47067",
+      "target": "Condition:has_missing_values",
+      "rel": "APPLIES_TO"
+    },
+    {
+      "source": "Lesson:a3a47067",
+      "target": "Operator:ChargeRatioFeatureGenerator@1",
+      "rel": "APPLIES_TO"
+    },
+    {
+      "source": "Lesson:a3a47067",
+      "target": "ValidationRun:02_churn_synthesize-lgbm_feature_eng_pipeline",
+      "rel": "LEARNED_FROM"
+    },
+    {
       "source": "Lesson:f2c1398b",
       "target": "Operator:LightGBMModel@1",
       "rel": "APPLIES_TO"
@@ -1381,6 +1428,36 @@
       "recall": 0.8
     },
     {
+      "source": "Operator:LightGBMModel@1",
+      "target": "ValidationRun:02_churn_synthesize-target_encoded_lgbm_pipeline",
+      "rel": "VALIDATED_BY",
+      "recall": 0.6516,
+      "roc_auc": 0.7871,
+      "precision": 0.495,
+      "f1": 0.5621,
+      "recall_at_20": 0.4196
+    },
+    {
+      "source": "Operator:LightGBMModel@1",
+      "target": "ValidationRun:02_churn_synthesize-lgbm_feature_eng_pipeline",
+      "rel": "VALIDATED_BY",
+      "recall": 0.6446,
+      "roc_auc": 0.7866,
+      "precision": 0.4969,
+      "f1": 0.5609,
+      "recall_at_20": 0.4221
+    },
+    {
+      "source": "Operator:LightGBMModel@1",
+      "target": "ValidationRun:03_churn_reuse-lightgbm_pipeline",
+      "rel": "VALIDATED_BY",
+      "recall": 0.6476,
+      "roc_auc": 0.7847,
+      "precision": 0.4914,
+      "f1": 0.5585,
+      "recall_at_20": 0.4271
+    },
+    {
       "source": "Operator:LogisticRegressionModel@1",
       "target": "Condition:interpretable",
       "rel": "SUITABLE_WHEN"
@@ -1409,7 +1486,7 @@
     },
     {
       "source": "Operator:LogisticRegressionModel@1",
-      "target": "ValidationRun:01_tickets_transfer-tfidf_lr_baseline",
+      "target": "ValidationRun:01_tickets_transfer-tfidf_logistic_baseline",
       "rel": "VALIDATED_BY",
       "f1_macro": 0.8244,
       "accuracy": 0.8377,
@@ -1418,16 +1495,16 @@
     },
     {
       "source": "Operator:LogisticRegressionModel@1",
-      "target": "ValidationRun:01_tickets_transfer-tfidf_ngram3_lr_tuned",
+      "target": "ValidationRun:01_tickets_transfer-tfidf_logistic_optimized",
       "rel": "VALIDATED_BY",
-      "f1_macro": 0.8284,
-      "accuracy": 0.8423,
-      "recall_macro": 0.8323,
-      "precision_macro": 0.8268
+      "f1_macro": 0.8204,
+      "accuracy": 0.8338,
+      "recall_macro": 0.829,
+      "precision_macro": 0.8154
     },
     {
       "source": "Operator:LogisticRegressionModel@1",
-      "target": "ValidationRun:02_churn_synthesize-interpretable_logistic_regression",
+      "target": "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
       "rel": "VALIDATED_BY",
       "recall": 0.7778,
       "roc_auc": 0.8135,
@@ -1437,13 +1514,13 @@
     },
     {
       "source": "Operator:LogisticRegressionModel@1",
-      "target": "ValidationRun:03_churn_reuse-linear_interpretable_lr",
+      "target": "ValidationRun:03_churn_reuse-logistic_regression_pipeline",
       "rel": "VALIDATED_BY",
-      "recall": 0.7785,
-      "roc_auc": 0.8135,
-      "precision": 0.4818,
-      "f1": 0.5952,
-      "recall_at_20": 0.4565
+      "recall": 0.7768,
+      "roc_auc": 0.8143,
+      "precision": 0.4832,
+      "f1": 0.5957,
+      "recall_at_20": 0.457
     },
     {
       "source": "Operator:MissingValueImputer@1",
@@ -1478,7 +1555,7 @@
     },
     {
       "source": "Operator:MissingValueImputer@1",
-      "target": "ValidationRun:02_churn_synthesize-interpretable_logistic_regression",
+      "target": "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
       "rel": "VALIDATED_BY",
       "recall": 0.7778,
       "roc_auc": 0.8135,
@@ -1488,43 +1565,33 @@
     },
     {
       "source": "Operator:MissingValueImputer@1",
-      "target": "ValidationRun:02_churn_synthesize-balanced_lightgbm_boosting",
+      "target": "ValidationRun:02_churn_synthesize-target_encoded_lgbm_pipeline",
       "rel": "VALIDATED_BY",
-      "recall": 0.6298,
-      "roc_auc": 0.783,
-      "precision": 0.4901,
-      "f1": 0.5511,
-      "recall_at_20": 0.4199
+      "recall": 0.6516,
+      "roc_auc": 0.7871,
+      "precision": 0.495,
+      "f1": 0.5621,
+      "recall_at_20": 0.4196
     },
     {
       "source": "Operator:MissingValueImputer@1",
-      "target": "ValidationRun:02_churn_synthesize-cost_ratio_random_forest",
+      "target": "ValidationRun:02_churn_synthesize-lgbm_feature_eng_pipeline",
       "rel": "VALIDATED_BY",
-      "recall": 0.7143,
-      "roc_auc": 0.8042,
-      "precision": 0.493,
-      "f1": 0.5833,
-      "recall_at_20": 0.4547
+      "recall": 0.6446,
+      "roc_auc": 0.7866,
+      "precision": 0.4969,
+      "f1": 0.5609,
+      "recall_at_20": 0.4221
     },
     {
       "source": "Operator:MissingValueImputer@1",
-      "target": "ValidationRun:03_churn_reuse-linear_interpretable_lr",
+      "target": "ValidationRun:03_churn_reuse-logistic_regression_pipeline",
       "rel": "VALIDATED_BY",
-      "recall": 0.7785,
-      "roc_auc": 0.8135,
-      "precision": 0.4818,
-      "f1": 0.5952,
-      "recall_at_20": 0.4565
-    },
-    {
-      "source": "Operator:MissingValueImputer@1",
-      "target": "ValidationRun:03_churn_reuse-balanced_lgbm_tree",
-      "rel": "VALIDATED_BY",
-      "recall": 0.6298,
-      "roc_auc": 0.783,
-      "precision": 0.4901,
-      "f1": 0.5511,
-      "recall_at_20": 0.4199
+      "recall": 0.7768,
+      "roc_auc": 0.8143,
+      "precision": 0.4832,
+      "f1": 0.5957,
+      "recall_at_20": 0.457
     },
     {
       "source": "Operator:OneHotCategoricalEncoder@1",
@@ -1564,7 +1631,7 @@
     },
     {
       "source": "Operator:OneHotCategoricalEncoder@1",
-      "target": "ValidationRun:02_churn_synthesize-interpretable_logistic_regression",
+      "target": "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
       "rel": "VALIDATED_BY",
       "recall": 0.7778,
       "roc_auc": 0.8135,
@@ -1574,43 +1641,33 @@
     },
     {
       "source": "Operator:OneHotCategoricalEncoder@1",
-      "target": "ValidationRun:02_churn_synthesize-balanced_lightgbm_boosting",
+      "target": "ValidationRun:02_churn_synthesize-lgbm_feature_eng_pipeline",
       "rel": "VALIDATED_BY",
-      "recall": 0.6298,
-      "roc_auc": 0.783,
-      "precision": 0.4901,
-      "f1": 0.5511,
-      "recall_at_20": 0.4199
+      "recall": 0.6446,
+      "roc_auc": 0.7866,
+      "precision": 0.4969,
+      "f1": 0.5609,
+      "recall_at_20": 0.4221
     },
     {
       "source": "Operator:OneHotCategoricalEncoder@1",
-      "target": "ValidationRun:02_churn_synthesize-cost_ratio_random_forest",
+      "target": "ValidationRun:03_churn_reuse-logistic_regression_pipeline",
       "rel": "VALIDATED_BY",
-      "recall": 0.7143,
-      "roc_auc": 0.8042,
-      "precision": 0.493,
-      "f1": 0.5833,
-      "recall_at_20": 0.4547
+      "recall": 0.7768,
+      "roc_auc": 0.8143,
+      "precision": 0.4832,
+      "f1": 0.5957,
+      "recall_at_20": 0.457
     },
     {
       "source": "Operator:OneHotCategoricalEncoder@1",
-      "target": "ValidationRun:03_churn_reuse-linear_interpretable_lr",
+      "target": "ValidationRun:03_churn_reuse-lightgbm_pipeline",
       "rel": "VALIDATED_BY",
-      "recall": 0.7785,
-      "roc_auc": 0.8135,
-      "precision": 0.4818,
-      "f1": 0.5952,
-      "recall_at_20": 0.4565
-    },
-    {
-      "source": "Operator:OneHotCategoricalEncoder@1",
-      "target": "ValidationRun:03_churn_reuse-balanced_lgbm_tree",
-      "rel": "VALIDATED_BY",
-      "recall": 0.6298,
-      "roc_auc": 0.783,
-      "precision": 0.4901,
-      "f1": 0.5511,
-      "recall_at_20": 0.4199
+      "recall": 0.6476,
+      "roc_auc": 0.7847,
+      "precision": 0.4914,
+      "f1": 0.5585,
+      "recall_at_20": 0.4271
     },
     {
       "source": "Operator:RandomForestModel@1",
@@ -1638,16 +1695,6 @@
       "rel": "VALIDATED_BY",
       "roc_auc": 0.83,
       "recall": 0.66
-    },
-    {
-      "source": "Operator:RandomForestModel@1",
-      "target": "ValidationRun:02_churn_synthesize-cost_ratio_random_forest",
-      "rel": "VALIDATED_BY",
-      "recall": 0.7143,
-      "roc_auc": 0.8042,
-      "precision": 0.493,
-      "f1": 0.5833,
-      "recall_at_20": 0.4547
     },
     {
       "source": "Operator:ServiceCountFeature@1",
@@ -1683,7 +1730,7 @@
     },
     {
       "source": "Operator:StandardFeatureScaler@1",
-      "target": "ValidationRun:02_churn_synthesize-interpretable_logistic_regression",
+      "target": "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
       "rel": "VALIDATED_BY",
       "recall": 0.7778,
       "roc_auc": 0.8135,
@@ -1693,13 +1740,13 @@
     },
     {
       "source": "Operator:StandardFeatureScaler@1",
-      "target": "ValidationRun:03_churn_reuse-linear_interpretable_lr",
+      "target": "ValidationRun:03_churn_reuse-logistic_regression_pipeline",
       "rel": "VALIDATED_BY",
-      "recall": 0.7785,
-      "roc_auc": 0.8135,
-      "precision": 0.4818,
-      "f1": 0.5952,
-      "recall_at_20": 0.4565
+      "recall": 0.7768,
+      "roc_auc": 0.8143,
+      "precision": 0.4832,
+      "f1": 0.5957,
+      "recall_at_20": 0.457
     },
     {
       "source": "Operator:TenureBucketizer@1",
@@ -1745,13 +1792,13 @@
     },
     {
       "source": "Operator:TenureBucketizer@2",
-      "target": "Condition:time_tenure",
+      "target": "Condition:输入必须包含数值型tenure列",
       "rel": "SUITABLE_WHEN"
     },
     {
       "source": "Operator:TenureBucketizer@2",
-      "target": "Condition:numeric_features",
-      "rel": "SUITABLE_WHEN"
+      "target": "Dependency:numpy",
+      "rel": "DEPENDS_ON"
     },
     {
       "source": "Operator:TenureBucketizer@2",
@@ -1760,7 +1807,7 @@
     },
     {
       "source": "Operator:TenureBucketizer@2",
-      "target": "Dependency:numpy",
+      "target": "Dependency:sklearn",
       "rel": "DEPENDS_ON"
     },
     {
@@ -1770,7 +1817,7 @@
     },
     {
       "source": "Operator:TenureBucketizer@2",
-      "target": "ValidationRun:02_churn_synthesize-interpretable_logistic_regression",
+      "target": "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
       "rel": "VALIDATED_BY",
       "recall": 0.7778,
       "roc_auc": 0.8135,
@@ -1780,13 +1827,13 @@
     },
     {
       "source": "Operator:TenureBucketizer@2",
-      "target": "ValidationRun:03_churn_reuse-linear_interpretable_lr",
+      "target": "ValidationRun:03_churn_reuse-lightgbm_pipeline",
       "rel": "VALIDATED_BY",
-      "recall": 0.7785,
-      "roc_auc": 0.8135,
-      "precision": 0.4818,
-      "f1": 0.5952,
-      "recall_at_20": 0.4565
+      "recall": 0.6476,
+      "roc_auc": 0.7847,
+      "precision": 0.4914,
+      "f1": 0.5585,
+      "recall_at_20": 0.4271
     },
     {
       "source": "Operator:TfidfTextVectorizer@1",
@@ -1800,7 +1847,7 @@
     },
     {
       "source": "Operator:TfidfTextVectorizer@1",
-      "target": "ValidationRun:01_tickets_transfer-tfidf_lr_baseline",
+      "target": "ValidationRun:01_tickets_transfer-tfidf_logistic_baseline",
       "rel": "VALIDATED_BY",
       "f1_macro": 0.8244,
       "accuracy": 0.8377,
@@ -1809,12 +1856,12 @@
     },
     {
       "source": "Operator:TfidfTextVectorizer@1",
-      "target": "ValidationRun:01_tickets_transfer-tfidf_ngram3_lr_tuned",
+      "target": "ValidationRun:01_tickets_transfer-tfidf_logistic_optimized",
       "rel": "VALIDATED_BY",
-      "f1_macro": 0.8284,
-      "accuracy": 0.8423,
-      "recall_macro": 0.8323,
-      "precision_macro": 0.8268
+      "f1_macro": 0.8204,
+      "accuracy": 0.8338,
+      "recall_macro": 0.829,
+      "precision_macro": 0.8154
     },
     {
       "source": "Operator:TotalChargesCleaner@1",
@@ -1843,13 +1890,28 @@
     },
     {
       "source": "Operator:TotalChargesCleaner@2",
-      "target": "Condition:string_typed_numeric",
+      "target": "Condition:数据存在字符串格式的数值列",
       "rel": "SUITABLE_WHEN"
     },
     {
       "source": "Operator:TotalChargesCleaner@2",
-      "target": "Condition:has_missing_values",
+      "target": "Condition:存在包含空白字符的缺失值",
       "rel": "SUITABLE_WHEN"
+    },
+    {
+      "source": "Operator:TotalChargesCleaner@2",
+      "target": "Dependency:pandas",
+      "rel": "DEPENDS_ON"
+    },
+    {
+      "source": "Operator:TotalChargesCleaner@2",
+      "target": "Dependency:numpy",
+      "rel": "DEPENDS_ON"
+    },
+    {
+      "source": "Operator:TotalChargesCleaner@2",
+      "target": "Dependency:sklearn",
+      "rel": "DEPENDS_ON"
     },
     {
       "source": "Operator:TotalChargesCleaner@2",
@@ -1858,7 +1920,7 @@
     },
     {
       "source": "Operator:TotalChargesCleaner@2",
-      "target": "ValidationRun:02_churn_synthesize-interpretable_logistic_regression",
+      "target": "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
       "rel": "VALIDATED_BY",
       "recall": 0.7778,
       "roc_auc": 0.8135,
@@ -1868,43 +1930,23 @@
     },
     {
       "source": "Operator:TotalChargesCleaner@2",
-      "target": "ValidationRun:02_churn_synthesize-balanced_lightgbm_boosting",
+      "target": "ValidationRun:03_churn_reuse-logistic_regression_pipeline",
       "rel": "VALIDATED_BY",
-      "recall": 0.6298,
-      "roc_auc": 0.783,
-      "precision": 0.4901,
-      "f1": 0.5511,
-      "recall_at_20": 0.4199
+      "recall": 0.7768,
+      "roc_auc": 0.8143,
+      "precision": 0.4832,
+      "f1": 0.5957,
+      "recall_at_20": 0.457
     },
     {
       "source": "Operator:TotalChargesCleaner@2",
-      "target": "ValidationRun:02_churn_synthesize-cost_ratio_random_forest",
+      "target": "ValidationRun:03_churn_reuse-lightgbm_pipeline",
       "rel": "VALIDATED_BY",
-      "recall": 0.7143,
-      "roc_auc": 0.8042,
-      "precision": 0.493,
-      "f1": 0.5833,
-      "recall_at_20": 0.4547
-    },
-    {
-      "source": "Operator:TotalChargesCleaner@2",
-      "target": "ValidationRun:03_churn_reuse-linear_interpretable_lr",
-      "rel": "VALIDATED_BY",
-      "recall": 0.7785,
-      "roc_auc": 0.8135,
-      "precision": 0.4818,
-      "f1": 0.5952,
-      "recall_at_20": 0.4565
-    },
-    {
-      "source": "Operator:TotalChargesCleaner@2",
-      "target": "ValidationRun:03_churn_reuse-balanced_lgbm_tree",
-      "rel": "VALIDATED_BY",
-      "recall": 0.6298,
-      "roc_auc": 0.783,
-      "precision": 0.4901,
-      "f1": 0.5511,
-      "recall_at_20": 0.4199
+      "recall": 0.6476,
+      "roc_auc": 0.7847,
+      "precision": 0.4914,
+      "f1": 0.5585,
+      "recall_at_20": 0.4271
     },
     {
       "source": "Scenario:telecom_churn",
@@ -1955,27 +1997,27 @@
       "primary": true
     },
     {
-      "source": "ValidationRun:01_tickets_transfer-tfidf_lr_baseline",
+      "source": "ValidationRun:01_tickets_transfer-tfidf_logistic_baseline",
       "target": "Scenario:tickets",
       "rel": "RUN_ON"
     },
     {
-      "source": "ValidationRun:01_tickets_transfer-tfidf_ngram3_lr_tuned",
+      "source": "ValidationRun:01_tickets_transfer-tfidf_logistic_optimized",
       "target": "Scenario:tickets",
       "rel": "RUN_ON"
     },
     {
-      "source": "ValidationRun:02_churn_synthesize-balanced_lightgbm_boosting",
+      "source": "ValidationRun:02_churn_synthesize-lgbm_feature_eng_pipeline",
       "target": "Scenario:telecom_churn",
       "rel": "RUN_ON"
     },
     {
-      "source": "ValidationRun:02_churn_synthesize-cost_ratio_random_forest",
+      "source": "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
       "target": "Scenario:telecom_churn",
       "rel": "RUN_ON"
     },
     {
-      "source": "ValidationRun:02_churn_synthesize-interpretable_logistic_regression",
+      "source": "ValidationRun:02_churn_synthesize-target_encoded_lgbm_pipeline",
       "target": "Scenario:telecom_churn",
       "rel": "RUN_ON"
     },
@@ -2031,7 +2073,7 @@
     },
     {
       "source": "Operator:IdColumnDropper@2",
-      "target": "Condition:id_columns",
+      "target": "Condition:数据包含标识列",
       "rel": "SUITABLE_WHEN"
     },
     {
@@ -2041,31 +2083,31 @@
     },
     {
       "source": "Operator:IdColumnDropper@2",
-      "target": "ValidationRun:03_churn_reuse-linear_interpretable_lr",
+      "target": "ValidationRun:03_churn_reuse-logistic_regression_pipeline",
       "rel": "VALIDATED_BY",
-      "recall": 0.7785,
-      "roc_auc": 0.8135,
-      "precision": 0.4818,
-      "f1": 0.5952,
-      "recall_at_20": 0.4565
+      "recall": 0.7768,
+      "roc_auc": 0.8143,
+      "precision": 0.4832,
+      "f1": 0.5957,
+      "recall_at_20": 0.457
     },
     {
       "source": "Operator:IdColumnDropper@2",
-      "target": "ValidationRun:03_churn_reuse-balanced_lgbm_tree",
+      "target": "ValidationRun:03_churn_reuse-lightgbm_pipeline",
       "rel": "VALIDATED_BY",
-      "recall": 0.6298,
-      "roc_auc": 0.783,
-      "precision": 0.4901,
-      "f1": 0.5511,
-      "recall_at_20": 0.4199
+      "recall": 0.6476,
+      "roc_auc": 0.7847,
+      "precision": 0.4914,
+      "f1": 0.5585,
+      "recall_at_20": 0.4271
     },
     {
-      "source": "ValidationRun:03_churn_reuse-linear_interpretable_lr",
+      "source": "ValidationRun:03_churn_reuse-logistic_regression_pipeline",
       "target": "Scenario:telecom_churn",
       "rel": "RUN_ON"
     },
     {
-      "source": "ValidationRun:03_churn_reuse-balanced_lgbm_tree",
+      "source": "ValidationRun:03_churn_reuse-lightgbm_pipeline",
       "target": "Scenario:telecom_churn",
       "rel": "RUN_ON"
     }

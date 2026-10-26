@@ -1,10 +1,8 @@
 import numpy as np
 import pandas as pd
 from sklearn.base import TransformerMixin
-
 from factory.operators.base import Operator, OperatorMeta
 from factory.schemas import OperatorKind
-
 
 class TenureBucketizer(TransformerMixin, Operator):
     meta = OperatorMeta(
@@ -12,55 +10,42 @@ class TenureBucketizer(TransformerMixin, Operator):
         kind=OperatorKind.FEATURE,
         version=2,
         origin="synthesized",
-        description="将在网时长字段分箱为离散区间特征以增强线性模型的表达能力与业务可解释性",
-        conditions=["time_tenure", "numeric_features"],
-        dependencies=["pandas", "numpy"],
-        params={
-            "col": "tenure",
-            "bins": (-float("inf"), 6.0, 12.0, 24.0, 48.0, float("inf")),
-            "labels": ("0-6", "6-12", "12-24", "24-48", "48+"),
-            "drop_original": False,
-        },
-        parent="TenureBucketizer@1",
+        description="将数值型在网时长特征划分为业务导向的区间，增强线性模型的解释性。",
+        conditions=["输入必须包含数值型tenure列"],
+        dependencies=["numpy", "pandas", "sklearn"],
+        params={"col": "tenure"},
+        parent="TenureBucketizer@1"
     )
 
-    def __init__(
-        self,
-        col: str = "tenure",
-        bins: tuple = (-float("inf"), 6.0, 12.0, 24.0, 48.0, float("inf")),
-        labels: tuple = ("0-6", "6-12", "12-24", "24-48", "48+"),
-        drop_original: bool = False,
-    ):
+    def __init__(self, col="tenure"):
         self.col = col
-        self.bins = bins
-        self.labels = labels
-        self.drop_original = drop_original
 
-    def fit(self, X: pd.DataFrame, y=None):
-        self.feature_name_ = f"{self.col}_bucket"
-        self.bins_ = list(self.bins) if self.bins is not None else [-float("inf"), 6.0, 12.0, 24.0, 48.0, float("inf")]
-        self.labels_ = list(self.labels) if self.labels is not None else ["0-6", "6-12", "12-24", "24-48", "48+"]
+    def fit(self, X, y=None):
+        """记录算子状态，本算子为无状态转换，仅返回self。"""
+        self.bins_ = [-1, 6, 12, 24, 48, np.inf]
+        self.labels_ = ["0-6", "6-12", "12-24", "24-48", "48+"]
         return self
 
-    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+    def transform(self, X):
+        """
+        将tenure列分桶，处理缺失值及非数值情况。
+        遵循数据清洗规范：先处理潜在脏数据，确保输出类型一致。
+        """
         X = X.copy()
-        if self.col not in X.columns:
-            return X
-
-        # 安全数值转换，兼顾脏数据、空白字符串与缺失值
-        tenure_series = X[self.col]
-        if tenure_series.dtype == object:
-            tenure_series = tenure_series.astype(str).str.strip()
-        numeric_tenure = pd.to_numeric(tenure_series, errors="coerce")
-
-        # 分箱并处理缺失区间
-        bucketed = pd.cut(numeric_tenure, bins=self.bins_, labels=self.labels_)
-        bucketed_str = bucketed.astype(str)
-        bucketed_str = bucketed_str.replace("nan", "unknown").fillna("unknown")
-
-        X[self.feature_name_] = bucketed_str
-
-        if self.drop_original:
-            X = X.drop(columns=[self.col])
-
+        
+        # 处理脏数据：先确保转为数值，无法转换的(含空值)处理为-1（即处于0-6区间内）
+        raw_tenure = pd.to_numeric(X[self.col].astype(str).str.strip(), errors='coerce')
+        raw_tenure = raw_tenure.fillna(-1)
+        
+        # 分桶操作
+        bucket_col = f"{self.col}_bucket"
+        X[bucket_col] = pd.cut(
+            raw_tenure, 
+            bins=self.bins_, 
+            labels=self.labels_
+        ).astype(str)
+        
+        # 确保分桶后的缺失值被处理（pd.cut可能在NaN输入下产生nan字符串）
+        X[bucket_col] = X[bucket_col].replace("nan", "0-6")
+        
         return X

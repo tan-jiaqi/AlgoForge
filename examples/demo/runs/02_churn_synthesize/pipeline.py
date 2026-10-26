@@ -1,8 +1,8 @@
-"""预测30天内可能流失的客户，需可解释，召回优先 —— 自动生成的算法流水线
+"""预测30天内可能流失的客户，需可解释，召回优先。比较三个方案，至少一个方案使用清 —— 自动生成的算法流水线
 
-需求：预测30天内可能流失的客户，需可解释，召回优先
-方案：interpretable_logistic_regression
-设计依据：针对高可解释性需求与召回优先目标，结合在网时长分箱特征与标准化的线性模型，配合平衡类别权重实现高召回率与透明的特征权重解释。
+需求：预测30天内可能流失的客户，需可解释，召回优先。比较三个方案，至少一个方案使用清洗、通用缺失值填补、类别编码、标准化和平衡类权重的逻辑回归；可增加在网时长分桶，引用检索到的历史实现。
+方案：logistic_regression_pipeline
+设计依据：这是满足任务要求的基准方案，使用逻辑回归，包含必要的预处理和样本权重配置。
 主指标：recall >= 0.75
 
 由 AlgoForge 自动生成。用法：
@@ -20,54 +20,53 @@ from factory.operators.models import LogisticRegressionModel
 from factory.operators.tabular import MissingValueImputer, OneHotCategoricalEncoder, StandardFeatureScaler
 
 
-import numpy as np
 import pandas as pd
+import numpy as np
 from sklearn.base import TransformerMixin
-
 from factory.operators.base import Operator, OperatorMeta
-from factory.schemas import OperatorKind
-
+from factory.schemas import OperatorKind, Modality
 
 class TotalChargesCleaner(TransformerMixin, Operator):
+    """
+    清理包含空白符或脏字符的total_charges列并转换为浮点型，缺失值默认为0。
+    """
     meta = OperatorMeta(
         name="TotalChargesCleaner",
         kind=OperatorKind.IMPUTER,
         version=2,
         origin="synthesized",
-        description="安全清洗并转换含空白字符串的累计消费等数值列为浮点型，并填充缺失值为指定默认值",
-        conditions=["string_typed_numeric", "has_missing_values"],
-        dependencies=[],
-        params={"col": "total_charges", "fill_value": 0.0},
-        parent="TotalChargesCleaner@1",
+        description="清理包含空白符的total_charges列并转换为浮点型",
+        conditions=["数据存在字符串格式的数值列", "存在包含空白字符的缺失值"],
+        dependencies=["pandas", "numpy", "sklearn"],
+        params={"col": "total_charges"},
+        parent="TotalChargesCleaner@1"
     )
 
-    def __init__(self, col: str = "total_charges", fill_value: float = 0.0):
+    def __init__(self, col="total_charges"):
         self.col = col
-        self.fill_value = fill_value
 
-    def fit(self, X: pd.DataFrame, y=None):
-        self.is_fitted_ = True
+    def fit(self, X, y=None):
         return self
 
-    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+    def transform(self, X):
         X = X.copy()
         if self.col in X.columns:
-            cleaned_series = (
-                pd.to_numeric(X[self.col].astype(str).str.strip(), errors="coerce")
-                .replace([np.inf, -np.inf], np.nan)
-                .fillna(self.fill_value)
-                .astype(float)
-            )
-            X[self.col] = cleaned_series
+            # 根据Lesson:69d51358经验：先strip，再转数值（强制转换空值），最后填充缺失值
+            X[self.col] = pd.to_numeric(
+                X[self.col].astype(str).str.strip(), 
+                errors="coerce"
+            ).fillna(0.0)
+
+            # 确保转换后没有无穷值，保持特征稳定性
+            X[self.col] = X[self.col].replace([np.inf, -np.inf], 0.0)
+
         return X
 
 import numpy as np
 import pandas as pd
 from sklearn.base import TransformerMixin
-
 from factory.operators.base import Operator, OperatorMeta
 from factory.schemas import OperatorKind
-
 
 class TenureBucketizer(TransformerMixin, Operator):
     meta = OperatorMeta(
@@ -75,56 +74,43 @@ class TenureBucketizer(TransformerMixin, Operator):
         kind=OperatorKind.FEATURE,
         version=2,
         origin="synthesized",
-        description="将在网时长字段分箱为离散区间特征以增强线性模型的表达能力与业务可解释性",
-        conditions=["time_tenure", "numeric_features"],
-        dependencies=["pandas", "numpy"],
-        params={
-            "col": "tenure",
-            "bins": (-float("inf"), 6.0, 12.0, 24.0, 48.0, float("inf")),
-            "labels": ("0-6", "6-12", "12-24", "24-48", "48+"),
-            "drop_original": False,
-        },
-        parent="TenureBucketizer@1",
+        description="将数值型在网时长特征划分为业务导向的区间，增强线性模型的解释性。",
+        conditions=["输入必须包含数值型tenure列"],
+        dependencies=["numpy", "pandas", "sklearn"],
+        params={"col": "tenure"},
+        parent="TenureBucketizer@1"
     )
 
-    def __init__(
-        self,
-        col: str = "tenure",
-        bins: tuple = (-float("inf"), 6.0, 12.0, 24.0, 48.0, float("inf")),
-        labels: tuple = ("0-6", "6-12", "12-24", "24-48", "48+"),
-        drop_original: bool = False,
-    ):
+    def __init__(self, col="tenure"):
         self.col = col
-        self.bins = bins
-        self.labels = labels
-        self.drop_original = drop_original
 
-    def fit(self, X: pd.DataFrame, y=None):
-        self.feature_name_ = f"{self.col}_bucket"
-        self.bins_ = list(self.bins) if self.bins is not None else [-float("inf"), 6.0, 12.0, 24.0, 48.0, float("inf")]
-        self.labels_ = list(self.labels) if self.labels is not None else ["0-6", "6-12", "12-24", "24-48", "48+"]
+    def fit(self, X, y=None):
+        """记录算子状态，本算子为无状态转换，仅返回self。"""
+        self.bins_ = [-1, 6, 12, 24, 48, np.inf]
+        self.labels_ = ["0-6", "6-12", "12-24", "24-48", "48+"]
         return self
 
-    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+    def transform(self, X):
+        """
+        将tenure列分桶，处理缺失值及非数值情况。
+        遵循数据清洗规范：先处理潜在脏数据，确保输出类型一致。
+        """
         X = X.copy()
-        if self.col not in X.columns:
-            return X
 
-        # 安全数值转换，兼顾脏数据、空白字符串与缺失值
-        tenure_series = X[self.col]
-        if tenure_series.dtype == object:
-            tenure_series = tenure_series.astype(str).str.strip()
-        numeric_tenure = pd.to_numeric(tenure_series, errors="coerce")
+        # 处理脏数据：先确保转为数值，无法转换的(含空值)处理为-1（即处于0-6区间内）
+        raw_tenure = pd.to_numeric(X[self.col].astype(str).str.strip(), errors='coerce')
+        raw_tenure = raw_tenure.fillna(-1)
 
-        # 分箱并处理缺失区间
-        bucketed = pd.cut(numeric_tenure, bins=self.bins_, labels=self.labels_)
-        bucketed_str = bucketed.astype(str)
-        bucketed_str = bucketed_str.replace("nan", "unknown").fillna("unknown")
+        # 分桶操作
+        bucket_col = f"{self.col}_bucket"
+        X[bucket_col] = pd.cut(
+            raw_tenure, 
+            bins=self.bins_, 
+            labels=self.labels_
+        ).astype(str)
 
-        X[self.feature_name_] = bucketed_str
-
-        if self.drop_original:
-            X = X.drop(columns=[self.col])
+        # 确保分桶后的缺失值被处理（pd.cut可能在NaN输入下产生nan字符串）
+        X[bucket_col] = X[bucket_col].replace("nan", "0-6")
 
         return X
 
@@ -134,12 +120,12 @@ TARGET = 'churn'
 
 def build_pipeline() -> Pipeline:
     return Pipeline([
-        ("0_imputer", TotalChargesCleaner()),  # 根据 lesson 经验，必须先清洗 total_charges 中的空白字符并转为浮点数，防止后续处理类型转换失败。
-        ("1_imputer", MissingValueImputer()),  # 依据匹配条件 has_missing_values，对其余数值和类别缺失列进行中位数和众数填补。
-        ("2_feature", TenureBucketizer()),  # 历史验证召回率达 0.800，分箱在网时长有助于线性模型捕捉非线性流失拐点并提升可解释性。
-        ("3_encoder", OneHotCategoricalEncoder(max_categories=20)),  # 对低基数类别特征进行独热编码，并限制类别数避免维度过高。
-        ("4_scaler", StandardFeatureScaler()),  # 根据 lesson 经验，逻辑回归模型必须在拟合前对特征进行标准化。
-        ("5_model", LogisticRegressionModel(C=1.0, class_weight='balanced', max_iter=1000, random_state=42)),  # 满足 interpretable 约束，且设置 class_weight='balanced' 解决不平衡导致的召回率不足问题。
+        ("0_imputer", TotalChargesCleaner()),  # 解决数值列被读取为字符串且包含空格导致的问题，引用 Lesson:69d51358。
+        ("1_imputer", MissingValueImputer()),  # 处理其他列中的缺失值。
+        ("2_feature", TenureBucketizer()),  # 对在网时长进行分桶处理，提高可解释性并提升线性模型表现。
+        ("3_encoder", OneHotCategoricalEncoder(max_categories=20)),  # 类别特征 One-Hot 编码。
+        ("4_scaler", StandardFeatureScaler()),  # 逻辑回归必须进行标准化，引用 Lesson:74e2da10。
+        ("5_model", LogisticRegressionModel(C=1.0, class_weight='balanced', max_iter=1000, random_state=42)),  # 逻辑回归模型，通过 balanced 权重应对样本不平衡，提升召回率。
     ])
 
 

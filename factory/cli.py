@@ -18,6 +18,23 @@ console = Console()
 LLM_MODE_HELP = "mock / live（带缓存）/ record（录制到 examples/cassettes）/ replay（仅回放，离线）"
 
 
+@app.command()
+def evaluate(
+    llm: str = typer.Option("replay", help="record / replay；不支持 mock 回退"),
+    out: Path = typer.Option(Path("runs/evaluation"), help="新的空输出目录"),
+    evidence: Path = typer.Option(Path("examples/evaluation"), help="独立实验清单与录制目录"),
+    repeats: int = typer.Option(3, min=1, help="录制时每组独立运行次数；回放按清单执行"),
+    resume: bool = typer.Option(False, "--resume", help="续接中断录制，保留已完成结果和录制；不重新抽样"),
+    temperature: float = typer.Option(None, help="录制时的采样温度（默认取 configs/llm.yaml）；记入清单，回放按清单执行"),
+) -> None:
+    """独立进程执行 KG 消融、真实修复复用和搜索验收。"""
+    from factory.evaluation import run_evaluation
+    result = run_evaluation(llm, out, evidence, repeats, resume=resume, temperature=temperature)
+    console.print(result)
+    if result["worker_errors"] or result["execution_errors"] or result["required_evidence_missing"]:
+        raise typer.Exit(1)
+
+
 @app.command("llm-ping")
 def llm_ping() -> None:
     """检查 LLM 连通性并列出可用模型（不会打印 API Key）。"""
@@ -111,7 +128,7 @@ def run(
             mark = {True: "[green]已修复[/green]", False: "[red]未修复[/red]", None: "-"}[rec.fixed]
             console.print(f"  修复 {rec.operator} r{rec.revision}：{rec.diagnostic.code.value} {rec.diagnostic.message[:60]} → {mark}")
         console.print(f"  注册到能力库：{state.registered or '无'}；新增经验：{len(state.lessons_learned)} 条；"
-                      f"使用经验：{len(state.lessons_used)} 条")
+                      f"提供经验：{len(state.lessons_used)} 条（不代表采纳）")
     console.rule("运行记录")
     for line in state.log:
         console.print("  " + line)
@@ -145,7 +162,7 @@ def demo(
     llm: str = typer.Option("replay", help=LLM_MODE_HELP),
     out: Path = typer.Option(Path("runs/demo"), help="输出目录（examples/demo 为提交到仓库的参考结果）"),
 ) -> None:
-    """端到端演示：跨场景迁移与修复 → 生成并注册新算子 → 复用已沉淀的算子。"""
+    """端到端演示：跨场景迁移 → 生成并注册新算子 → 复用已沉淀的算子。"""
     from factory.demo import run_demo
 
     with console.status("运行演示（3 个任务）…"):

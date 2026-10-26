@@ -1,0 +1,9 @@
+{
+  "model": "gemini-3.5-flash",
+  "temperature": 0.8,
+  "name": "kg_full_1",
+  "group": "kg",
+  "trial": 1,
+  "knowledge_mode": "full",
+  "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75"
+}

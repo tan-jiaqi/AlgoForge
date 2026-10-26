@@ -1,0 +1,2478 @@
+{
+  "run_id": "02_churn_synthesize",
+  "request": "预测30天内可能流失的客户，需可解释，召回优先",
+  "data_path": "data/churn.csv",
+  "target": null,
+  "status": "failed",
+  "spec": {
+    "description": "预测30天内可能流失的客户，需可解释，召回优先",
+    "task_type": "binary_classification",
+    "modality": "tabular",
+    "target_column": "churn",
+    "text_column": null,
+    "metrics": [
+      {
+        "name": "recall",
+        "threshold": 0.75,
+        "primary": true
+      },
+      {
+        "name": "roc_auc",
+        "threshold": 0.8,
+        "primary": false
+      }
+    ],
+    "constraints": [
+      "interpretable",
+      "recall_first"
+    ]
+  },
+  "profile_tags": [
+    "has_missing_values",
+    "numeric_features",
+    "has_categorical_features",
+    "low_cardinality",
+    "string_typed_numeric",
+    "id_columns",
+    "imbalanced",
+    "time_tenure",
+    "mixed_features"
+  ],
+  "candidates": [
+    {
+      "name": "lgbm_balanced_pipeline",
+      "steps": [
+        {
+          "kind": "imputer",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "TotalChargesCleaner",
+            "kind": "imputer",
+            "purpose": "将字符串类型的数值列转换为浮点型并处理缺失值",
+            "inputs": "包含 total_charges 列的 DataFrame",
+            "outputs": "清洗后的 DataFrame",
+            "reference": "TotalChargesCleaner@1"
+          },
+          "params": {},
+          "rationale": "解决数据中 string_typed_numeric 问题，防止类型转换错误。",
+          "evidence_ids": [
+            "Operator:TotalChargesCleaner@1",
+            "Lesson:69d51358"
+          ]
+        },
+        {
+          "kind": "imputer",
+          "action": "reuse",
+          "operator_ref": "MissingValueImputer@1",
+          "synth_spec": null,
+          "params": {},
+          "rationale": "对剩余的缺失值进行通用填充。",
+          "evidence_ids": [
+            "Operator:MissingValueImputer@1"
+          ]
+        },
+        {
+          "kind": "encoder",
+          "action": "reuse",
+          "operator_ref": "OneHotCategoricalEncoder@1",
+          "synth_spec": null,
+          "params": {
+            "max_categories": 20
+          },
+          "rationale": "类别特征编码，适配 LightGBM。",
+          "evidence_ids": [
+            "Operator:OneHotCategoricalEncoder@1"
+          ]
+        },
+        {
+          "kind": "model",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "BalancedLightGBMClassifier",
+            "kind": "model",
+            "purpose": "不平衡数据下的流失预测模型",
+            "inputs": "预处理后的特征矩阵",
+            "outputs": "预测概率",
+            "reference": "BalancedLightGBMClassifier@1"
+          },
+          "params": {},
+          "rationale": "利用集成学习模型处理不平衡数据，优先保证高召回率。",
+          "evidence_ids": [
+            "Operator:BalancedLightGBMClassifier@1",
+            "Lesson:9e9e77d6"
+          ]
+        }
+      ],
+      "rationale": "利用 LightGBM 的处理不平衡能力及针对性清洗，实现高性能召回。"
+    },
+    {
+      "name": "interpretable_logreg_pipeline",
+      "steps": [
+        {
+          "kind": "imputer",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "TotalChargesCleaner",
+            "kind": "imputer",
+            "purpose": "将字符串类型的数值列转换为浮点型并处理缺失值",
+            "inputs": "包含 total_charges 列的 DataFrame",
+            "outputs": "清洗后的 DataFrame",
+            "reference": "TotalChargesCleaner@1"
+          },
+          "params": {},
+          "rationale": "确保数值类型正确以支持后续标准化。",
+          "evidence_ids": [
+            "Operator:TotalChargesCleaner@1"
+          ]
+        },
+        {
+          "kind": "feature",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "TenureBucketizer",
+            "kind": "feature",
+            "purpose": "时间长度分箱增强线性模型解释性",
+            "inputs": "tenure列",
+            "outputs": "分箱后的特征",
+            "reference": "TenureBucketizer@1"
+          },
+          "params": {},
+          "rationale": "通过分箱增强在网时长的非线性表达，辅助逻辑回归。",
+          "evidence_ids": [
+            "Operator:TenureBucketizer@1"
+          ]
+        },
+        {
+          "kind": "scaler",
+          "action": "reuse",
+          "operator_ref": "StandardFeatureScaler@1",
+          "synth_spec": null,
+          "params": {},
+          "rationale": "逻辑回归必须进行标准化以保证系数可解释性。",
+          "evidence_ids": [
+            "Operator:StandardFeatureScaler@1",
+            "Lesson:74e2da10"
+          ]
+        },
+        {
+          "kind": "model",
+          "action": "reuse",
+          "operator_ref": "LogisticRegressionModel@1",
+          "synth_spec": null,
+          "params": {
+            "C": 1.0,
+            "class_weight": "balanced"
+          },
+          "rationale": "使用逻辑回归实现业务侧强解释性需求，并平衡样本权重。",
+          "evidence_ids": [
+            "Operator:LogisticRegressionModel@1",
+            "Lesson:9e9e77d6"
+          ]
+        }
+      ],
+      "rationale": "平衡了可解释性要求与业务准确性需求。"
+    },
+    {
+      "name": "rf_nonlinear_pipeline",
+      "steps": [
+        {
+          "kind": "imputer",
+          "action": "reuse",
+          "operator_ref": "MissingValueImputer@1",
+          "synth_spec": null,
+          "params": {},
+          "rationale": "基础缺失值处理。",
+          "evidence_ids": [
+            "Operator:MissingValueImputer@1"
+          ]
+        },
+        {
+          "kind": "feature",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "ChargeRatioFeatureGenerator",
+            "kind": "feature",
+            "purpose": "构造历史消费比值特征",
+            "inputs": "monthly_charges, total_charges, tenure",
+            "outputs": "比值特征",
+            "reference": "ChargeRatioFeatureGenerator@1"
+          },
+          "params": {},
+          "rationale": "引入衍生特征提升模型对 churn 的洞察力。",
+          "evidence_ids": [
+            "Operator:ChargeRatioFeatureGenerator@1"
+          ]
+        },
+        {
+          "kind": "model",
+          "action": "reuse",
+          "operator_ref": "RandomForestModel@1",
+          "synth_spec": null,
+          "params": {
+            "n_estimators": 300,
+            "max_depth": 12,
+            "class_weight": "balanced"
+          },
+          "rationale": "使用随机森林拟合非线性关系，并限制深度防止过拟合，以符合召回优先原则。",
+          "evidence_ids": [
+            "Operator:RandomForestModel@1",
+            "Lesson:57718714"
+          ]
+        }
+      ],
+      "rationale": "利用衍生特征和随机森林模型，通过超参数控制防止过拟合。"
+    },
+    {
+      "name": "logreg_improved_robustness",
+      "steps": [
+        {
+          "kind": "imputer",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "TotalChargesCleaner",
+            "kind": "imputer",
+            "purpose": "清洗数值列",
+            "inputs": "DataFrame",
+            "outputs": "Cleaned DataFrame",
+            "reference": "TotalChargesCleaner@1"
+          },
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:TotalChargesCleaner@1"
+          ]
+        },
+        {
+          "kind": "feature",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "TenureBucketizer",
+            "kind": "feature",
+            "purpose": "分箱",
+            "inputs": "tenure",
+            "outputs": "tenure_bin",
+            "reference": "TenureBucketizer@1"
+          },
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:TenureBucketizer@1"
+          ]
+        },
+        {
+          "kind": "scaler",
+          "action": "reuse",
+          "operator_ref": "StandardFeatureScaler@1",
+          "synth_spec": null,
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:StandardFeatureScaler@1"
+          ]
+        },
+        {
+          "kind": "model",
+          "action": "reuse",
+          "operator_ref": "LogisticRegressionModel@1",
+          "synth_spec": null,
+          "params": {
+            "C": 0.5,
+            "class_weight": "balanced"
+          },
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:LogisticRegressionModel@1"
+          ]
+        }
+      ],
+      "rationale": "通过特征分箱提升线性模型可解释性，修复类型错误，并调整正则化参数。"
+    },
+    {
+      "name": "logreg_target_encoding",
+      "steps": [
+        {
+          "kind": "imputer",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "TotalChargesCleaner",
+            "kind": "imputer",
+            "purpose": "类型修复",
+            "inputs": "total_charges",
+            "outputs": "total_charges_float",
+            "reference": "TotalChargesCleaner@1"
+          },
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:TotalChargesCleaner@1"
+          ]
+        },
+        {
+          "kind": "encoder",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "KFoldTargetEncoder",
+            "kind": "encoder",
+            "purpose": "目标编码",
+            "inputs": "cat_features",
+            "outputs": "encoded",
+            "reference": "KFoldTargetEncoder@1"
+          },
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:KFoldTargetEncoder@1"
+          ]
+        },
+        {
+          "kind": "scaler",
+          "action": "reuse",
+          "operator_ref": "StandardFeatureScaler@1",
+          "synth_spec": null,
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:StandardFeatureScaler@1"
+          ]
+        },
+        {
+          "kind": "model",
+          "action": "reuse",
+          "operator_ref": "LogisticRegressionModel@1",
+          "synth_spec": null,
+          "params": {
+            "C": 0.1,
+            "class_weight": "balanced"
+          },
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:LogisticRegressionModel@1"
+          ]
+        }
+      ],
+      "rationale": "使用目标编码处理类别特征，针对高基数场景优化逻辑回归输入。"
+    },
+    {
+      "name": "rf_tenure_enhanced",
+      "steps": [
+        {
+          "kind": "imputer",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "TotalChargesCleaner",
+            "kind": "imputer",
+            "purpose": "清理",
+            "inputs": "total_charges",
+            "outputs": "cleaned",
+            "reference": "TotalChargesCleaner@1"
+          },
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:TotalChargesCleaner@1"
+          ]
+        },
+        {
+          "kind": "feature",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "TenureBucketizer",
+            "kind": "feature",
+            "purpose": "分箱",
+            "inputs": "tenure",
+            "outputs": "tenure_binned",
+            "reference": "TenureBucketizer@1"
+          },
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:TenureBucketizer@1"
+          ]
+        },
+        {
+          "kind": "model",
+          "action": "reuse",
+          "operator_ref": "RandomForestModel@1",
+          "synth_spec": null,
+          "params": {
+            "n_estimators": 400,
+            "max_depth": 8,
+            "class_weight": "balanced"
+          },
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:RandomForestModel@1"
+          ]
+        }
+      ],
+      "rationale": "增加 Tenure 分箱特征，限制森林深度以增强鲁棒性。"
+    }
+  ],
+  "generated": {
+    "TotalChargesCleaner": {
+      "spec": {
+        "name": "TotalChargesCleaner",
+        "kind": "imputer",
+        "purpose": "将字符串类型的数值列转换为浮点型并处理缺失值",
+        "inputs": "包含 total_charges 列的 DataFrame",
+        "outputs": "清洗后的 DataFrame",
+        "reference": "TotalChargesCleaner@1"
+      },
+      "source": "import pandas as pd\nimport numpy as np\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass TotalChargesCleaner(TransformerMixin, Operator):\n    \"\"\"\n    将 total_charges 列从字符串转换为浮点型，处理包含空白字符的异常值，并填充缺失值。\n    \"\"\"\n    \n    meta = OperatorMeta(\n        name=\"TotalChargesCleaner\",\n        kind=OperatorKind.IMPUTER,\n        version=2,\n        origin=\"synthesized\",\n        description=\"将字符串类型的total_charges列转换为浮点型并处理缺失值\",\n        conditions=[\"数据包含total_charges列\", \"列内存在空白字符串或非数值字符\"],\n        dependencies=[\"pandas\", \"numpy\", \"sklearn\"],\n        params={\"col\": \"total_charges\"},\n        parent=\"TotalChargesCleaner@1\"\n    )\n\n    def __init__(self, col=\"total_charges\"):\n        self.col = col\n\n    def fit(self, X, y=None):\n        # 记录已适配状态，该算子为无状态转换器\n        self.is_fitted_ = True\n        return self\n\n    def transform(self, X):\n        # 1. 确保输入为 DataFrame 副本以避免副作用\n        if not isinstance(X, pd.DataFrame):\n            X = pd.DataFrame(X)\n        X = X.copy()\n        \n        # 2. 检查列是否存在\n        if self.col not in X.columns:\n            return X\n        \n        # 3. 处理逻辑：\n        # - strip() 清理空白\n        # - to_numeric(errors='coerce') 将无法转换的转换为 NaN\n        # - fillna(0.0) 填充由于新入网产生的空值或异常值\n        X[self.col] = pd.to_numeric(\n            X[self.col].astype(str).str.strip(), \n            errors=\"coerce\"\n        ).fillna(0.0)\n        \n        # 4. 确保输出列为数值类型，处理潜在的无穷值\n        X[self.col] = X[self.col].replace([np.inf, -np.inf], 0.0)\n        \n        return X\n",
+      "version": 2,
+      "revision": 0
+    },
+    "BalancedLightGBMClassifier": {
+      "spec": {
+        "name": "BalancedLightGBMClassifier",
+        "kind": "model",
+        "purpose": "不平衡数据下的流失预测模型",
+        "inputs": "预处理后的特征矩阵",
+        "outputs": "预测概率",
+        "reference": "BalancedLightGBMClassifier@1"
+      },
+      "source": "import numpy as np\nimport pandas as pd\nimport lightgbm as lgb\nfrom sklearn.base import ClassifierMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass BalancedLightGBMClassifier(ClassifierMixin, Operator):\n    meta = OperatorMeta(\n        name=\"BalancedLightGBMClassifier\",\n        kind=OperatorKind.MODEL,\n        version=2,\n        origin=\"synthesized\",\n        description=\"针对流失预测场景下不平衡数据设计的 LightGBM 分类器，优先保障召回率。\",\n        conditions=[\"适用于正负样本不平衡的二分类场景\", \"无需对特征进行标准化\"],\n        dependencies=[\"lightgbm\", \"numpy\", \"pandas\", \"sklearn\"],\n        params={\n            \"n_estimators\": 400,\n            \"learning_rate\": 0.05,\n            \"num_leaves\": 31,\n            \"class_weight\": \"balanced\",\n            \"random_state\": 42\n        },\n        parent=\"BalancedLightGBMClassifier@1\"\n    )\n\n    def __init__(self, n_estimators=400, learning_rate=0.05, num_leaves=31, class_weight=\"balanced\", random_state=42):\n        self.n_estimators = n_estimators\n        self.learning_rate = learning_rate\n        self.num_leaves = num_leaves\n        self.class_weight = class_weight\n        self.random_state = random_state\n\n    def fit(self, X, y):\n        # 确保输入为 DataFrame 以处理潜在的 ID 列过滤\n        X_df = pd.DataFrame(X)\n        # 简单剔除字符型特征（模型通常需要数值输入，LightGBM可直接处理category，此处简化为数值化预处理）\n        X_numeric = X_df.select_dtypes(include=[np.number])\n        \n        self.model_ = lgb.LGBMClassifier(\n            n_estimators=self.n_estimators,\n            learning_rate=self.learning_rate,\n            num_leaves=self.num_leaves,\n            class_weight=self.class_weight,\n            random_state=self.random_state,\n            verbose=-1\n        )\n        \n        self.model_.fit(X_numeric, y)\n        self.classes_ = self.model_.classes_\n        return self\n\n    def predict_proba(self, X):\n        X_df = pd.DataFrame(X)\n        X_numeric = X_df.select_dtypes(include=[np.number])\n        # 处理缺失值，填充为均值或0，防止报错\n        X_numeric = X_numeric.fillna(0)\n        return self.model_.predict_proba(X_numeric)\n\n    def predict(self, X):\n        X_df = pd.DataFrame(X)\n        X_numeric = X_df.select_dtypes(include=[np.number])\n        X_numeric = X_numeric.fillna(0)\n        return self.model_.predict(X_numeric)\n",
+      "version": 2,
+      "revision": 0
+    },
+    "TenureBucketizer": {
+      "spec": {
+        "name": "TenureBucketizer",
+        "kind": "feature",
+        "purpose": "时间长度分箱增强线性模型解释性",
+        "inputs": "tenure列",
+        "outputs": "分箱后的特征",
+        "reference": "TenureBucketizer@1"
+      },
+      "source": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass TenureBucketizer(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"TenureBucketizer\",\n        kind=OperatorKind.FEATURE,\n        version=2,\n        origin=\"synthesized\",\n        description=\"将在网时长(tenure)离散化为特定业务分段，增强线性模型可解释性\",\n        conditions=[\"输入包含tenure数值列\"],\n        dependencies=[\"pandas\", \"numpy\", \"sklearn\"],\n        params={\"col\": \"tenure\"},\n        parent=\"TenureBucketizer@1\"\n    )\n\n    def __init__(self, col=\"tenure\"):\n        self.col = col\n\n    def fit(self, X, y=None):\n        \"\"\"记录分箱逻辑，无需学习状态\"\"\"\n        self.bins_ = [-1, 6, 12, 24, 48, np.inf]\n        self.labels_ = [\"0-6\", \"6-12\", \"12-24\", \"24-48\", \"48+\"]\n        return self\n\n    def transform(self, X):\n        \"\"\"执行分箱，处理缺失值与非法值\"\"\"\n        if not isinstance(X, pd.DataFrame):\n            # 适配非DataFrame输入，转为DataFrame以使用cut\n            X = pd.DataFrame(X)\n        \n        X_out = X.copy()\n        \n        # 确保目标列存在\n        if self.col not in X_out.columns:\n            return X_out\n        \n        # 强制转换为数值类型，无法转换的转为NaN\n        series = pd.to_numeric(X_out[self.col], errors=\"coerce\")\n        \n        # 分箱处理：缺失值会被处理为 'nan' 字符串标签\n        bucketed = pd.cut(\n            series, \n            bins=self.bins_, \n            labels=self.labels_\n        ).astype(str)\n        \n        # 将结果赋值回副本\n        X_out[f\"{self.col}_bucket\"] = bucketed.fillna(\"unknown\")\n        \n        return X_out\n",
+      "version": 2,
+      "revision": 0
+    },
+    "ChargeRatioFeatureGenerator": {
+      "spec": {
+        "name": "ChargeRatioFeatureGenerator",
+        "kind": "feature",
+        "purpose": "构造历史消费比值特征",
+        "inputs": "monthly_charges, total_charges, tenure",
+        "outputs": "比值特征",
+        "reference": "ChargeRatioFeatureGenerator@1"
+      },
+      "source": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass ChargeRatioFeatureGenerator(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"ChargeRatioFeatureGenerator\",\n        kind=OperatorKind.FEATURE,\n        version=2,\n        origin=\"synthesized\",\n        description=\"构造月均消费与当前月费的比值特征，衡量用户消费变动趋势\",\n        conditions=[\"输入包含monthly_charges, total_charges, tenure字段\"],\n        dependencies=[\"numpy\", \"pandas\", \"sklearn\"],\n        params={\"monthly\": \"monthly_charges\", \"total\": \"total_charges\", \"tenure\": \"tenure\"},\n        parent=\"ChargeRatioFeatureGenerator@1\"\n    )\n\n    def __init__(self, monthly=\"monthly_charges\", total=\"total_charges\", tenure=\"tenure\"):\n        self.monthly = monthly\n        self.total = total\n        self.tenure = tenure\n\n    def fit(self, X, y=None):\n        self.feature_names_in_ = X.columns.tolist()\n        return self\n\n    def transform(self, X):\n        X = X.copy()\n        \n        # 处理 total_charges 中可能存在的非数值字符（Lesson:69d51358）\n        total_col = pd.to_numeric(X[self.total].astype(str).str.strip(), errors='coerce').fillna(0.0)\n        monthly_col = pd.to_numeric(X[self.monthly], errors='coerce').fillna(0.0)\n        tenure_col = pd.to_numeric(X[self.tenure], errors='coerce').fillna(0.0)\n        \n        # 计算历史月均消费\n        # 处理 tenure 为 0 的情况，防止除以 0\n        avg_monthly = total_col / tenure_col.replace(0, np.nan)\n        \n        # 计算比值：avg_monthly / current_monthly\n        # 如果当前月费为 0 或计算产生异常，赋予默认值 1.0\n        ratio = (avg_monthly / monthly_col.replace(0, np.nan))\n        \n        # 处理无穷值及可能的缺失值（针对无法计算的样本统一填充为 1.0）\n        X[\"charge_ratio\"] = ratio.replace([np.inf, -np.inf], np.nan).fillna(1.0)\n        \n        return X\n",
+      "version": 2,
+      "revision": 0
+    },
+    "KFoldTargetEncoder": {
+      "spec": {
+        "name": "KFoldTargetEncoder",
+        "kind": "encoder",
+        "purpose": "目标编码",
+        "inputs": "cat_features",
+        "outputs": "encoded",
+        "reference": "KFoldTargetEncoder@1"
+      },
+      "source": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\nfrom sklearn.model_selection import KFold\n\nclass KFoldTargetEncoder(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"KFoldTargetEncoder\",\n        kind=OperatorKind.ENCODER,\n        version=2,\n        origin=\"synthesized\",\n        description=\"基于K折交叉验证的目标编码器，有效防止训练过程中的标签泄漏。\",\n        conditions=[\"适用于类别特征编码\", \"防止标签泄漏\"],\n        dependencies=[\"numpy\", \"pandas\", \"sklearn\"],\n        params={\"cols\": None, \"target\": \"churn\", \"n_splits\": 5, \"smoothing\": 10},\n        parent=\"KFoldTargetEncoder@1\"\n    )\n\n    def __init__(self, cols=None, target=\"churn\", n_splits=5, smoothing=10):\n        self.cols = cols\n        self.target = target\n        self.n_splits = n_splits\n        self.smoothing = smoothing\n\n    def fit(self, X, y=None):\n        X = pd.DataFrame(X)\n        if y is None:\n            if self.target in X.columns:\n                y = X[self.target]\n            else:\n                raise ValueError(f\"Target column '{self.target}' not found in input data.\")\n        else:\n            y = pd.Series(y, index=X.index)\n        \n        # 确保 y 有名称以支持后续 groupby 操作\n        y_name = y.name if y.name is not None else 'target'\n        y = y.rename(y_name)\n\n        self.cols_ = self.cols if self.cols is not None else X.select_dtypes(include=['object', 'category']).columns.tolist()\n        self.mapping_ = {}\n        self.prior_ = y.mean()\n\n        # 记录训练集结果\n        self.train_encoded_ = X.copy()\n\n        for col in self.cols_:\n            # 计算全局平滑映射，用于预测阶段\n            df_col = pd.concat([X[col], y], axis=1)\n            stats = df_col.groupby(col)[y_name].agg([\"mean\", \"count\"])\n            smooth = (stats[\"mean\"] * stats[\"count\"] + self.prior_ * self.smoothing) / (stats[\"count\"] + self.smoothing)\n            self.mapping_[col] = smooth\n\n            # 进行 K 折交叉验证，为训练集生成 OOF 编码\n            fold_encodings = pd.Series(index=X.index, dtype=float)\n            n_splits = min(self.n_splits, len(X))\n            kf = KFold(n_splits=max(n_splits, 2), shuffle=True, random_state=42)\n            \n            for fit_idx, val_idx in kf.split(X):\n                train_fold = X.iloc[fit_idx]\n                target_fold = y.iloc[fit_idx]\n                \n                stats_fold = pd.concat([train_fold[col], target_fold], axis=1).groupby(col)[y_name].agg([\"mean\", \"count\"])\n                smooth_fold = (stats_fold[\"mean\"] * stats_fold[\"count\"] + self.prior_ * self.smoothing) / (stats_fold[\"count\"] + self.smoothing)\n                \n                fold_encodings.iloc[val_idx] = X[col].iloc[val_idx].map(smooth_fold)\n            \n            self.train_encoded_[col] = fold_encodings.fillna(self.prior_)\n\n        return self\n\n    def transform(self, X):\n        X = pd.DataFrame(X).copy()\n        \n        for col in self.cols_:\n            if col not in X.columns:\n                continue\n            \n            # 使用训练阶段得到的全局映射，未见类别通过 fillna(self.prior_) 处理\n            mapping = self.mapping_.get(col)\n            X[col] = X[col].map(mapping).fillna(self.prior_)\n            \n            # 处理数值异常与类型转换\n            X[col] = pd.to_numeric(X[col], errors='coerce').replace([np.inf, -np.inf], self.prior_).fillna(self.prior_)\n            \n        return X\n",
+      "version": 2,
+      "revision": 3
+    }
+  },
+  "reports": [
+    {
+      "plan_name": "lgbm_balanced_pipeline",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "M_THRESHOLD",
+          "stage": "metric",
+          "message": "recall = 0.6243 低于阈值 0.75",
+          "operator": "BalancedLightGBMClassifier@2",
+          "hint": "考虑 class_weight、换模型、调参或调整决策阈值"
+        },
+        {
+          "code": "M_THRESHOLD",
+          "stage": "metric",
+          "message": "roc_auc = 0.7835 低于阈值 0.8",
+          "operator": "BalancedLightGBMClassifier@2",
+          "hint": "考虑 class_weight、换模型、调参或调整决策阈值"
+        }
+      ],
+      "metrics": {
+        "recall": 0.6243,
+        "roc_auc": 0.7835,
+        "precision": 0.4923,
+        "f1": 0.5502,
+        "recall_at_20": 0.4204
+      },
+      "metric_std": {
+        "recall": 0.0073,
+        "roc_auc": 0.0027,
+        "precision": 0.002,
+        "f1": 0.003,
+        "recall_at_20": 0.0057
+      },
+      "resources": {
+        "fit_seconds": 0.311,
+        "predict_ms_per_1k": 63.48,
+        "peak_rss_mb": 261.9
+      },
+      "notes": []
+    },
+    {
+      "plan_name": "interpretable_logreg_pipeline",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "E_RUNTIME",
+          "stage": "sandbox",
+          "message": "ValueError: could not convert string to float: 'C102752' (at __array__:2027)",
+          "operator": "LogisticRegressionModel@1",
+          "hint": ""
+        }
+      ],
+      "metrics": {},
+      "metric_std": {},
+      "resources": {
+        "peak_rss_mb": 232.7
+      },
+      "notes": []
+    },
+    {
+      "plan_name": "rf_nonlinear_pipeline",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "E_RUNTIME",
+          "stage": "sandbox",
+          "message": "ValueError: could not convert string to float: 'C102752' (at __array__:2027)",
+          "operator": "RandomForestModel@1",
+          "hint": ""
+        }
+      ],
+      "metrics": {},
+      "metric_std": {},
+      "resources": {
+        "peak_rss_mb": 234.0
+      },
+      "notes": []
+    },
+    {
+      "plan_name": "logreg_improved_robustness",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "E_RUNTIME",
+          "stage": "sandbox",
+          "message": "ValueError: could not convert string to float: 'C102752' (at __array__:2027)",
+          "operator": "LogisticRegressionModel@1",
+          "hint": ""
+        }
+      ],
+      "metrics": {},
+      "metric_std": {},
+      "resources": {
+        "peak_rss_mb": 232.7
+      },
+      "notes": []
+    },
+    {
+      "plan_name": "rf_tenure_enhanced",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "E_RUNTIME",
+          "stage": "sandbox",
+          "message": "ValueError: could not convert string to float: 'C102752' (at __array__:2027)",
+          "operator": "RandomForestModel@1",
+          "hint": ""
+        }
+      ],
+      "metrics": {},
+      "metric_std": {},
+      "resources": {
+        "peak_rss_mb": 231.8
+      },
+      "notes": []
+    },
+    {
+      "plan_name": "logreg_target_encoding",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "E_RUNTIME",
+          "stage": "sandbox",
+          "message": "ValueError: Input X contains NaN.\nLogisticRegression does not accept missing values encoded as NaN natively. For supervised learning, you might want to consider sklearn.ensemble.HistGradientBoostingClassifier and Regressor which accept missing values encoded as NaNs natively. Alternatively, it is possible to pr (at _assert_all_finite_element_wise:186)",
+          "operator": "LogisticRegressionModel@1",
+          "hint": ""
+        }
+      ],
+      "metrics": {},
+      "metric_std": {},
+      "resources": {
+        "peak_rss_mb": 231.6
+      },
+      "notes": []
+    }
+  ],
+  "best_plan": "lgbm_balanced_pipeline",
+  "repair_rounds": 3,
+  "replans": 1,
+  "history": [
+    {
+      "plan_name": "logreg_target_encoding",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "E_RUNTIME",
+          "stage": "sandbox",
+          "message": "TypeError: cannot concatenate object of type '<class 'numpy.ndarray'>'; only Series and DataFrame objs are valid (at _clean_keys_and_objs:836)",
+          "operator": "KFoldTargetEncoder@2",
+          "hint": ""
+        }
+      ],
+      "metrics": {},
+      "metric_std": {},
+      "resources": {
+        "peak_rss_mb": 229.0
+      },
+      "notes": []
+    },
+    {
+      "plan_name": "logreg_target_encoding",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "E_RUNTIME",
+          "stage": "sandbox",
+          "message": "KeyError: 'Column not found: None' (at __getitem__:228)",
+          "operator": "KFoldTargetEncoder@2",
+          "hint": ""
+        }
+      ],
+      "metrics": {},
+      "metric_std": {},
+      "resources": {
+        "peak_rss_mb": 229.7
+      },
+      "notes": []
+    },
+    {
+      "plan_name": "logreg_target_encoding",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "E_RUNTIME",
+          "stage": "sandbox",
+          "message": "KeyError: 'Column not found: None' (at __getitem__:228)",
+          "operator": "KFoldTargetEncoder@2",
+          "hint": ""
+        }
+      ],
+      "metrics": {},
+      "metric_std": {},
+      "resources": {
+        "peak_rss_mb": 229.5
+      },
+      "notes": []
+    }
+  ],
+  "repairs": [
+    {
+      "operator": "KFoldTargetEncoder@2",
+      "revision": 1,
+      "diagnostic": {
+        "code": "E_RUNTIME",
+        "stage": "sandbox",
+        "message": "TypeError: cannot concatenate object of type '<class 'numpy.ndarray'>'; only Series and DataFrame objs are valid (at _clean_keys_and_objs:836)",
+        "operator": "KFoldTargetEncoder@2",
+        "hint": ""
+      },
+      "lessons": [
+        "Lesson:fbdb8487",
+        "Lesson:69d51358",
+        "Lesson:0d5e3eb1"
+      ],
+      "fixed": false,
+      "before": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom sklearn.model_selection import KFold\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass KFoldTargetEncoder(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"KFoldTargetEncoder\",\n        kind=OperatorKind.ENCODER,\n        version=2,\n        origin=\"synthesized\",\n        description=\"基于K折交叉验证的目标编码器，有效防止训练过程中的标签泄漏。\",\n        conditions=[\"适用于类别特征编码\", \"防止标签泄漏\"],\n        dependencies=[\"numpy\", \"pandas\", \"sklearn\"],\n        params={\"cols\": None, \"target\": \"churn\", \"n_splits\": 5, \"smoothing\": 10},\n        parent=\"KFoldTargetEncoder@1\"\n    )\n\n    def __init__(self, cols=None, target=\"churn\", n_splits=5, smoothing=10):\n        self.cols = cols\n        self.target = target\n        self.n_splits = n_splits\n        self.smoothing = smoothing\n\n    def fit(self, X, y=None):\n        X = X.copy()\n        if y is None:\n            y = X[self.target]\n        \n        self.cols = self.cols if self.cols else X.select_dtypes(include=['object', 'category']).columns.tolist()\n        self.mapping_ = {}\n        self.prior_ = y.mean()\n\n        for col in self.cols:\n            # 存储每个折的编码映射以及最终的全量平滑值\n            col_mappings = []\n            kf = KFold(n_splits=self.n_splits, shuffle=True, random_state=42)\n            \n            # 计算全量平滑值，用于 transform 阶段的填充（包含未见类别）\n            stats = pd.concat([X[col], y], axis=1).groupby(col)[self.target].agg([\"mean\", \"count\"])\n            smooth = (stats[\"mean\"] * stats[\"count\"] + self.prior_ * self.smoothing) / (stats[\"count\"] + self.smoothing)\n            self.mapping_[col] = smooth\n\n            # 存储折内映射用于训练集转换\n            fold_encodings = pd.Series(index=X.index, dtype=float)\n            for fit_idx, val_idx in kf.split(X):\n                train_fold = X.iloc[fit_idx]\n                target_fold = y.iloc[fit_idx]\n                \n                stats_fold = pd.concat([train_fold[col], target_fold], axis=1).groupby(col)[self.target].agg([\"mean\", \"count\"])\n                smooth_fold = (stats_fold[\"mean\"] * stats_fold[\"count\"] + self.prior_ * self.smoothing) / (stats_fold[\"count\"] + self.smoothing)\n                \n                fold_encodings.iloc[val_idx] = X[col].iloc[val_idx].map(smooth_fold)\n            \n            self.mapping_[f\"{col}_fold_enc\"] = fold_encodings\n\n        return self\n\n    def transform(self, X):\n        X = X.copy()\n        for col in self.cols:\n            # 如果在训练集中，优先使用折内编码，否则使用全量平均值映射\n            if f\"{col}_fold_enc\" in self.mapping_:\n                X[col] = self.mapping_[f\"{col}_fold_enc\"]\n            \n            # 使用全量平滑后的映射处理测试集或未见类别\n            X[col] = X[col].map(self.mapping_[col]).fillna(self.prior_)\n            \n            # 处理可能的无穷值或缺失值\n            X[col] = X[col].replace([np.inf, -np.inf], self.prior_).fillna(self.prior_)\n            \n        return X\n",
+      "after": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\nfrom sklearn.model_selection import KFold\n\nclass KFoldTargetEncoder(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"KFoldTargetEncoder\",\n        kind=OperatorKind.ENCODER,\n        version=2,\n        origin=\"synthesized\",\n        description=\"基于K折交叉验证的目标编码器，有效防止训练过程中的标签泄漏。\",\n        conditions=[\"适用于类别特征编码\", \"防止标签泄漏\"],\n        dependencies=[\"numpy\", \"pandas\", \"sklearn\"],\n        params={\"cols\": None, \"target\": \"churn\", \"n_splits\": 5, \"smoothing\": 10},\n        parent=\"KFoldTargetEncoder@1\"\n    )\n\n    def __init__(self, cols=None, target=\"churn\", n_splits=5, smoothing=10):\n        self.cols = cols\n        self.target = target\n        self.n_splits = n_splits\n        self.smoothing = smoothing\n\n    def fit(self, X, y=None):\n        X = pd.DataFrame(X)\n        if y is None:\n            y = X[self.target]\n        else:\n            y = pd.Series(y, index=X.index)\n\n        self.cols_ = self.cols if self.cols else X.select_dtypes(include=['object', 'category']).columns.tolist()\n        self.mapping_ = {}\n        self.prior_ = y.mean()\n\n        # 准备用于存储训练集 OOF (Out-of-fold) 结果的容器\n        self.train_encoded_ = X.copy()\n\n        for col in self.cols_:\n            # 计算全局平滑映射，用于 transform 阶段（测试集或未见类别）\n            stats = pd.concat([X[col], y], axis=1).groupby(col)[y.name].agg([\"mean\", \"count\"])\n            smooth = (stats[\"mean\"] * stats[\"count\"] + self.prior_ * self.smoothing) / (stats[\"count\"] + self.smoothing)\n            self.mapping_[col] = smooth\n\n            # 进行 K 折交叉验证，为训练集生成 OOF 编码\n            fold_encodings = pd.Series(index=X.index, dtype=float)\n            kf = KFold(n_splits=self.n_splits, shuffle=True, random_state=42)\n            \n            for fit_idx, val_idx in kf.split(X):\n                train_fold = X.iloc[fit_idx]\n                target_fold = y.iloc[fit_idx]\n                \n                stats_fold = pd.concat([train_fold[col], target_fold], axis=1).groupby(col)[y.name].agg([\"mean\", \"count\"])\n                smooth_fold = (stats_fold[\"mean\"] * stats_fold[\"count\"] + self.prior_ * self.smoothing) / (stats_fold[\"count\"] + self.smoothing)\n                \n                fold_encodings.iloc[val_idx] = X[col].iloc[val_idx].map(smooth_fold)\n            \n            self.train_encoded_[col] = fold_encodings.fillna(self.prior_)\n\n        return self\n\n    def transform(self, X):\n        X = pd.DataFrame(X).copy()\n        \n        # 判断是否为训练集的 transform，如果是则直接返回训练好的 OOF 结果（通过比较列名和内容判断）\n        # 这里为了稳健性，通过是否属于 fit 过程产生的数据来判断\n        if hasattr(self, 'train_encoded_') and X.equals(X.iloc[:len(self.train_encoded_)].head(len(X)) if len(X) <= len(self.train_encoded_) else X.head(0)):\n             # 简化判断：如果输入与 fit 时一致，返回缓存的 OOF\n             return self.train_encoded_[self.cols_].copy()\n\n        for col in self.cols_:\n            # 对新数据，必须使用全局平滑映射\n            mapping = self.mapping_.get(col)\n            X[col] = X[col].map(mapping).fillna(self.prior_)\n            \n            # 处理缺失值、无穷值\n            X[col] = X[col].replace([np.inf, -np.inf], self.prior_).fillna(self.prior_)\n            \n        return X\n"
+    },
+    {
+      "operator": "KFoldTargetEncoder@2",
+      "revision": 2,
+      "diagnostic": {
+        "code": "E_RUNTIME",
+        "stage": "sandbox",
+        "message": "KeyError: 'Column not found: None' (at __getitem__:228)",
+        "operator": "KFoldTargetEncoder@2",
+        "hint": ""
+      },
+      "lessons": [
+        "Lesson:0d5e3eb1",
+        "Lesson:69d51358",
+        "Lesson:fbdb8487"
+      ],
+      "fixed": false,
+      "before": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\nfrom sklearn.model_selection import KFold\n\nclass KFoldTargetEncoder(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"KFoldTargetEncoder\",\n        kind=OperatorKind.ENCODER,\n        version=2,\n        origin=\"synthesized\",\n        description=\"基于K折交叉验证的目标编码器，有效防止训练过程中的标签泄漏。\",\n        conditions=[\"适用于类别特征编码\", \"防止标签泄漏\"],\n        dependencies=[\"numpy\", \"pandas\", \"sklearn\"],\n        params={\"cols\": None, \"target\": \"churn\", \"n_splits\": 5, \"smoothing\": 10},\n        parent=\"KFoldTargetEncoder@1\"\n    )\n\n    def __init__(self, cols=None, target=\"churn\", n_splits=5, smoothing=10):\n        self.cols = cols\n        self.target = target\n        self.n_splits = n_splits\n        self.smoothing = smoothing\n\n    def fit(self, X, y=None):\n        X = pd.DataFrame(X)\n        if y is None:\n            y = X[self.target]\n        else:\n            y = pd.Series(y, index=X.index)\n\n        self.cols_ = self.cols if self.cols else X.select_dtypes(include=['object', 'category']).columns.tolist()\n        self.mapping_ = {}\n        self.prior_ = y.mean()\n\n        # 准备用于存储训练集 OOF (Out-of-fold) 结果的容器\n        self.train_encoded_ = X.copy()\n\n        for col in self.cols_:\n            # 计算全局平滑映射，用于 transform 阶段（测试集或未见类别）\n            stats = pd.concat([X[col], y], axis=1).groupby(col)[y.name].agg([\"mean\", \"count\"])\n            smooth = (stats[\"mean\"] * stats[\"count\"] + self.prior_ * self.smoothing) / (stats[\"count\"] + self.smoothing)\n            self.mapping_[col] = smooth\n\n            # 进行 K 折交叉验证，为训练集生成 OOF 编码\n            fold_encodings = pd.Series(index=X.index, dtype=float)\n            kf = KFold(n_splits=self.n_splits, shuffle=True, random_state=42)\n            \n            for fit_idx, val_idx in kf.split(X):\n                train_fold = X.iloc[fit_idx]\n                target_fold = y.iloc[fit_idx]\n                \n                stats_fold = pd.concat([train_fold[col], target_fold], axis=1).groupby(col)[y.name].agg([\"mean\", \"count\"])\n                smooth_fold = (stats_fold[\"mean\"] * stats_fold[\"count\"] + self.prior_ * self.smoothing) / (stats_fold[\"count\"] + self.smoothing)\n                \n                fold_encodings.iloc[val_idx] = X[col].iloc[val_idx].map(smooth_fold)\n            \n            self.train_encoded_[col] = fold_encodings.fillna(self.prior_)\n\n        return self\n\n    def transform(self, X):\n        X = pd.DataFrame(X).copy()\n        \n        # 判断是否为训练集的 transform，如果是则直接返回训练好的 OOF 结果（通过比较列名和内容判断）\n        # 这里为了稳健性，通过是否属于 fit 过程产生的数据来判断\n        if hasattr(self, 'train_encoded_') and X.equals(X.iloc[:len(self.train_encoded_)].head(len(X)) if len(X) <= len(self.train_encoded_) else X.head(0)):\n             # 简化判断：如果输入与 fit 时一致，返回缓存的 OOF\n             return self.train_encoded_[self.cols_].copy()\n\n        for col in self.cols_:\n            # 对新数据，必须使用全局平滑映射\n            mapping = self.mapping_.get(col)\n            X[col] = X[col].map(mapping).fillna(self.prior_)\n            \n            # 处理缺失值、无穷值\n            X[col] = X[col].replace([np.inf, -np.inf], self.prior_).fillna(self.prior_)\n            \n        return X\n",
+      "after": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\nfrom sklearn.model_selection import KFold\n\nclass KFoldTargetEncoder(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"KFoldTargetEncoder\",\n        kind=OperatorKind.ENCODER,\n        version=2,\n        origin=\"synthesized\",\n        description=\"基于K折交叉验证的目标编码器，有效防止训练过程中的标签泄漏。\",\n        conditions=[\"适用于类别特征编码\", \"防止标签泄漏\"],\n        dependencies=[\"numpy\", \"pandas\", \"sklearn\"],\n        params={\"cols\": None, \"target\": \"churn\", \"n_splits\": 5, \"smoothing\": 10},\n        parent=\"KFoldTargetEncoder@1\"\n    )\n\n    def __init__(self, cols=None, target=\"churn\", n_splits=5, smoothing=10):\n        self.cols = cols\n        self.target = target\n        self.n_splits = n_splits\n        self.smoothing = smoothing\n\n    def fit(self, X, y=None):\n        X = pd.DataFrame(X)\n        if y is None:\n            # 尝试从 X 中获取 target，若不存在则可能抛出 KeyError，此处应做保护\n            if self.target in X.columns:\n                y = X[self.target]\n            else:\n                raise ValueError(f\"Target column '{self.target}' not found in input data.\")\n        else:\n            y = pd.Series(y, index=X.index)\n\n        self.cols_ = self.cols if self.cols is not None else X.select_dtypes(include=['object', 'category']).columns.tolist()\n        self.mapping_ = {}\n        self.prior_ = y.mean()\n\n        # 记录训练集结果\n        self.train_encoded_ = X.copy()\n\n        for col in self.cols_:\n            # 计算全局平滑映射，用于预测阶段\n            stats = pd.concat([X[col], y], axis=1).groupby(col)[y.name].agg([\"mean\", \"count\"])\n            smooth = (stats[\"mean\"] * stats[\"count\"] + self.prior_ * self.smoothing) / (stats[\"count\"] + self.smoothing)\n            self.mapping_[col] = smooth\n\n            # 进行 K 折交叉验证，为训练集生成 OOF 编码\n            fold_encodings = pd.Series(index=X.index, dtype=float)\n            kf = KFold(n_splits=min(self.n_splits, len(X)), shuffle=True, random_state=42)\n            \n            for fit_idx, val_idx in kf.split(X):\n                train_fold = X.iloc[fit_idx]\n                target_fold = y.iloc[fit_idx]\n                \n                stats_fold = pd.concat([train_fold[col], target_fold], axis=1).groupby(col)[y.name].agg([\"mean\", \"count\"])\n                smooth_fold = (stats_fold[\"mean\"] * stats_fold[\"count\"] + self.prior_ * self.smoothing) / (stats_fold[\"count\"] + self.smoothing)\n                \n                fold_encodings.iloc[val_idx] = X[col].iloc[val_idx].map(smooth_fold)\n            \n            self.train_encoded_[col] = fold_encodings.fillna(self.prior_)\n\n        return self\n\n    def transform(self, X):\n        X = pd.DataFrame(X).copy()\n        \n        # 针对每个列进行编码\n        for col in self.cols_:\n            if col not in X.columns:\n                continue\n            \n            # 使用训练阶段得到的全局映射\n            mapping = self.mapping_.get(col)\n            # 使用 map 处理，未见类别会变为 NaN，fill 后变为 prior_\n            X[col] = X[col].map(mapping).fillna(self.prior_)\n            \n            # 处理数值异常\n            X[col] = pd.to_numeric(X[col], errors='coerce').replace([np.inf, -np.inf], self.prior_).fillna(self.prior_)\n            \n        return X\n"
+    },
+    {
+      "operator": "KFoldTargetEncoder@2",
+      "revision": 3,
+      "diagnostic": {
+        "code": "E_RUNTIME",
+        "stage": "sandbox",
+        "message": "KeyError: 'Column not found: None' (at __getitem__:228)",
+        "operator": "KFoldTargetEncoder@2",
+        "hint": ""
+      },
+      "lessons": [
+        "Lesson:0d5e3eb1",
+        "Lesson:69d51358",
+        "Lesson:fbdb8487"
+      ],
+      "fixed": null,
+      "before": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\nfrom sklearn.model_selection import KFold\n\nclass KFoldTargetEncoder(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"KFoldTargetEncoder\",\n        kind=OperatorKind.ENCODER,\n        version=2,\n        origin=\"synthesized\",\n        description=\"基于K折交叉验证的目标编码器，有效防止训练过程中的标签泄漏。\",\n        conditions=[\"适用于类别特征编码\", \"防止标签泄漏\"],\n        dependencies=[\"numpy\", \"pandas\", \"sklearn\"],\n        params={\"cols\": None, \"target\": \"churn\", \"n_splits\": 5, \"smoothing\": 10},\n        parent=\"KFoldTargetEncoder@1\"\n    )\n\n    def __init__(self, cols=None, target=\"churn\", n_splits=5, smoothing=10):\n        self.cols = cols\n        self.target = target\n        self.n_splits = n_splits\n        self.smoothing = smoothing\n\n    def fit(self, X, y=None):\n        X = pd.DataFrame(X)\n        if y is None:\n            # 尝试从 X 中获取 target，若不存在则可能抛出 KeyError，此处应做保护\n            if self.target in X.columns:\n                y = X[self.target]\n            else:\n                raise ValueError(f\"Target column '{self.target}' not found in input data.\")\n        else:\n            y = pd.Series(y, index=X.index)\n\n        self.cols_ = self.cols if self.cols is not None else X.select_dtypes(include=['object', 'category']).columns.tolist()\n        self.mapping_ = {}\n        self.prior_ = y.mean()\n\n        # 记录训练集结果\n        self.train_encoded_ = X.copy()\n\n        for col in self.cols_:\n            # 计算全局平滑映射，用于预测阶段\n            stats = pd.concat([X[col], y], axis=1).groupby(col)[y.name].agg([\"mean\", \"count\"])\n            smooth = (stats[\"mean\"] * stats[\"count\"] + self.prior_ * self.smoothing) / (stats[\"count\"] + self.smoothing)\n            self.mapping_[col] = smooth\n\n            # 进行 K 折交叉验证，为训练集生成 OOF 编码\n            fold_encodings = pd.Series(index=X.index, dtype=float)\n            kf = KFold(n_splits=min(self.n_splits, len(X)), shuffle=True, random_state=42)\n            \n            for fit_idx, val_idx in kf.split(X):\n                train_fold = X.iloc[fit_idx]\n                target_fold = y.iloc[fit_idx]\n                \n                stats_fold = pd.concat([train_fold[col], target_fold], axis=1).groupby(col)[y.name].agg([\"mean\", \"count\"])\n                smooth_fold = (stats_fold[\"mean\"] * stats_fold[\"count\"] + self.prior_ * self.smoothing) / (stats_fold[\"count\"] + self.smoothing)\n                \n                fold_encodings.iloc[val_idx] = X[col].iloc[val_idx].map(smooth_fold)\n            \n            self.train_encoded_[col] = fold_encodings.fillna(self.prior_)\n\n        return self\n\n    def transform(self, X):\n        X = pd.DataFrame(X).copy()\n        \n        # 针对每个列进行编码\n        for col in self.cols_:\n            if col not in X.columns:\n                continue\n            \n            # 使用训练阶段得到的全局映射\n            mapping = self.mapping_.get(col)\n            # 使用 map 处理，未见类别会变为 NaN，fill 后变为 prior_\n            X[col] = X[col].map(mapping).fillna(self.prior_)\n            \n            # 处理数值异常\n            X[col] = pd.to_numeric(X[col], errors='coerce').replace([np.inf, -np.inf], self.prior_).fillna(self.prior_)\n            \n        return X\n",
+      "after": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\nfrom sklearn.model_selection import KFold\n\nclass KFoldTargetEncoder(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"KFoldTargetEncoder\",\n        kind=OperatorKind.ENCODER,\n        version=2,\n        origin=\"synthesized\",\n        description=\"基于K折交叉验证的目标编码器，有效防止训练过程中的标签泄漏。\",\n        conditions=[\"适用于类别特征编码\", \"防止标签泄漏\"],\n        dependencies=[\"numpy\", \"pandas\", \"sklearn\"],\n        params={\"cols\": None, \"target\": \"churn\", \"n_splits\": 5, \"smoothing\": 10},\n        parent=\"KFoldTargetEncoder@1\"\n    )\n\n    def __init__(self, cols=None, target=\"churn\", n_splits=5, smoothing=10):\n        self.cols = cols\n        self.target = target\n        self.n_splits = n_splits\n        self.smoothing = smoothing\n\n    def fit(self, X, y=None):\n        X = pd.DataFrame(X)\n        if y is None:\n            if self.target in X.columns:\n                y = X[self.target]\n            else:\n                raise ValueError(f\"Target column '{self.target}' not found in input data.\")\n        else:\n            y = pd.Series(y, index=X.index)\n        \n        # 确保 y 有名称以支持后续 groupby 操作\n        y_name = y.name if y.name is not None else 'target'\n        y = y.rename(y_name)\n\n        self.cols_ = self.cols if self.cols is not None else X.select_dtypes(include=['object', 'category']).columns.tolist()\n        self.mapping_ = {}\n        self.prior_ = y.mean()\n\n        # 记录训练集结果\n        self.train_encoded_ = X.copy()\n\n        for col in self.cols_:\n            # 计算全局平滑映射，用于预测阶段\n            df_col = pd.concat([X[col], y], axis=1)\n            stats = df_col.groupby(col)[y_name].agg([\"mean\", \"count\"])\n            smooth = (stats[\"mean\"] * stats[\"count\"] + self.prior_ * self.smoothing) / (stats[\"count\"] + self.smoothing)\n            self.mapping_[col] = smooth\n\n            # 进行 K 折交叉验证，为训练集生成 OOF 编码\n            fold_encodings = pd.Series(index=X.index, dtype=float)\n            n_splits = min(self.n_splits, len(X))\n            kf = KFold(n_splits=max(n_splits, 2), shuffle=True, random_state=42)\n            \n            for fit_idx, val_idx in kf.split(X):\n                train_fold = X.iloc[fit_idx]\n                target_fold = y.iloc[fit_idx]\n                \n                stats_fold = pd.concat([train_fold[col], target_fold], axis=1).groupby(col)[y_name].agg([\"mean\", \"count\"])\n                smooth_fold = (stats_fold[\"mean\"] * stats_fold[\"count\"] + self.prior_ * self.smoothing) / (stats_fold[\"count\"] + self.smoothing)\n                \n                fold_encodings.iloc[val_idx] = X[col].iloc[val_idx].map(smooth_fold)\n            \n            self.train_encoded_[col] = fold_encodings.fillna(self.prior_)\n\n        return self\n\n    def transform(self, X):\n        X = pd.DataFrame(X).copy()\n        \n        for col in self.cols_:\n            if col not in X.columns:\n                continue\n            \n            # 使用训练阶段得到的全局映射，未见类别通过 fillna(self.prior_) 处理\n            mapping = self.mapping_.get(col)\n            X[col] = X[col].map(mapping).fillna(self.prior_)\n            \n            # 处理数值异常与类型转换\n            X[col] = pd.to_numeric(X[col], errors='coerce').replace([np.inf, -np.inf], self.prior_).fillna(self.prior_)\n            \n        return X\n"
+    }
+  ],
+  "search": [
+    {
+      "round": 1,
+      "parents": [
+        "lgbm_balanced_pipeline",
+        "interpretable_logreg_pipeline",
+        "rf_nonlinear_pipeline"
+      ],
+      "width": 3,
+      "candidates": [
+        {
+          "plan": "lgbm_tuned_recall_boost",
+          "chain": "生成:TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → 生成:BalancedLightGBMClassifier",
+          "prior": null,
+          "evidence": {},
+          "observations": {},
+          "selected": false,
+          "reason": "与已有方案重复，跳过"
+        },
+        {
+          "plan": "logreg_improved_robustness",
+          "chain": "生成:TotalChargesCleaner → 生成:TenureBucketizer → StandardFeatureScaler → LogisticRegressionModel",
+          "prior": 0.7304,
+          "evidence": {
+            "TotalChargesCleaner": "0.687（本次 1 条）",
+            "TenureBucketizer": "0.775（KG 1 条）",
+            "StandardFeatureScaler@1": "0.730（KG 1 条）",
+            "LogisticRegressionModel@1": "0.730（KG 1 条）"
+          },
+          "observations": {
+            "*TotalChargesCleaner": [
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "*TenureBucketizer": [
+              {
+                "id": "ValidationRun:f6e4284c",
+                "metric": "recall",
+                "value": 0.8,
+                "passed": true,
+                "source": "kg"
+              }
+            ],
+            "StandardFeatureScaler@1": [
+              {
+                "id": "ValidationRun:e11ba947",
+                "metric": "recall",
+                "value": 0.71,
+                "passed": true,
+                "source": "kg"
+              }
+            ],
+            "LogisticRegressionModel@1": [
+              {
+                "id": "ValidationRun:e11ba947",
+                "metric": "recall",
+                "value": 0.71,
+                "passed": true,
+                "source": "kg"
+              }
+            ]
+          },
+          "selected": true,
+          "reason": "先验第 1，进入验证"
+        },
+        {
+          "plan": "rf_nonlinear_cleaned",
+          "chain": "生成:TotalChargesCleaner → MissingValueImputer → 生成:ChargeRatioFeatureGenerator → RandomForestModel",
+          "prior": 0.7137,
+          "evidence": {
+            "TotalChargesCleaner": "0.687（本次 1 条）",
+            "MissingValueImputer@1": "0.705（KG 3 条、本次 1 条）",
+            "ChargeRatioFeatureGenerator": "0.775（KG 1 条）",
+            "RandomForestModel@1": "0.705（KG 1 条）"
+          },
+          "observations": {
+            "*TotalChargesCleaner": [
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "MissingValueImputer@1": [
+              {
+                "id": "ValidationRun:e11ba947",
+                "metric": "recall",
+                "value": 0.71,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:e0d43fa3",
+                "metric": "recall",
+                "value": 0.66,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:a7f163bc",
+                "metric": "recall",
+                "value": 0.78,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "*ChargeRatioFeatureGenerator": [
+              {
+                "id": "ValidationRun:f6e4284c",
+                "metric": "recall",
+                "value": 0.8,
+                "passed": true,
+                "source": "kg"
+              }
+            ],
+            "RandomForestModel@1": [
+              {
+                "id": "ValidationRun:e0d43fa3",
+                "metric": "recall",
+                "value": 0.66,
+                "passed": true,
+                "source": "kg"
+              }
+            ]
+          },
+          "selected": false,
+          "reason": "先验第 4，超出 beam 宽度 3，剪枝"
+        },
+        {
+          "plan": "lgbm_basic_fixed",
+          "chain": "生成:TotalChargesCleaner → OneHotCategoricalEncoder → 生成:BalancedLightGBMClassifier",
+          "prior": 0.7093,
+          "evidence": {
+            "TotalChargesCleaner": "0.687（本次 1 条）",
+            "OneHotCategoricalEncoder@1": "0.705（KG 3 条、本次 1 条）",
+            "BalancedLightGBMClassifier": "0.718（KG 1 条、本次 1 条）"
+          },
+          "observations": {
+            "*TotalChargesCleaner": [
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "OneHotCategoricalEncoder@1": [
+              {
+                "id": "ValidationRun:e11ba947",
+                "metric": "recall",
+                "value": 0.71,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:e0d43fa3",
+                "metric": "recall",
+                "value": 0.66,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:a7f163bc",
+                "metric": "recall",
+                "value": 0.78,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "*BalancedLightGBMClassifier": [
+              {
+                "id": "ValidationRun:a7f163bc",
+                "metric": "recall",
+                "value": 0.78,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ]
+          },
+          "selected": false,
+          "reason": "先验第 5，超出 beam 宽度 3，剪枝"
+        },
+        {
+          "plan": "logreg_target_encoding",
+          "chain": "生成:TotalChargesCleaner → 生成:KFoldTargetEncoder → StandardFeatureScaler → LogisticRegressionModel",
+          "prior": 0.7262,
+          "evidence": {
+            "TotalChargesCleaner": "0.687（本次 1 条）",
+            "KFoldTargetEncoder": "0.750（无记录，按阈值）",
+            "StandardFeatureScaler@1": "0.730（KG 1 条）",
+            "LogisticRegressionModel@1": "0.730（KG 1 条）"
+          },
+          "observations": {
+            "*TotalChargesCleaner": [
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "*KFoldTargetEncoder": [],
+            "StandardFeatureScaler@1": [
+              {
+                "id": "ValidationRun:e11ba947",
+                "metric": "recall",
+                "value": 0.71,
+                "passed": true,
+                "source": "kg"
+              }
+            ],
+            "LogisticRegressionModel@1": [
+              {
+                "id": "ValidationRun:e11ba947",
+                "metric": "recall",
+                "value": 0.71,
+                "passed": true,
+                "source": "kg"
+              }
+            ]
+          },
+          "selected": true,
+          "reason": "先验第 2，进入验证"
+        },
+        {
+          "plan": "rf_tenure_enhanced",
+          "chain": "生成:TotalChargesCleaner → 生成:TenureBucketizer → RandomForestModel",
+          "prior": 0.7154,
+          "evidence": {
+            "TotalChargesCleaner": "0.687（本次 1 条）",
+            "TenureBucketizer": "0.775（KG 1 条）",
+            "RandomForestModel@1": "0.705（KG 1 条）"
+          },
+          "observations": {
+            "*TotalChargesCleaner": [
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "*TenureBucketizer": [
+              {
+                "id": "ValidationRun:f6e4284c",
+                "metric": "recall",
+                "value": 0.8,
+                "passed": true,
+                "source": "kg"
+              }
+            ],
+            "RandomForestModel@1": [
+              {
+                "id": "ValidationRun:e0d43fa3",
+                "metric": "recall",
+                "value": 0.66,
+                "passed": true,
+                "source": "kg"
+              }
+            ]
+          },
+          "selected": true,
+          "reason": "先验第 3，进入验证"
+        }
+      ]
+    }
+  ],
+  "registered": [],
+  "lessons_learned": [],
+  "lessons_used": [
+    "Lesson:74e2da10",
+    "Lesson:57718714",
+    "Lesson:69d51358",
+    "Lesson:9e9e77d6",
+    "Lesson:fbdb8487",
+    "Lesson:6a946c79",
+    "Lesson:f2c1398b",
+    "Lesson:88299a38",
+    "Lesson:828ad675",
+    "Lesson:0d5e3eb1"
+  ],
+  "kg_writes": [
+    "ValidationRun:02_churn_synthesize-lgbm_balanced_pipeline",
+    "ValidationRun:02_churn_synthesize-interpretable_logreg_pipeline",
+    "ValidationRun:02_churn_synthesize-rf_nonlinear_pipeline",
+    "ValidationRun:02_churn_synthesize-logreg_improved_robustness",
+    "ValidationRun:02_churn_synthesize-rf_tenure_enhanced",
+    "ValidationRun:02_churn_synthesize-logreg_target_encoding"
+  ],
+  "artifacts": {
+    "pipeline": "runs/demo-record-v2/runs/02_churn_synthesize/pipeline.py",
+    "state": "runs/demo-record-v2/runs/02_churn_synthesize/state.json",
+    "report_md": "runs/demo-record-v2/runs/02_churn_synthesize/report.md",
+    "report_html": "runs/demo-record-v2/runs/02_churn_synthesize/report.html"
+  },
+  "llm_model": "gemini-3.5-flash",
+  "retrieval": {
+    "scenario": "telecom_churn",
+    "scenario_metrics": [
+      {
+        "name": "recall",
+        "threshold": 0.75,
+        "primary": true
+      },
+      {
+        "name": "roc_auc",
+        "threshold": 0.8,
+        "primary": false
+      },
+      {
+        "name": "recall_at_20",
+        "threshold": null,
+        "primary": false
+      }
+    ],
+    "operator_options": {
+      "imputer": [
+        {
+          "ref": "MissingValueImputer@1",
+          "executable": true,
+          "origin": "builtin",
+          "description": "数值列用中位数、类别列用众数填补缺失值。",
+          "conditions": [
+            "has_missing_values"
+          ],
+          "params": [
+            "args",
+            "kwargs"
+          ],
+          "defaults": {},
+          "score": 0.4924,
+          "breakdown": {
+            "text": 0.625,
+            "condition": 0.091,
+            "history": 0.717
+          },
+          "evidence": [
+            "匹配条件：has_missing_values",
+            "历史验证 3 次，平均 recall 0.717"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:e11ba947",
+              "metric": "recall",
+              "value": 0.71,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:e0d43fa3",
+              "metric": "recall",
+              "value": 0.66,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:a7f163bc",
+              "metric": "recall",
+              "value": 0.78,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:MissingValueImputer@1",
+            "ValidationRun:e11ba947",
+            "ValidationRun:e0d43fa3",
+            "ValidationRun:a7f163bc"
+          ]
+        },
+        {
+          "ref": "TotalChargesCleaner@1",
+          "executable": false,
+          "origin": "extracted",
+          "description": "将包含空白字符串的数值列安全转换为浮点型，并将缺失及空白值填充为0.0",
+          "conditions": [
+            "has_missing_values",
+            "numeric_features",
+            "string_typed_numeric"
+          ],
+          "params": [],
+          "defaults": {
+            "col": "total_charges"
+          },
+          "score": 0.4818,
+          "breakdown": {
+            "text": 1.0,
+            "condition": 0.273,
+            "history": 0.0
+          },
+          "evidence": [
+            "匹配条件：has_missing_values、numeric_features、string_typed_numeric"
+          ],
+          "history_records": [],
+          "evidence_ids": [
+            "Operator:TotalChargesCleaner@1"
+          ]
+        }
+      ],
+      "feature": [
+        {
+          "ref": "TenureBucketizer@1",
+          "executable": false,
+          "origin": "extracted",
+          "description": "将连续的在网时长字段（tenure）按照业务经验分箱为离散的区间段，以提升线性模型的表现并增强可解释性。",
+          "conditions": [
+            "interpretable",
+            "linear_model",
+            "numeric_features",
+            "time_tenure"
+          ],
+          "params": [],
+          "defaults": {
+            "col": "tenure"
+          },
+          "score": 0.7071,
+          "breakdown": {
+            "text": 0.963,
+            "condition": 0.273,
+            "history": 0.8
+          },
+          "evidence": [
+            "匹配条件：interpretable、numeric_features、time_tenure",
+            "历史验证 1 次，平均 recall 0.800"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:f6e4284c",
+              "metric": "recall",
+              "value": 0.8,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:TenureBucketizer@1",
+            "ValidationRun:f6e4284c"
+          ]
+        },
+        {
+          "ref": "ChargeRatioFeatureGenerator@1",
+          "executable": false,
+          "origin": "extracted",
+          "description": "构造历史月均消费与当前月费的比值特征，用于衡量用户近期资费变动趋势。",
+          "conditions": [
+            "numeric_features",
+            "time_tenure"
+          ],
+          "params": [],
+          "defaults": {
+            "monthly": "monthly_charges",
+            "total": "total_charges",
+            "tenure": "tenure"
+          },
+          "score": 0.6055,
+          "breakdown": {
+            "text": 0.777,
+            "condition": 0.182,
+            "history": 0.8
+          },
+          "evidence": [
+            "匹配条件：numeric_features、time_tenure",
+            "历史验证 1 次，平均 recall 0.800"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:f6e4284c",
+              "metric": "recall",
+              "value": 0.8,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:ChargeRatioFeatureGenerator@1",
+            "ValidationRun:f6e4284c"
+          ]
+        },
+        {
+          "ref": "ServiceCountFeature@1",
+          "executable": false,
+          "origin": "extracted",
+          "description": "统计客户订购的增值服务总数，反映客户业务粘性与迁移成本以辅助流失预测",
+          "conditions": [
+            "has_categorical_features"
+          ],
+          "params": [],
+          "defaults": {
+            "service_cols": [
+              "online_security",
+              "tech_support",
+              "streaming_tv"
+            ]
+          },
+          "score": 0.4273,
+          "breakdown": {
+            "text": 1.0,
+            "condition": 0.091,
+            "history": 0.0
+          },
+          "evidence": [
+            "匹配条件：has_categorical_features"
+          ],
+          "history_records": [],
+          "evidence_ids": [
+            "Operator:ServiceCountFeature@1"
+          ]
+        }
+      ],
+      "encoder": [
+        {
+          "ref": "OneHotCategoricalEncoder@1",
+          "executable": true,
+          "origin": "builtin",
+          "description": "类别列 one-hot 编码，忽略未见类别。",
+          "conditions": [
+            "has_categorical_features",
+            "low_cardinality"
+          ],
+          "params": [
+            "max_categories"
+          ],
+          "defaults": {
+            "max_categories": 20
+          },
+          "score": 0.6695,
+          "breakdown": {
+            "text": 1.0,
+            "condition": 0.182,
+            "history": 0.717
+          },
+          "evidence": [
+            "匹配条件：has_categorical_features、low_cardinality",
+            "历史验证 3 次，平均 recall 0.717"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:e11ba947",
+              "metric": "recall",
+              "value": 0.71,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:e0d43fa3",
+              "metric": "recall",
+              "value": 0.66,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:a7f163bc",
+              "metric": "recall",
+              "value": 0.78,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:OneHotCategoricalEncoder@1",
+            "ValidationRun:e11ba947",
+            "ValidationRun:e0d43fa3",
+            "ValidationRun:a7f163bc"
+          ]
+        },
+        {
+          "ref": "KFoldTargetEncoder@1",
+          "executable": false,
+          "origin": "extracted",
+          "description": "对高基数类别特征进行带平滑的K折折外目标编码，防止训练集标签泄漏并增强对罕见类别的泛化能力。",
+          "conditions": [
+            "has_categorical_features",
+            "high_cardinality"
+          ],
+          "params": [],
+          "defaults": {
+            "target": "churn",
+            "n_splits": 5,
+            "smoothing": 10
+          },
+          "score": 0.4021,
+          "breakdown": {
+            "text": 0.937,
+            "condition": 0.091,
+            "history": 0.0
+          },
+          "evidence": [
+            "匹配条件：has_categorical_features"
+          ],
+          "history_records": [],
+          "evidence_ids": [
+            "Operator:KFoldTargetEncoder@1"
+          ]
+        }
+      ],
+      "scaler": [
+        {
+          "ref": "StandardFeatureScaler@1",
+          "executable": true,
+          "origin": "builtin",
+          "description": "数值列 Z-score 标准化，线性模型和基于距离的模型需要。",
+          "conditions": [
+            "linear_model",
+            "numeric_features"
+          ],
+          "params": [
+            "args",
+            "kwargs"
+          ],
+          "defaults": {},
+          "score": 0.6403,
+          "breakdown": {
+            "text": 1.0,
+            "condition": 0.091,
+            "history": 0.71
+          },
+          "evidence": [
+            "匹配条件：numeric_features",
+            "历史验证 1 次，平均 recall 0.710"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:e11ba947",
+              "metric": "recall",
+              "value": 0.71,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:StandardFeatureScaler@1",
+            "ValidationRun:e11ba947"
+          ]
+        }
+      ],
+      "model": [
+        {
+          "ref": "LogisticRegressionModel@1",
+          "executable": true,
+          "origin": "builtin",
+          "description": "L2 逻辑回归：系数可解释，也是稀疏文本特征上的强基线。",
+          "conditions": [
+            "interpretable",
+            "scaled_features",
+            "sparse_features"
+          ],
+          "params": [
+            "C",
+            "class_weight",
+            "max_iter",
+            "random_state"
+          ],
+          "defaults": {
+            "C": 1.0,
+            "class_weight": "balanced",
+            "max_iter": 1000,
+            "random_state": 42
+          },
+          "score": 0.6403,
+          "breakdown": {
+            "text": 1.0,
+            "condition": 0.091,
+            "history": 0.71
+          },
+          "evidence": [
+            "匹配条件：interpretable",
+            "历史验证 1 次，平均 recall 0.710"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:e11ba947",
+              "metric": "recall",
+              "value": 0.71,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:LogisticRegressionModel@1",
+            "ValidationRun:e11ba947"
+          ]
+        },
+        {
+          "ref": "BalancedLightGBMClassifier@1",
+          "executable": false,
+          "origin": "extracted",
+          "description": "使用 LightGBM 训练分类模型，通过设置 class_weight='balanced' 自动平衡正负样本权重，适用于类别不平衡的流失预测等场景。",
+          "conditions": [
+            "feature_importance",
+            "imbalanced",
+            "large_tabular",
+            "nonlinear"
+          ],
+          "params": [],
+          "defaults": {
+            "params": null
+          },
+          "score": 0.5931,
+          "breakdown": {
+            "text": 0.83,
+            "condition": 0.091,
+            "history": 0.78
+          },
+          "evidence": [
+            "匹配条件：imbalanced",
+            "历史验证 1 次，平均 recall 0.780"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:a7f163bc",
+              "metric": "recall",
+              "value": 0.78,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:BalancedLightGBMClassifier@1",
+            "ValidationRun:a7f163bc"
+          ]
+        },
+        {
+          "ref": "RandomForestModel@1",
+          "executable": true,
+          "origin": "builtin",
+          "description": "随机森林：不受特征尺度影响，能拟合非线性，可输出特征重要性。",
+          "conditions": [
+            "feature_importance",
+            "mixed_features",
+            "nonlinear"
+          ],
+          "params": [
+            "n_estimators",
+            "max_depth",
+            "class_weight",
+            "random_state"
+          ],
+          "defaults": {
+            "n_estimators": 300,
+            "max_depth": null,
+            "class_weight": "balanced",
+            "random_state": 42
+          },
+          "score": 0.5462,
+          "breakdown": {
+            "text": 0.802,
+            "condition": 0.091,
+            "history": 0.66
+          },
+          "evidence": [
+            "匹配条件：mixed_features",
+            "历史验证 1 次，平均 recall 0.660"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:e0d43fa3",
+              "metric": "recall",
+              "value": 0.66,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:RandomForestModel@1",
+            "ValidationRun:e0d43fa3"
+          ]
+        }
+      ]
+    },
+    "lessons": [
+      {
+        "id": "Lesson:74e2da10",
+        "title": "逻辑回归标准化与可解释性",
+        "trigger": "使用逻辑回归模型，或者需要模型具有高可解释性时",
+        "fix": "必须先进行特征标准化（如 StandardFeatureScaler），在 0.1~10 之间搜索正则化强度 C，可直接输出系数给业务方。",
+        "error_code": null
+      },
+      {
+        "id": "Lesson:57718714",
+        "title": "随机森林防过拟合与召回优化",
+        "trigger": "使用随机森林模型，面临过拟合风险，或业务要求召回优先时",
+        "fix": "设置 n_estimators 300 左右，限制 max_depth 在 8~16 防止过拟合；召回优先时需配合调整分类阈值。",
+        "error_code": null
+      },
+      {
+        "id": "Lesson:69d51358",
+        "title": "数值列含空白字符导致类型转换失败",
+        "trigger": "新入网客户累计消费为空白字符串，读取为 object 类型，转 float 时抛出 ValueError: could not convert string to float: ' '",
+        "fix": "先 str.strip()，再 pd.to_numeric(errors='coerce')，缺失值填补为 0",
+        "error_code": "E_RUNTIME"
+      },
+      {
+        "id": "Lesson:9e9e77d6",
+        "title": "样本不平衡导致默认模型召回率偏低",
+        "trigger": "流失场景存在正负样本不平衡，模型默认阈值或未配置样本权重时召回率达不到业务要求",
+        "fix": "启用平衡类权重（如 class_weight='balanced' 或 BalancedLightGBMClassifier）以提升召回率",
+        "error_code": "M_THRESHOLD"
+      },
+      {
+        "id": "Lesson:fbdb8487",
+        "title": "移除对 pandas 特定 API 的依赖以增强输入类型兼容性",
+        "trigger": "在使用 `select_dtypes` 等 pandas 方法处理非 DataFrame 类型（如 `scipy.sparse.csr_matrix`）的输入数据时，触发 `AttributeError: 'csr_matrix' object has no attribute 'select_dtypes'` 错误。",
+        "fix": "在数据预处理阶段，优先进行类型检查，通过转换为 NumPy 数组或使用通用的数值清洗逻辑，避免直接调用特定数据结构（如 DataFrame）独有的 API，从而确保对密集矩阵、稀疏矩阵及 DataFrame 的广泛兼容性。",
+        "error_code": "E_RUNTIME"
+      }
+    ],
+    "evidence_catalog": {
+      "Operator:MissingValueImputer@1": {
+        "type": "operator",
+        "operator_refs": [
+          "MissingValueImputer@1"
+        ]
+      },
+      "ValidationRun:e11ba947": {
+        "type": "validation",
+        "operator_refs": [
+          "MissingValueImputer@1",
+          "OneHotCategoricalEncoder@1",
+          "StandardFeatureScaler@1",
+          "LogisticRegressionModel@1"
+        ],
+        "id": "ValidationRun:e11ba947",
+        "metric": "recall",
+        "value": 0.71,
+        "passed": true
+      },
+      "ValidationRun:e0d43fa3": {
+        "type": "validation",
+        "operator_refs": [
+          "MissingValueImputer@1",
+          "OneHotCategoricalEncoder@1",
+          "RandomForestModel@1"
+        ],
+        "id": "ValidationRun:e0d43fa3",
+        "metric": "recall",
+        "value": 0.66,
+        "passed": true
+      },
+      "ValidationRun:a7f163bc": {
+        "type": "validation",
+        "operator_refs": [
+          "MissingValueImputer@1",
+          "OneHotCategoricalEncoder@1",
+          "BalancedLightGBMClassifier@1"
+        ],
+        "id": "ValidationRun:a7f163bc",
+        "metric": "recall",
+        "value": 0.78,
+        "passed": true
+      },
+      "Operator:TotalChargesCleaner@1": {
+        "type": "operator",
+        "operator_refs": [
+          "TotalChargesCleaner@1"
+        ]
+      },
+      "Operator:TenureBucketizer@1": {
+        "type": "operator",
+        "operator_refs": [
+          "TenureBucketizer@1"
+        ]
+      },
+      "ValidationRun:f6e4284c": {
+        "type": "validation",
+        "operator_refs": [
+          "TenureBucketizer@1",
+          "ChargeRatioFeatureGenerator@1"
+        ],
+        "id": "ValidationRun:f6e4284c",
+        "metric": "recall",
+        "value": 0.8,
+        "passed": true
+      },
+      "Operator:ChargeRatioFeatureGenerator@1": {
+        "type": "operator",
+        "operator_refs": [
+          "ChargeRatioFeatureGenerator@1"
+        ]
+      },
+      "Operator:ServiceCountFeature@1": {
+        "type": "operator",
+        "operator_refs": [
+          "ServiceCountFeature@1"
+        ]
+      },
+      "Operator:OneHotCategoricalEncoder@1": {
+        "type": "operator",
+        "operator_refs": [
+          "OneHotCategoricalEncoder@1"
+        ]
+      },
+      "Operator:KFoldTargetEncoder@1": {
+        "type": "operator",
+        "operator_refs": [
+          "KFoldTargetEncoder@1"
+        ]
+      },
+      "Operator:StandardFeatureScaler@1": {
+        "type": "operator",
+        "operator_refs": [
+          "StandardFeatureScaler@1"
+        ]
+      },
+      "Operator:LogisticRegressionModel@1": {
+        "type": "operator",
+        "operator_refs": [
+          "LogisticRegressionModel@1"
+        ]
+      },
+      "Operator:BalancedLightGBMClassifier@1": {
+        "type": "operator",
+        "operator_refs": [
+          "BalancedLightGBMClassifier@1"
+        ]
+      },
+      "Operator:RandomForestModel@1": {
+        "type": "operator",
+        "operator_refs": [
+          "RandomForestModel@1"
+        ]
+      },
+      "Lesson:74e2da10": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:LogisticRegressionModel@1",
+          "Operator:StandardFeatureScaler@1",
+          "Condition:scaled_features",
+          "Condition:interpretable",
+          "Condition:linear_model"
+        ],
+        "matching_conditions": [
+          "Condition:interpretable"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:57718714": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:RandomForestModel@1",
+          "Condition:recall_first"
+        ],
+        "matching_conditions": [
+          "Condition:recall_first"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:69d51358": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:TotalChargesCleaner@1",
+          "Condition:string_typed_numeric"
+        ],
+        "matching_conditions": [
+          "Condition:string_typed_numeric"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:9e9e77d6": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:BalancedLightGBMClassifier@1",
+          "Operator:LogisticRegressionModel@1",
+          "Condition:imbalanced",
+          "Condition:recall_first",
+          "Operator:LightGBMModel@1"
+        ],
+        "matching_conditions": [
+          "Condition:imbalanced",
+          "Condition:recall_first"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:fbdb8487": {
+        "type": "lesson",
+        "applies_to": [
+          "Condition:numeric_features",
+          "Condition:sparse_features",
+          "Condition:mixed_features",
+          "Condition:large_tabular"
+        ],
+        "matching_conditions": [
+          "Condition:numeric_features",
+          "Condition:mixed_features"
+        ],
+        "scenario_match": false
+      }
+    },
+    "lesson_ids": [
+      "Lesson:74e2da10",
+      "Lesson:57718714",
+      "Lesson:69d51358",
+      "Lesson:9e9e77d6",
+      "Lesson:fbdb8487"
+    ]
+  },
+  "evidence_checks": [
+    {
+      "plan": "lgbm_balanced_pipeline",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:TotalChargesCleaner@1",
+        "Lesson:69d51358"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_balanced_pipeline",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:MissingValueImputer@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_balanced_pipeline",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:OneHotCategoricalEncoder@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_balanced_pipeline",
+      "step": 4,
+      "evidence_ids": [
+        "Operator:BalancedLightGBMClassifier@1",
+        "Lesson:9e9e77d6"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "interpretable_logreg_pipeline",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:TotalChargesCleaner@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "interpretable_logreg_pipeline",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:TenureBucketizer@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "interpretable_logreg_pipeline",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:StandardFeatureScaler@1",
+        "Lesson:74e2da10"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "interpretable_logreg_pipeline",
+      "step": 4,
+      "evidence_ids": [
+        "Operator:LogisticRegressionModel@1",
+        "Lesson:9e9e77d6"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "rf_nonlinear_pipeline",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:MissingValueImputer@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "rf_nonlinear_pipeline",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:ChargeRatioFeatureGenerator@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "rf_nonlinear_pipeline",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:RandomForestModel@1",
+        "Lesson:57718714"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_tuned_recall_boost",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:TotalChargesCleaner@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_tuned_recall_boost",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:MissingValueImputer@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_tuned_recall_boost",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:OneHotCategoricalEncoder@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_tuned_recall_boost",
+      "step": 4,
+      "evidence_ids": [
+        "Operator:BalancedLightGBMClassifier@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "logreg_improved_robustness",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:TotalChargesCleaner@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "logreg_improved_robustness",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:TenureBucketizer@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "logreg_improved_robustness",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:StandardFeatureScaler@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "logreg_improved_robustness",
+      "step": 4,
+      "evidence_ids": [
+        "Operator:LogisticRegressionModel@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "rf_nonlinear_cleaned",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:TotalChargesCleaner@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "rf_nonlinear_cleaned",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:MissingValueImputer@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "rf_nonlinear_cleaned",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:ChargeRatioFeatureGenerator@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "rf_nonlinear_cleaned",
+      "step": 4,
+      "evidence_ids": [
+        "Operator:RandomForestModel@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_basic_fixed",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:TotalChargesCleaner@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_basic_fixed",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:OneHotCategoricalEncoder@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_basic_fixed",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:BalancedLightGBMClassifier@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "logreg_target_encoding",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:TotalChargesCleaner@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "logreg_target_encoding",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:KFoldTargetEncoder@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "logreg_target_encoding",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:StandardFeatureScaler@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "logreg_target_encoding",
+      "step": 4,
+      "evidence_ids": [
+        "Operator:LogisticRegressionModel@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "rf_tenure_enhanced",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:TotalChargesCleaner@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "rf_tenure_enhanced",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:TenureBucketizer@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "rf_tenure_enhanced",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:RandomForestModel@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    }
+  ],
+  "llm_calls": [
+    {
+      "tag": "plan_spec",
+      "request_hash": "235c6bf7467d6da8",
+      "model": "gemini-3.5-flash",
+      "source": "replay",
+      "seconds": 0.0003084242343902588,
+      "recorded_seconds": null,
+      "usage": null
+    },
+    {
+      "tag": "plan",
+      "request_hash": "7c1e0490d82db23f",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 6.57562318444252,
+      "usage": {
+        "completion_tokens": 1703,
+        "prompt_tokens": 8896,
+        "total_tokens": 10599,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 1703,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 8896
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "synthesize",
+      "request_hash": "6aae7923fca71f2f",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 3.616195745766163,
+      "usage": {
+        "completion_tokens": 571,
+        "prompt_tokens": 2035,
+        "total_tokens": 2606,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 571,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 2035
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "synthesize",
+      "request_hash": "c2e743c9825f98b7",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 4.1573228016495705,
+      "usage": {
+        "completion_tokens": 780,
+        "prompt_tokens": 2101,
+        "total_tokens": 2881,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 780,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 2101
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "synthesize",
+      "request_hash": "b48c1b21f6804558",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 2.9416448026895523,
+      "usage": {
+        "completion_tokens": 572,
+        "prompt_tokens": 2088,
+        "total_tokens": 2660,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 572,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 2088
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "synthesize",
+      "request_hash": "fc284cb9c6506d5b",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 3.4769247248768806,
+      "usage": {
+        "completion_tokens": 633,
+        "prompt_tokens": 1969,
+        "total_tokens": 2602,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 633,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 1969
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "plan",
+      "request_hash": "98c3efca59796115",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 8.98562142252922,
+      "usage": {
+        "completion_tokens": 2857,
+        "prompt_tokens": 10481,
+        "total_tokens": 13338,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 2857,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 10481
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "plan",
+      "request_hash": "7a389f8f209fa7b5",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 7.058104977011681,
+      "usage": {
+        "completion_tokens": 2781,
+        "prompt_tokens": 13866,
+        "total_tokens": 16647,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 2781,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 13866
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "synthesize",
+      "request_hash": "27f062090137bff5",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 3.5193043872714043,
+      "usage": {
+        "completion_tokens": 993,
+        "prompt_tokens": 2182,
+        "total_tokens": 3175,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 993,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 2182
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "repair",
+      "request_hash": "c86a07fbefaf8ce3",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 6.824740417301655,
+      "usage": {
+        "completion_tokens": 2333,
+        "prompt_tokens": 2389,
+        "total_tokens": 4722,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 1196,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 1137,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 2389
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "repair",
+      "request_hash": "8e03973db02a517a",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 9.082495987415314,
+      "usage": {
+        "completion_tokens": 1081,
+        "prompt_tokens": 2522,
+        "total_tokens": 3603,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 1081,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 2522
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "repair",
+      "request_hash": "43ad2f953796a9dc",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 4.948276653885841,
+      "usage": {
+        "completion_tokens": 1718,
+        "prompt_tokens": 2466,
+        "total_tokens": 4184,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 596,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 1122,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 2466
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    }
+  ],
+  "knowledge_mode": "full",
+  "verify_config": {
+    "cv_folds": 5,
+    "seeds": [
+      42,
+      7,
+      2024
+    ],
+    "smoke_rows": 300,
+    "timeout_seconds": 180.0,
+    "memory_mb": 8192,
+    "max_metric_std": 0.03,
+    "leakage_ceiling": 0.995,
+    "report_metrics": [
+      "roc_auc",
+      "recall",
+      "precision",
+      "f1",
+      "recall_at_20"
+    ],
+    "n_threads": 4
+  },
+  "timings": {
+    "PLAN": 6.74,
+    "BUILD": 17.73,
+    "VERIFY": 21.38,
+    "ROUTE": 0.0,
+    "REPLAN": 16.07,
+    "REPAIR": 20.86,
+    "CURATE": 0.02
+  },
+  "log": [
+    "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+    "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+    "[PLAN] 候选方案：['lgbm_balanced_pipeline(*TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → *BalancedLightGBMClassifier)', 'interpretable_logreg_pipeline(*TotalChargesCleaner → *TenureBucketizer → StandardFeatureScaler → LogisticRegressionModel)', 'rf_nonlinear_pipeline(MissingValueImputer → *ChargeRatioFeatureGenerator → RandomForestModel)']",
+    "[PLAN] 完成，用时 6.7s → BUILD",
+    "[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将字符串类型的数值列转换为浮点型并处理缺失值",
+    "[BUILD] 生成算子 BalancedLightGBMClassifier@2（参考 BalancedLightGBMClassifier@1）：不平衡数据下的流失预测模型",
+    "[BUILD] 生成算子 TenureBucketizer@2（参考 TenureBucketizer@1）：时间长度分箱增强线性模型解释性",
+    "[BUILD] 生成算子 ChargeRatioFeatureGenerator@2（参考 ChargeRatioFeatureGenerator@1）：构造历史消费比值特征",
+    "[BUILD] 完成，用时 14.2s → VERIFY",
+    "[VERIFY] lgbm_balanced_pipeline：未通过，recall=0.6243；M_THRESHOLD recall = 0.6243 低于阈值 0.75；M_THRESHOLD roc_auc = 0.7835 低于阈值 0.8",
+    "[VERIFY] interpretable_logreg_pipeline：未通过，recall=nan；E_RUNTIME ValueError: could not convert string to float: 'C102752' (at __array__:2027)",
+    "[VERIFY] rf_nonlinear_pipeline：未通过，recall=nan；E_RUNTIME ValueError: could not convert string to float: 'C102752' (at __array__:2027)",
+    "[VERIFY] 完成，用时 11.4s → ROUTE",
+    "[ROUTE] 完成，用时 0.0s → REPLAN",
+    "[REPLAN] 第 1 轮 Beam 搜索：父方案 ['lgbm_balanced_pipeline', 'interpretable_logreg_pipeline', 'rf_nonlinear_pipeline']，扩展 6 个，入选 ['logreg_improved_robustness(*TotalChargesCleaner → *TenureBucketizer → StandardFeatureScaler → LogisticRegressionModel)', 'logreg_target_encoding(*TotalChargesCleaner → *KFoldTargetEncoder → StandardFeatureScaler → LogisticRegressionModel)', 'rf_tenure_enhanced(*TotalChargesCleaner → *TenureBucketizer → RandomForestModel)']，剪枝/去重 ['lgbm_tuned_recall_boost(None)', 'rf_nonlinear_cleaned(0.7137)', 'lgbm_basic_fixed(0.7093)']",
+    "[REPLAN] 完成，用时 16.1s → BUILD",
+    "[BUILD] 生成算子 KFoldTargetEncoder@2（参考 KFoldTargetEncoder@1）：目标编码",
+    "[BUILD] 完成，用时 3.5s → VERIFY",
+    "[VERIFY] logreg_improved_robustness：未通过，recall=nan；E_RUNTIME ValueError: could not convert string to float: 'C102752' (at __array__:2027)",
+    "[VERIFY] logreg_target_encoding：未通过，recall=nan；E_RUNTIME TypeError: cannot concatenate object of type '<class 'numpy.ndarray'>'; only Series and DataFrame objs are valid (at _clean_keys_and_objs:836)",
+    "[VERIFY] rf_tenure_enhanced：未通过，recall=nan；E_RUNTIME ValueError: could not convert string to float: 'C102752' (at __array__:2027)",
+    "[VERIFY] 完成，用时 4.7s → ROUTE",
+    "[ROUTE] 完成，用时 0.0s → REPAIR",
+    "[REPAIR] 修复 KFoldTargetEncoder@2 第 1 轮：E_RUNTIME TypeError: cannot concatenate object of type '<class 'numpy.ndarray'>'; only Ser，参考经验：['移除对 pandas 特定 API 的依赖以增强输入类型兼容性', '数值列含空白字符导致类型转换失败', '预测阶段出现未见类别导致编码报错']",
+    "[REPAIR] 完成，用时 6.8s → VERIFY",
+    "[VERIFY] logreg_target_encoding：未通过，recall=nan；E_RUNTIME KeyError: 'Column not found: None' (at __getitem__:228)",
+    "[VERIFY] 完成，用时 1.6s → ROUTE",
+    "[ROUTE] 完成，用时 0.0s → REPAIR",
+    "[REPAIR] 修复 KFoldTargetEncoder@2 第 2 轮：E_RUNTIME KeyError: 'Column not found: None' (at __getitem__:228)，参考经验：['预测阶段出现未见类别导致编码报错', '数值列含空白字符导致类型转换失败', '移除对 pandas 特定 API 的依赖以增强输入类型兼容性']",
+    "[REPAIR] 完成，用时 9.1s → VERIFY",
+    "[VERIFY] logreg_target_encoding：未通过，recall=nan；E_RUNTIME KeyError: 'Column not found: None' (at __getitem__:228)",
+    "[VERIFY] 完成，用时 1.7s → ROUTE",
+    "[ROUTE] 完成，用时 0.0s → REPAIR",
+    "[REPAIR] 修复 KFoldTargetEncoder@2 第 3 轮：E_RUNTIME KeyError: 'Column not found: None' (at __getitem__:228)，参考经验：['预测阶段出现未见类别导致编码报错', '数值列含空白字符导致类型转换失败', '移除对 pandas 特定 API 的依赖以增强输入类型兼容性']",
+    "[REPAIR] 完成，用时 5.0s → VERIFY",
+    "[VERIFY] logreg_target_encoding：未通过，recall=nan；E_RUNTIME ValueError: Input X contains NaN.\nLogisticRegression does not accept missing values encoded as NaN natively. For supervised learning, you might want to consider sklearn.ensemble.HistGradientBoostingClassifier and Regressor which accept missing values encoded as NaNs natively. Alternatively, it is possible to pr (at _assert_all_finite_element_wise:186)",
+    "[VERIFY] 完成，用时 1.9s → ROUTE",
+    "[ROUTE] 没有方案通过验证",
+    "[ROUTE] 完成，用时 0.0s → CURATE",
+    "[CURATE] 写入 KG：6 条 ValidationRun；注册新算子 []；新增经验 0 条",
+    "[CURATE] 完成，用时 0.0s → FAILED"
+  ]
+}

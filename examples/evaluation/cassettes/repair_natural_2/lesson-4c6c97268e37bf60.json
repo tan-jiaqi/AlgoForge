@@ -1,0 +1,47 @@
+{
+  "tag": "lesson",
+  "model": "gemini-3.5-flash",
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是算法能力工厂的 Curator。下面是一次被验证器发现、随后修复成功的代码问题。把它提炼为一条可复用的经验（LessonRecord）：title 一句话概括，trigger 写现象/报错，fix 写通用的修复方法（不要只描述这一处改动），applies_to 填相关的条件标签（从 condition_tags 中选）。error_code 与诊断码一致。"
+    },
+    {
+      "role": "user",
+      "content": "<<CONTEXT>>\n{\n \"operator_purpose\": \"删除客户ID等标识列以避免编码后维度爆炸\",\n \"diagnostic\": {\n  \"code\": \"E_INTERFACE\",\n  \"stage\": \"static\",\n  \"message\": \"meta.params 与 __init__ 默认值不一致：[\\\"id_cols: meta=['customer_id'], __init__=('customer_id',)\\\"]\",\n  \"operator\": \"IdColumnDropper\",\n  \"hint\": \"实例化时 meta.params 会覆盖 __init__ 默认值，两处必须一致\"\n },\n \"code_diff\": \"--- \\n+++ \\n@@ -19,4 +19,4 @@\\n \\n-    def __init__(self, id_cols=(\\\"customer_id\\\",)):\\n-        self.id_cols = list(id_cols)\\n+    def __init__(self, id_cols=[\\\"customer_id\\\"]):\\n+        self.id_cols = id_cols\\n \\n@@ -33,3 +33,3 @@\\n         \\n-        # 2. 处理 total_charges 等因读取产生的脏数据（符合 Lessons 经验）\\n+        # 2. 处理 total_charges 等因读取产生的脏数据\\n         # 将空白字符串转换为数字并填补缺失值，防止后续下游编码器崩溃\",\n \"condition_tags\": [\n  \"has_missing_values\",\n  \"has_categorical_features\",\n  \"low_cardinality\",\n  \"high_cardinality\",\n  \"numeric_features\",\n  \"string_typed_numeric\",\n  \"id_columns\",\n  \"linear_model\",\n  \"scaled_features\",\n  \"nonlinear\",\n  \"mixed_features\",\n  \"large_tabular\",\n  \"imbalanced\",\n  \"recall_first\",\n  \"interpretable\",\n  \"feature_importance\",\n  \"sparse_features\",\n  \"text_input\",\n  \"time_tenure\"\n ]\n}\n<</CONTEXT>>"
+    },
+    {
+      "role": "system",
+      "content": "Respond with a single JSON object only, no prose, conforming to this JSON schema:\n{\"$defs\": {\"DiagnosticCode\": {\"enum\": [\"E_SYNTAX\", \"E_UNSAFE\", \"E_INTERFACE\", \"E_RUNTIME\", \"E_TIMEOUT\", \"E_SHAPE\", \"E_PROBA\", \"E_MUTATION\", \"E_NAN\", \"M_THRESHOLD\", \"M_UNSTABLE\"], \"title\": \"DiagnosticCode\", \"type\": \"string\"}}, \"properties\": {\"title\": {\"title\": \"Title\", \"type\": \"string\"}, \"trigger\": {\"description\": \"什么情况下会出现这个问题（现象/报错）\", \"title\": \"Trigger\", \"type\": \"string\"}, \"fix\": {\"description\": \"如何修复或规避\", \"title\": \"Fix\", \"type\": \"string\"}, \"error_code\": {\"anyOf\": [{\"$ref\": \"#/$defs/DiagnosticCode\"}, {\"type\": \"null\"}], \"default\": null}, \"applies_to\": {\"description\": \"相关的算子名、条件标签或场景名\", \"items\": {\"type\": \"string\"}, \"title\": \"Applies To\", \"type\": \"array\"}}, \"required\": [\"title\", \"trigger\", \"fix\"], \"title\": \"LessonRecord\", \"type\": \"object\"}"
+    }
+  ],
+  "response": "{\n  \"title\": \"确保算子元数据定义与构造函数默认值类型一致\",\n  \"trigger\": \"算子实例化时，meta.params 定义的参数类型或默认值与 __init__ 函数的定义不一致，导致框架解析参数错误。\",\n  \"fix\": \"统一算子参数的定义，确保 __init__ 中的默认值与 meta.params 声明的格式完全对齐（例如：列表与元组的转换，默认值初始状态的一致性）。\",\n  \"error_code\": \"E_INTERFACE\",\n  \"applies_to\": [\n    \"id_columns\"\n  ]\n}",
+  "json_mode": true,
+  "seconds": 2.6358695030212402,
+  "usage": {
+    "completion_tokens": 141,
+    "prompt_tokens": 1082,
+    "total_tokens": 1223,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 141,
+      "image_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": null,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 1082
+    },
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "input_tokens_details": null,
+    "claude_cache_creation_5_m_tokens": 0,
+    "claude_cache_creation_1_h_tokens": 0
+  },
+  "source": "remote"
+}

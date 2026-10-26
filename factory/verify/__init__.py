@@ -34,10 +34,12 @@ class Verifier:
                 return ValidationReport(plan_name=plan.name, passed=False, diagnostics=diags)
         # 复用的生成算子（来自以前的运行）也要把源码带进子进程
         sources = [g.source for g in generated.values()]
+        owners = [g.key for g in generated.values()]  # 与 sources 一一对应，加载失败时据此定位算子
         for step in plan.steps:
             src = registry.source_of(step.operator_ref) if step.action == "reuse" else None
             if src and src not in sources:
                 sources.append(src)
+                owners.append(step.operator_ref)
         # 第二到四级：沙箱子进程内执行
         job = {
             "plan": plan.model_dump(mode="json"),
@@ -45,6 +47,7 @@ class Verifier:
             "config": cfg.model_dump(),
             "data_path": str(Path(data_path).resolve()),  # 子进程工作目录是临时目录
             "sources": sources,
+            "source_owners": owners,
         }
         result, error = run_job(job, timeout=cfg.timeout_seconds, memory_mb=cfg.memory_mb, n_threads=cfg.n_threads)
         if error is not None:

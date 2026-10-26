@@ -17,39 +17,42 @@ p code, li code, td code { background: var(--code); padding: 1px 4px; border-rad
 </style></head>
 <body>
 <h1>AlgoForge 验证报告</h1>
-<table><thead><tr><th>项目</th><th>内容</th></tr></thead><tbody><tr><td>需求</td><td>把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低于 0.8</td></tr><tr><td>数据</td><td>data/tickets.csv</td></tr><tr><td>运行 ID</td><td>01_tickets_transfer</td></tr><tr><td>LLM</td><td>gemini-3.5-flash</td></tr><tr><td>状态</td><td>✅ 成功</td></tr><tr><td>最优方案</td><td>tfidf_ngram3_lr_tuned</td></tr><tr><td>总耗时</td><td>17.0 s</td></tr></tbody></table>
-<p>共验证 2 个候选方案，2 个通过；重新规划 0 次，修复 0 轮。最优方案 <code>tfidf_ngram3_lr_tuned</code> 的 f1_macro = 0.828（要求 ≥ 0.8）。</p>
+<table><thead><tr><th>项目</th><th>内容</th></tr></thead><tbody><tr><td>需求</td><td>把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低于 0.8</td></tr><tr><td>数据</td><td>data/tickets.csv</td></tr><tr><td>运行 ID</td><td>01_tickets_transfer</td></tr><tr><td>LLM</td><td>gemini-3.5-flash</td></tr><tr><td>状态</td><td>✅ 成功</td></tr><tr><td>最优方案</td><td>tfidf_logistic_baseline</td></tr><tr><td>总耗时</td><td>7.6 s</td></tr></tbody></table>
+<p>共验证 2 个候选方案，2 个通过；重新规划 0 次，修复 0 轮。最优方案 <code>tfidf_logistic_baseline</code> 的 f1_macro = 0.824（要求 ≥ 0.8）。</p>
 <h2>1. 需求理解（TaskSpec）</h2>
-<table><thead><tr><th>字段</th><th>值</th></tr></thead><tbody><tr><td>任务类型</td><td>multiclass_classification</td></tr><tr><td>数据模态</td><td>text</td></tr><tr><td>目标列</td><td>label（文本列 text）</td></tr><tr><td>评价指标</td><td>f1_macro ≥ 0.8（主）</td></tr><tr><td>业务约束</td><td>-</td></tr><tr><td>数据画像标签</td><td>id_columns、text_input、imbalanced</td></tr></tbody></table>
+<table><thead><tr><th>字段</th><th>值</th></tr></thead><tbody><tr><td>任务类型</td><td>multiclass_classification</td></tr><tr><td>数据模态</td><td>text</td></tr><tr><td>目标列</td><td>label（文本列 text）</td></tr><tr><td>评价指标</td><td>f1_macro ≥ 0.8（主）</td></tr><tr><td>业务约束</td><td>imbalanced</td></tr><tr><td>数据画像标签</td><td>id_columns、text_input、imbalanced</td></tr></tbody></table>
 <h2>2. 知识检索（设计依据）</h2>
 <p>匹配场景：新场景。每类步骤从知识图谱检索候选算子，得分 = 0.4 × 文本相关度 + 0.3 × 条件匹配 + 0.3 × 历史验证分。</p>
 <table><thead><tr><th>步骤</th><th>候选算子</th><th>可直接复用</th><th>得分</th><th>文本/条件/历史</th><th>证据</th></tr></thead><tbody><tr><td>vectorizer</td><td>TfidfTextVectorizer@1</td><td>是</td><td>0.500</td><td>1.00 / 0.33 / 0.00</td><td>匹配条件：text_input</td></tr><tr><td>model</td><td>LogisticRegressionModel@1</td><td>是</td><td>0.230</td><td>0.00 / 0.00 / 0.77</td><td>历史验证 1 次，平均 f1_macro 0.765</td></tr></tbody></table>
 <h3>参考的历史经验</h3>
-<ul><li><strong>样本不平衡导致默认模型召回率偏低</strong>（M_THRESHOLD）：启用平衡类权重（如 class_weight=&#x27;balanced&#x27; 或 BalancedLightGBMClassifier）以提升召回率</li><li><strong>LightGBM 调参及不平衡处理</strong>：设置 num_leaves 15~63, learning_rate 0.03~0.1, n_estimators 200~600；不平衡时设置 class_weight=&#x27;balanced&#x27;；树模型无需标准化。</li><li><strong>数值列含空白字符导致类型转换失败</strong>（E_RUNTIME）：先 str.strip()，再 pd.to_numeric(errors=&#x27;coerce&#x27;)，缺失值填补为 0</li><li><strong>未剔除客户 ID 导致 One-Hot 编码后维度暴涨与内存溢出</strong>（E_TIMEOUT）：建模前剔除 ID 等标识列，并在编码器中设置最大类别数</li><li><strong>随机森林防过拟合与召回优化</strong>：设置 n_estimators 300 左右，限制 max_depth 在 8~16 防止过拟合；召回优先时需配合调整分类阈值。</li></ul>
+<ul><li><strong>样本不平衡导致默认模型召回率偏低</strong>（M_THRESHOLD）：启用平衡类权重（如 class_weight=&#x27;balanced&#x27; 或 BalancedLightGBMClassifier）以提升召回率</li><li><strong>中文短文本字符级 TF-IDF 建模</strong>：直接使用字符级 TF-IDF（char 1~2 gram）配合逻辑回归，无需分词。</li><li><strong>逻辑回归标准化与可解释性</strong>：必须先进行特征标准化（如 StandardFeatureScaler），在 0.1~10 之间搜索正则化强度 C，可直接输出系数给业务方。</li></ul>
+<h3>知识引用检查</h3>
+<p>检索并传入上下文不等于采纳。以下引用由模型声明，程序仅核对可见范围与结构化适用对象；不证明语义落实或指标收益。</p>
+<table><thead><tr><th>方案</th><th>步骤</th><th>模型引用</th><th>范围检查</th><th>语义落实</th></tr></thead><tbody><tr><td>tfidf_logistic_baseline</td><td>1</td><td>Operator:TfidfTextVectorizer@1、Lesson:631c1a72</td><td>通过</td><td>未验证</td></tr><tr><td>tfidf_logistic_baseline</td><td>2</td><td>Operator:LogisticRegressionModel@1、Lesson:9e9e77d6</td><td>通过</td><td>未验证</td></tr><tr><td>tfidf_logistic_optimized</td><td>1</td><td>无</td><td>通过</td><td>未验证</td></tr><tr><td>tfidf_logistic_optimized</td><td>2</td><td>Operator:TfidfTextVectorizer@1</td><td>通过</td><td>未验证</td></tr><tr><td>tfidf_logistic_optimized</td><td>3</td><td>Operator:LogisticRegressionModel@1、Lesson:9e9e77d6</td><td>通过</td><td>未验证</td></tr></tbody></table>
 <h2>3. 候选方案比较</h2>
 <p>排序规则：先看是否通过全部检查，再比主指标，再比次要指标之和，最后训练耗时短者优先。指标为多随机种子 × 分层 K 折交叉验证的均值 ± 种子间标准差。</p>
-<table><thead><tr><th>排名</th><th>方案</th><th>结果</th><th>f1_macro</th><th>accuracy</th><th>recall_macro</th><th>precision_macro</th><th>单次训练 (s)</th><th>峰值内存 (MB)</th></tr></thead><tbody><tr><td>1</td><td>★ tfidf_ngram3_lr_tuned</td><td>通过</td><td>0.828 ± 0.002</td><td>0.842 ± 0.002</td><td>0.832 ± 0.003</td><td>0.827 ± 0.002</td><td>0.160</td><td>244</td></tr><tr><td>2</td><td>tfidf_lr_baseline</td><td>通过</td><td>0.824 ± 0.004</td><td>0.838 ± 0.004</td><td>0.832 ± 0.003</td><td>0.820 ± 0.004</td><td>0.114</td><td>242</td></tr></tbody></table>
+<table><thead><tr><th>排名</th><th>方案</th><th>结果</th><th>f1_macro</th><th>accuracy</th><th>recall_macro</th><th>precision_macro</th><th>单次训练 (s)</th><th>峰值内存 (MB)</th></tr></thead><tbody><tr><td>1</td><td>★ tfidf_logistic_baseline</td><td>通过</td><td>0.824 ± 0.004</td><td>0.838 ± 0.004</td><td>0.832 ± 0.003</td><td>0.820 ± 0.004</td><td>0.105</td><td>241</td></tr><tr><td>2</td><td>tfidf_logistic_optimized</td><td>通过</td><td>0.820 ± 0.002</td><td>0.834 ± 0.002</td><td>0.829 ± 0.002</td><td>0.815 ± 0.002</td><td>0.119</td><td>241</td></tr></tbody></table>
 <pre><code>f1_macro（| 为阈值 0.8）
-tfidf_ngram3_lr_tuned                ■■■■■■■■■■■■■■■■|··· 0.828
-tfidf_lr_baseline                    ■■■■■■■■■■■■■■■■|··· 0.824</code></pre>
+tfidf_logistic_baseline              ■■■■■■■■■■■■■■■■|··· 0.824
+tfidf_logistic_optimized             ■■■■■■■■■■■■■■■■|··· 0.820</code></pre>
 <h3>各方案的结构与诊断</h3>
-<ul><li><code>tfidf_ngram3_lr_tuned</code>：TfidfTextVectorizer → LogisticRegressionModel。诊断：无</li><li><code>tfidf_lr_baseline</code>：TfidfTextVectorizer → LogisticRegressionModel。诊断：无</li></ul>
-<h2>4. 最优方案：tfidf_ngram3_lr_tuned</h2>
-<p>通过扩大 n-gram 窗口提升特征表现力，结合微调后的正则化强度，力求达到 F1-macro 0.8 以上目标。</p>
-<table><thead><tr><th>#</th><th>步骤</th><th>算子</th><th>参数</th><th>选择理由</th></tr></thead><tbody><tr><td>1</td><td>vectorizer</td><td>TfidfTextVectorizer@1</td><td>column=text, analyzer=char_wb, ngram_range=(1, 3), max_features=30000</td><td>扩展 n-gram 范围至 1-3 gram 并增加特征维度，更好捕捉工单特定词组与长搭配语义。</td></tr><tr><td>2</td><td>model</td><td>LogisticRegressionModel@1</td><td>C=2.0, class_weight=balanced, max_iter=1000, random_state=42</td><td>适度减小 L2 正则化约束（增大 C 值）配合更高维文本特征，同时保留平衡权重处理不平衡数据。</td></tr></tbody></table>
+<ul><li><code>tfidf_logistic_baseline</code>：TfidfTextVectorizer → LogisticRegressionModel。诊断：无</li><li><code>tfidf_logistic_optimized</code>：生成:IdColumnDropper → TfidfTextVectorizer → LogisticRegressionModel。诊断：无</li></ul>
+<h2>4. 最优方案：tfidf_logistic_baseline</h2>
+<p>使用高效的文本向量化方案配合平衡权重逻辑回归，是处理中文短文本分类的经典基线方案。</p>
+<table><thead><tr><th>#</th><th>步骤</th><th>算子</th><th>参数</th><th>选择理由</th></tr></thead><tbody><tr><td>1</td><td>vectorizer</td><td>TfidfTextVectorizer@1</td><td>column=text, analyzer=char_wb, ngram_range=(1, 2)</td><td>针对中文短文本，采用字符级 1-2 gram TF-IDF 向量化处理，符合最佳实践。</td></tr><tr><td>2</td><td>model</td><td>LogisticRegressionModel@1</td><td>class_weight=balanced, C=1.0, max_iter=1000</td><td>针对样本不平衡问题，设置 class_weight=&#x27;balanced&#x27; 以提升宏平均 F1 分数。</td></tr></tbody></table>
 <h2>5. 能力生成与修复</h2>
-<p>本次运行所有步骤均复用能力库中已有算子，未生成新算子。</p>
+<table><thead><tr><th>生成算子</th><th>类型</th><th>用途</th><th>参考的历史实现</th><th>修复轮数</th><th>注册到能力库</th></tr></thead><tbody><tr><td>IdColumnDropper@2</td><td>feature</td><td>删除数据中的 ID 类列，防止过拟合</td><td>-</td><td>0</td><td>否</td></tr></tbody></table>
 <h2>6. 验证机制</h2>
 <table><thead><tr><th>级别</th><th>检查内容</th><th>本次配置</th></tr></thead><tbody><tr><td>1 静态检查</td><td>语法、import 白名单、禁止危险调用、接口与 meta 一致性</td><td>仅针对生成的算子</td></tr><tr><td>2 沙箱执行</td><td>独立子进程，限制超时与内存，清除含 KEY/TOKEN 的环境变量</td><td>超时 180 s，内存 8192 MB</td></tr><tr><td>3 契约检查</td><td>不修改输入、行数一致、不引入 NaN/Inf、概率合法、能处理未见类别与缺失值</td><td>冒烟样本 300 行</td></tr><tr><td>4 指标检查</td><td>阈值、种子间稳定性、疑似泄漏、耗时与内存</td><td>5 折 × 种子 [42, 7, 2024]；std 上限 0.03</td></tr></tbody></table>
-<p>最优方案资源消耗：单次训练 0.160 s，预测 67.6 ms / 千行，峰值内存 244 MB。</p>
+<p>最优方案资源消耗：单次训练 0.105 s，预测 52.0 ms / 千行，峰值内存 241 MB。</p>
 <h2>7. 知识沉淀</h2>
-<ul><li>回写验证记录 ValidationRun：2 条</li><li>注册到能力库的新算子：无</li><li>新提炼的经验：无</li><li>本次使用的经验：5 条（命中次数已累计）</li></ul>
+<ul><li>回写验证记录 ValidationRun：2 条</li><li>注册到能力库的新算子：无</li><li>新提炼的经验：无</li><li>本次提供的经验：3 条（累计检索命中，不代表采纳）</li></ul>
 <h2>附录 A. 生成的算法代码（pipeline.py）</h2>
 <pre><code>&quot;&quot;&quot;把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低 —— 自动生成的算法流水线
 
 需求：把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低于 0.8
-方案：tfidf_ngram3_lr_tuned
-设计依据：通过扩大 n-gram 窗口提升特征表现力，结合微调后的正则化强度，力求达到 F1-macro 0.8 以上目标。
+方案：tfidf_logistic_baseline
+设计依据：使用高效的文本向量化方案配合平衡权重逻辑回归，是处理中文短文本分类的经典基线方案。
 主指标：f1_macro &gt;= 0.8
 
 由 AlgoForge 自动生成。用法：
@@ -72,8 +75,8 @@ TARGET = &#x27;label&#x27;
 
 def build_pipeline() -&gt; Pipeline:
     return Pipeline([
-        (&quot;0_vectorizer&quot;, TfidfTextVectorizer(column=&#x27;text&#x27;, analyzer=&#x27;char_wb&#x27;, ngram_range=(1, 3), max_features=30000)),  # 扩展 n-gram 范围至 1-3 gram 并增加特征维度，更好捕捉工单特定词组与长搭配语义。
-        (&quot;1_model&quot;, LogisticRegressionModel(C=2.0, class_weight=&#x27;balanced&#x27;, max_iter=1000, random_state=42)),  # 适度减小 L2 正则化约束（增大 C 值）配合更高维文本特征，同时保留平衡权重处理不平衡数据。
+        (&quot;0_vectorizer&quot;, TfidfTextVectorizer(column=&#x27;text&#x27;, analyzer=&#x27;char_wb&#x27;, ngram_range=(1, 2), max_features=20000)),  # 针对中文短文本，采用字符级 1-2 gram TF-IDF 向量化处理，符合最佳实践。
+        (&quot;1_model&quot;, LogisticRegressionModel(C=1.0, class_weight=&#x27;balanced&#x27;, max_iter=1000, random_state=42)),  # 针对样本不平衡问题，设置 class_weight=&#x27;balanced&#x27; 以提升宏平均 F1 分数。
     ])
 
 
@@ -101,16 +104,19 @@ if __name__ == &quot;__main__&quot;:
     main()
 </code></pre>
 <h2>附录 B. 运行记录</h2>
-<p>各阶段耗时：PLAN 8.8s，BUILD 0.0s，VERIFY 8.2s，ROUTE 0.0s，CURATE 0.0s</p>
+<p>各阶段耗时：PLAN 0.1s，BUILD 0.0s，VERIFY 7.5s，ROUTE 0.0s，CURATE 0.0s</p>
 <pre><code>[PLAN] 场景 新场景；画像标签 [&#x27;id_columns&#x27;, &#x27;text_input&#x27;, &#x27;imbalanced&#x27;]
 [PLAN] TaskSpec：multiclass_classification，目标 label，主指标 f1_macro &gt;= 0.8
-[PLAN] 候选方案：[&#x27;tfidf_lr_baseline(TfidfTextVectorizer → LogisticRegressionModel)&#x27;, &#x27;tfidf_ngram3_lr_tuned(TfidfTextVectorizer → LogisticRegressionModel)&#x27;]
-[PLAN] 完成，用时 8.7s → BUILD
+[PLAN] 候选方案：[&#x27;tfidf_logistic_baseline(TfidfTextVectorizer → LogisticRegressionModel)&#x27;, &#x27;tfidf_logistic_optimized(*IdColumnDropper → TfidfTextVectorizer → LogisticRegressionModel)&#x27;]
+[PLAN] 完成，用时 0.0s → BUILD
+[BUILD] 生成算子 IdColumnDropper@2：删除数据中的 ID 类列，防止过拟合
 [BUILD] 完成，用时 0.0s → VERIFY
-[VERIFY] tfidf_lr_baseline：通过，f1_macro=0.8244
-[VERIFY] tfidf_ngram3_lr_tuned：通过，f1_macro=0.8284
-[VERIFY] 完成，用时 8.2s → ROUTE
+[VERIFY] tfidf_logistic_baseline：通过，f1_macro=0.8244
+[VERIFY] tfidf_logistic_optimized：通过，f1_macro=0.8204
+[VERIFY] 完成，用时 7.5s → ROUTE
 [ROUTE] 完成，用时 0.0s → CURATE
 [CURATE] 写入 KG：2 条 ValidationRun；注册新算子 []；新增经验 0 条
 [CURATE] 完成，用时 0.0s → DONE</code></pre>
+<h3>LLM 调用来源</h3>
+<table><thead><tr><th>阶段</th><th>请求哈希</th><th>来源</th><th>本次耗时(s)</th><th>录制耗时(s)</th><th>tokens</th></tr></thead><tbody><tr><td>plan_spec</td><td>6297e597287c766c</td><td>replay</td><td>0.000</td><td>2.131</td><td>1305</td></tr><tr><td>plan</td><td>d6f8713817d17cf9</td><td>replay</td><td>0.000</td><td>6.673</td><td>4489</td></tr><tr><td>plan</td><td>94fa9d7403832fd3</td><td>replay</td><td>0.000</td><td>3.448</td><td>5533</td></tr><tr><td>synthesize</td><td>98912f1a82aeb9cf</td><td>replay</td><td>0.000</td><td>25.817</td><td>2549</td></tr></tbody></table>
 </body></html>

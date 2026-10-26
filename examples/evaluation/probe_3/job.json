@@ -1,0 +1,8 @@
+{
+  "model": "gemini-3.5-flash",
+  "temperature": 0.8,
+  "name": "probe_3",
+  "group": "probe",
+  "trial": 3,
+  "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；增加累计费用与月费的比值特征，正确处理缺失和零分母。"
+}

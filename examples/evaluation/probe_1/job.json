@@ -1,0 +1,8 @@
+{
+  "model": "gemini-3.5-flash",
+  "temperature": 0.8,
+  "name": "probe_1",
+  "group": "probe",
+  "trial": 1,
+  "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；将 total_charges 的空白字符串转换并填补为合理数值。"
+}

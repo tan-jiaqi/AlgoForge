@@ -245,8 +245,17 @@ def rule_based_mock() -> MockLLM:
     return (
         MockLLM()
         .on("plan_spec", lambda msgs: rule_spec(_context(msgs)).model_dump_json())
-        .on("plan", lambda msgs: rule_plans(_context(msgs)).model_dump_json())
+        .on("plan", lambda msgs: grounded_rule_plans(_context(msgs)).model_dump_json())
         .on("synthesize", _with_system(rule_synthesize))
         .on("repair", lambda msgs: rule_repair(_context(msgs)))
         .on("lesson", lambda msgs: rule_lesson(_context(msgs)))
     )
+
+
+def grounded_rule_plans(ctx: dict) -> PlanSet:
+    plans = rule_plans(ctx)
+    for plan in plans.plans:
+        for step in plan.steps:
+            ref = step.operator_ref if step.action == "reuse" else step.synth_spec.reference
+            step.evidence_ids = [f"Operator:{ref}"] if ref else []
+    return plans

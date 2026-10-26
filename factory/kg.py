@@ -352,6 +352,10 @@ class CapabilityKG:
         与 ``historical_score`` 不同，这里**包含未通过的验证**（本系统的失败结果同样说明该算子表现如何）；
         但抽取到的历史实验只取有效的（``passed`` 为 False 表示被作废，如数据泄漏）。
         """
+        return [r["value"] for r in self.metric_records(nid, scenario, metric)]
+
+    def metric_records(self, nid: str, scenario: str, metric: str) -> list[dict]:
+        """与 metric_evidence 相同的可信证据，保留可追溯的记录 ID。"""
         values = []
         for rid in self.neighbors(nid, "VALIDATED_BY"):
             run = self.g.nodes[rid]
@@ -361,7 +365,7 @@ class CapabilityKG:
                 continue
             value = run.get("metrics", {}).get(metric)
             if isinstance(value, (int, float)):
-                values.append(float(value))
+                values.append({"id": rid, "metric": metric, "value": float(value), "passed": run.get("passed")})
         return values
 
     def search_operators(
@@ -419,18 +423,53 @@ class CapabilityKG:
         hits.sort(key=lambda h: h.score, reverse=True)
         return hits[:top_k]
 
-    def search_lessons(self, query: str = "", *, error_code: DiagnosticCode | None = None, top_k: int = 3) -> list[dict]:
-        """按错误码精确过滤，再按文本相关度排序。"""
+    def lesson_modalities(self, lid: str) -> set[str]:
+        """经验适用的数据模态：取其适用算子与场景的模态并集；没有这类对象时为空（视为通用经验）。"""
+        out: set[str] = set()
+        for t in self.neighbors(lid, "APPLIES_TO"):
+            d = self.g.nodes[t]
+            if d["type"] == "Operator":
+                out |= set(d.get("modalities", []))
+            elif d["type"] == "Scenario" and d.get("modality"):
+                out.add(d["modality"])
+        return out
+
+    def search_lessons(
+        self,
+        query: str = "",
+        *,
+        error_code: DiagnosticCode | None = None,
+        modality: Modality | None = None,
+        conditions: Iterable[str] = (),
+        top_k: int = 3,
+    ) -> list[dict]:
+        """结构化过滤（诊断码、模态）→ 文本相关度与条件命中加权排序。
+
+        条件命中：经验的适用条件中至少一个当前成立。不用成立比例，因为 linear_model、scaled_features
+        这类条件取决于将要选的方案，规划前不会出现在画像中。
+        只按文本排序时，"不平衡""ID 列"等共有标签会让其他场景的经验挤掉真正相关的经验。
+        """
         lessons = [
-            (n, d) for n, d in self.nodes("Lesson") if error_code is None or d.get("error_code") == error_code.value
+            (n, d) for n, d in self.nodes("Lesson")
+            if (error_code is None or d.get("error_code") == error_code.value)
+            and (modality is None or not (mods := self.lesson_modalities(n)) or modality.value in mods)
         ]
         if not lessons:
             return []
+        wanted = set(conditions)
         q = tokenize(query)
-        if q:
-            scores = BM25Plus([tokenize(f"{d['title']} {d['trigger']} {d['fix']}") for _, d in lessons]).get_scores(q)
-            lessons = [ls for _, ls in sorted(zip(scores, lessons), key=lambda t: t[0], reverse=True)]
-        return [{"id": n, **d} for n, d in lessons[:top_k]]
+        raw = BM25Plus([tokenize(f"{d['title']} {d['trigger']} {d['fix']}") for _, d in lessons]).get_scores(q) \
+            if q else [0.0] * len(lessons)
+        top = max(max(raw), 1e-9)
+        scored = []
+        for (n, d), bm in zip(lessons, raw):
+            conds = {t.split(":", 1)[1] for t in self.neighbors(n, "APPLIES_TO") if t.startswith("Condition:")}
+            cond = 1.0 if conds & wanted else 0.0
+            text = max(bm, 0.0) / top
+            score = 0.5 * text + 0.5 * cond if wanted else text
+            scored.append((score, n, d))
+        scored.sort(key=lambda t: t[0], reverse=True)
+        return [{"id": n, **d} for _, n, d in scored[:top_k]]
 
     # ------------------------------------------------------------------
     # 持久化与导出

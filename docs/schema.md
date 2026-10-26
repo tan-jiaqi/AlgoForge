@@ -180,9 +180,11 @@ ValidationRun ◀── VALIDATED_BY ── Operator       Lesson
    - 历史验证分：算子在指定场景、指定指标上**通过的**验证记录的平均值，作废的实验不计入；
 3. **结果带证据**：每条结果都带分项得分和证据（"匹配条件：…""历史验证 n 次，平均 recall …"），Planner 用它们写选择理由，报告里也能看到。
 
-`search_lessons()` 先按诊断码精确过滤，再按文本相关度排序；被使用的经验 `hits` 加一。
+`search_lessons()` 先按诊断码和数据模态过滤（经验的模态取其适用算子与场景的模态；未关联这类对象的经验视为通用），再按文本相关度与适用条件是否命中加权排序；被提供给 Agent 的经验 `hits` 加一，不表示模型实际采纳。
 
 `metric_evidence()` 为 Beam 搜索提供某算子在某场景上所有可信的指标观测，用来估计子方案的先验。
+
+`metric_records()` 使用相同过滤规则，返回验证节点 ID、指标名、数值和通过状态。Planner 上下文的 `evidence_catalog` 和搜索记录的 `observations` 保留这些来源，便于核对具体历史记录如何进入计算。规划的 `evidence_ids` 检查引用可见性与结构化适用范围；是否改变决策另由[消融及固定候选池干预](../examples/evaluation/SUMMARY.md)观察。
 
 ### 回写：图谱如何"长大"
 

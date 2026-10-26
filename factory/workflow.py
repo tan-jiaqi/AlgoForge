@@ -54,6 +54,9 @@ class WorkflowConfig:
     allow_synthesis: bool = True
     writeback: bool = True
     verify: VerifyConfig | None = None  # None 表示按任务类型读取 configs/tasks/*.yaml
+    knowledge_mode: str = "full"
+    retrieval_k: int = 3
+    task_spec: TaskSpec | None = None  # 对照实验固定验收标准，避免 KG 改变阈值成为混杂因素
 
 
 @dataclass
@@ -87,7 +90,7 @@ class Workflow:
             log.info("加载已沉淀的生成算子：%s", loaded)
         self.runs_dir = Path(runs_dir)
         self.cfg = config or WorkflowConfig()
-        self.planner = Planner(llm, self.kg, allow_synthesis=self.cfg.allow_synthesis)
+        self.planner = Planner(llm, self.kg, allow_synthesis=self.cfg.allow_synthesis, knowledge_mode=self.cfg.knowledge_mode)
         self.synthesizer = Synthesizer(llm, self.kg)
         self.verifier = Verifier(self.cfg.verify)
         self.curator = Curator(self.kg, self.kg_path if self.cfg.writeback else None, llm)
@@ -97,7 +100,8 @@ class Workflow:
     def run(self, request: str, data_path: str, *, target: str | None = None, run_id: str | None = None) -> RunState:
         run_id = run_id or datetime.now().strftime("%Y%m%d-%H%M%S-") + short_hash(request + data_path)[:4]
         state = RunState(run_id=run_id, request=request, data_path=str(data_path), target=target,
-                         llm_model=getattr(self.llm, "model", None))
+                         llm_model=getattr(self.llm, "model", None), knowledge_mode=self.cfg.knowledge_mode)
+        call_start = len(getattr(self.llm, "calls", []))
         if self.on_event is not None:
             state._listener = self.on_event
         ctx = _Ctx()
@@ -128,6 +132,7 @@ class Workflow:
             state.status = "succeeded"
         elif step == "FAILED":
             state.status = "failed"
+        state.llm_calls = [c for c in getattr(self.llm, "calls", [])[call_start:] if isinstance(c, dict)]
         self._save(state)
         return state
 
@@ -138,17 +143,18 @@ class Workflow:
     def _plan(self, state: RunState, ctx: _Ctx) -> str:
         ctx.scenario = resolve_scenario(self.kg, state.data_path)
         rough = profile(state.data_path, state.target)
-        state.spec = self.planner.understand(state.request, rough, target=state.target, scenario=ctx.scenario)
+        state.spec = self.cfg.task_spec or self.planner.understand(state.request, rough, target=state.target, scenario=ctx.scenario)
         ctx.profile = profile(state.data_path, state.spec.target_column)
         state.profile_tags = ctx.profile.tags
         state.note(f"[PLAN] 场景 {ctx.scenario or '新场景'}；画像标签 {ctx.profile.tags}")
         state.note(f"[PLAN] TaskSpec：{state.spec.task_type.value}，目标 {state.spec.target_column}，"
                    f"主指标 {state.spec.primary_metric.name} >= {state.spec.primary_metric.threshold}")
-        ctx.planning = self.planner.retrieve(state.spec, ctx.profile, scenario=ctx.scenario)
+        ctx.planning = self.planner.retrieve(state.spec, ctx.profile, scenario=ctx.scenario, top_k=self.cfg.retrieval_k)
         state.retrieval = {**ctx.planning.to_prompt(), "lesson_ids": [les["id"] for les in ctx.planning.lessons]}
         state.verify_config = (self.cfg.verify or load_verify_config(state.spec.task_type)).model_dump()
         state.lessons_used = [les["id"] for les in ctx.planning.lessons]
         state.candidates = self.planner.propose(state.spec, ctx.profile, ctx.planning, n_candidates=self.cfg.n_candidates)
+        self._check_evidence(state, ctx, state.candidates)
         state.note(f"[PLAN] 候选方案：{[_describe(p) for p in state.candidates]}")
         return "BUILD"
 
@@ -159,7 +165,8 @@ class Workflow:
                 if step.action != "synthesize" or step.synth_spec.name in state.generated:
                     continue
                 spec = step.synth_spec
-                lessons = self.kg.search_lessons(f"{spec.purpose} {spec.inputs} {spec.outputs}", top_k=3)
+                lessons = self.kg.search_lessons(f"{spec.purpose} {spec.inputs} {spec.outputs}", modality=state.spec.modality,
+                                                 conditions=ctx.profile.tags, top_k=3) if self.cfg.knowledge_mode == "full" else []
                 self._use_lessons(state, lessons)
                 gen = self.synthesizer.synthesize(spec, state.spec, ctx.profile, version=self._next_version(spec.name), lessons=lessons)
                 state.generated[spec.name] = gen
@@ -199,7 +206,8 @@ class Workflow:
     def _repair(self, state: RunState, ctx: _Ctx) -> str:
         for name, diag in ctx.repair_queue:
             gen = state.generated[name]
-            lessons = self.kg.search_lessons(f"{diag.message} {diag.hint}", error_code=diag.code, top_k=3)
+            lessons = self.kg.search_lessons(f"{diag.message} {diag.hint}", error_code=diag.code,
+                                             modality=state.spec.modality, top_k=3) if self.cfg.knowledge_mode == "full" else []
             self._use_lessons(state, lessons)
             fixed = self.synthesizer.repair(gen, diag, lessons=lessons)
             state.generated[name] = fixed
@@ -235,12 +243,13 @@ class Workflow:
             state.spec, ctx.profile, ctx.planning, n_candidates=width * max(self.cfg.beam_expand, 1),
             feedback=ctx.feedback, parents=[search.parent_summary(plans[r.plan_name], r, state.spec) for r in parents],
         )
+        self._check_evidence(state, ctx, children)
         for p in children:
             if p.name in names:
                 p.name = f"{p.name}_r{state.replans}"
         kept, records = search.select(
             children, seen={search.signature(p) for p in state.candidates}, width=width, spec=state.spec,
-            kg=self.kg, scenario=ctx.scenario, observed=search.run_observations(state),
+            kg=self.kg, scenario=ctx.scenario if self.cfg.knowledge_mode != "catalog" else None, observed=search.run_observations(state),
         )
         state.search.append(SearchRound(round=state.replans, parents=[r.plan_name for r in parents], width=width,
                                         candidates=records))
@@ -273,6 +282,18 @@ class Workflow:
             versions.append(registry.latest_version(name))
         return max(versions, default=0) + 1
 
+    def _check_evidence(self, state: RunState, ctx: _Ctx, plans: list[PipelinePlan]) -> None:
+        """记录引用检查的实际结果：被拒绝后要求 LLM 重写的尝试，以及最终接受方案每一步的复核。"""
+        for errors in self.planner.rejections:
+            state.evidence_checks.append({"plan": "（被拒绝的规划）", "step": None, "evidence_ids": [],
+                                          "scope_valid": False, "errors": errors, "semantic_verified": False})
+        self.planner.rejections.clear()
+        for plan in plans:
+            for i, step in enumerate(plan.steps, 1):
+                errors = self.planner.step_errors(step, ctx.planning)
+                state.evidence_checks.append({"plan": plan.name, "step": i, "evidence_ids": step.evidence_ids,
+                                              "scope_valid": not errors, "errors": errors, "semantic_verified": False})
+
     def _generated_for(self, plan: PipelinePlan, state: RunState) -> dict[str, GeneratedOperator]:
         return {s.synth_spec.name: state.generated[s.synth_spec.name] for s in plan.steps
                 if s.action == "synthesize" and s.synth_spec.name in state.generated}
@@ -298,12 +319,18 @@ class Workflow:
             if rec.fixed is not None:
                 continue
             name = rec.operator.split("@")[0]
+            if state.generated.get(name) and state.generated[name].revision != rec.revision:
+                continue  # 后续版本通过不能追认较早的一次修复成功
             related = [r for r in state.reports if any(_uses(p, name) for p in state.candidates if p.name == r.plan_name)]
             if not related:
                 continue
             same = [d for r in related for d in r.diagnostics
                     if d.code == rec.diagnostic.code and (d.operator or "").split("@")[0] == name]
-            rec.fixed = not same
+            if same:
+                rec.fixed = False
+            elif all(d.code.category != "code" for r in related for d in r.diagnostics):
+                rec.fixed = True
+            # 另一个代码错误可能提前中断检查；此时不能宣称原问题已解决，保持未确认。
 
     def _use_lessons(self, state: RunState, lessons: list[dict]) -> None:
         for les in lessons:

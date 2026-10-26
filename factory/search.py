@@ -137,6 +137,13 @@ def select(
         local.add(sig)
         prior, ev = plan_prior(plan, spec, kg, scenario, observed)
         rec = SearchCandidate(plan=plan.name, chain=describe(plan), prior=prior, evidence=ev)
+        for step in plan.steps:
+            ref = step.operator_ref if step.action == "reuse" else step.synth_spec.reference
+            records_for_step = kg.metric_records(node_id("Operator", ref), scenario, spec.primary_metric.name) if ref and scenario else []
+            rec.observations[step_key(step)] = [
+                *[{**r, "source": "kg"} for r in records_for_step],
+                *[{"source": "current_run", "value": v} for v in observed.get(step_key(step), [])],
+            ]
         records.append(rec)
         scored.append((prior, -i, plan, rec))  # 先验相同时保持 Planner 给出的顺序
     scored.sort(key=lambda t: (t[0], t[1]), reverse=True)

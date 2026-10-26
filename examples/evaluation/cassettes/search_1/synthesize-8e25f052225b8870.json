@@ -1,0 +1,47 @@
+{
+  "tag": "synthesize",
+  "model": "gemini-3.5-flash",
+  "messages": [
+    {
+      "role": "system",
+      "content": "trial=search-1（独立重复实验编号，与任务无关）"
+    },
+    {
+      "role": "system",
+      "content": "你是算法能力工厂的 Synthesizer，负责按规格编写可复用的算法算子。有 reference_code 时，把它改写为符合规范的算子类；lessons 是历史踩坑经验，务必遵守。\n算子代码规范：\n1. 只输出一个 ```python 代码块；只定义一个类，类名必须是 ChargeRatioFeatureGenerator；\n2. 类继承 (TransformerMixin, Operator)，模型类继承 (ClassifierMixin, Operator)；\n   导入：from factory.operators.base import Operator, OperatorMeta；from factory.schemas import OperatorKind, Modality；\n3. 类属性 meta = OperatorMeta(name=\"ChargeRatioFeatureGenerator\", kind=OperatorKind.FEATURE, version=2, origin=\"synthesized\",\n   description=中文一句话, conditions=[适用条件标签], dependencies=[pip 包名], params={与 __init__ 默认值一致}, parent=\"ChargeRatioFeatureGenerator@1\")；\n4. __init__ 只把参数原样保存为同名属性（sklearn 约定），不做计算；fit 学到的状态用下划线结尾命名并 return self；\n5. transform 必须先 X = X.copy()，不能修改输入；输入输出都是 pandas DataFrame，行数不变；\n6. 本算子新产生的缺失值/无穷值要在本算子内处理；预测时可能出现未见类别和缺失值，不能报错；\n7. 模型类：fit 后设置 classes_；predict_proba 返回 shape (n, n_classes) 的 numpy 数组，predict 返回 shape (n,) 的 numpy 数组；\n8. 只能导入 numpy、pandas、sklearn、scipy、lightgbm、math、re 等，禁止 os/sys/subprocess/socket/open/eval/exec。"
+    },
+    {
+      "role": "user",
+      "content": "<<CONTEXT>>\n{\n \"synth_spec\": {\n  \"name\": \"ChargeRatioFeatureGenerator\",\n  \"kind\": \"feature\",\n  \"purpose\": \"构造资费变动特征\",\n  \"inputs\": \"包含tenure, monthly, total的列\",\n  \"outputs\": \"新增比值特征的数据框\",\n  \"reference\": \"ChargeRatioFeatureGenerator@1\"\n },\n \"task\": {\n  \"description\": \"预测客户流失，召回率不低于0.8；优先尝试可解释模型，未达标时探索不同模型或参数。\",\n  \"target\": \"churn\",\n  \"constraints\": [\n   \"interpretable\",\n   \"recall_first\"\n  ]\n },\n \"data_profile\": {\n  \"rows\": 5000,\n  \"target\": \"churn\",\n  \"class_counts\": {\n   \"0\": 3671,\n   \"1\": 1329\n  },\n  \"tags\": {\n   \"has_missing_values\": \"数据存在缺失值\",\n   \"numeric_features\": \"存在数值型特征\",\n   \"has_categorical_features\": \"存在类别型特征\",\n   \"low_cardinality\": \"类别基数较低（适合 one-hot）\",\n   \"string_typed_numeric\": \"数值列被读成字符串（含空白等脏值）\",\n   \"id_columns\": \"数据含客户 ID 等标识列\",\n   \"imbalanced\": \"正负样本不平衡\",\n   \"time_tenure\": \"存在在网时长等时间长度字段\",\n   \"mixed_features\": \"数值与类别特征混合\"\n  },\n  \"columns\": [\n   \"customer_id: id, str, missing 0.0%, unique 5000\",\n   \"region: categorical, str, missing 0.0%, unique 6\",\n   \"senior_citizen: numeric, int64, missing 0.0%, unique 2\",\n   \"partner: categorical, str, missing 0.0%, unique 2\",\n   \"tenure: numeric, int64, missing 0.0%, unique 73\",\n   \"contract: categorical, str, missing 0.0%, unique 3\",\n   \"internet_service: categorical, str, missing 0.0%, unique 3\",\n   \"online_security: categorical, str, missing 0.0%, unique 3\",\n   \"tech_support: categorical, str, missing 0.0%, unique 3\",\n   \"streaming_tv: categorical, str, missing 0.0%, unique 3\",\n   \"paperless_billing: categorical, str, missing 0.0%, unique 2\",\n   \"payment_method: categorical, str, missing 2.0%, unique 4\",\n   \"monthly_charges: numeric, float64, missing 2.9%, unique 3269\",\n   \"total_charges: string_numeric, str, missing 0.0%, unique 4830\"\n  ]\n },\n \"reference_code\": \"def add_charge_ratio(df, monthly=\\\"monthly_charges\\\", total=\\\"total_charges\\\", tenure=\\\"tenure\\\"):\\n    \\\"\\\"\\\"构造消费相关比值特征：月均消费 / 当前月费，衡量近期资费是否上涨。\\n\\n    要求 total_charges 已为数值；tenure 为 0 时比值记为 1。\\n    \\\"\\\"\\\"\\n    out = df.copy()\\n    avg = out[total] / out[tenure].replace(0, np.nan)\\n    out[\\\"charge_ratio\\\"] = (avg / out[monthly]).replace([np.inf, -np.inf], np.nan).fillna(1.0)\\n    return out\",\n \"lessons\": [\n  {\n   \"id\": \"Lesson:69d51358\",\n   \"title\": \"数值列含空白字符导致类型转换失败\",\n   \"trigger\": \"新入网客户累计消费为空白字符串，读取为 object 类型，转 float 时抛出 ValueError: could not convert string to float: ' '\",\n   \"fix\": \"先 str.strip()，再 pd.to_numeric(errors='coerce')，缺失值填补为 0\"\n  },\n  {\n   \"id\": \"Lesson:88299a38\",\n   \"title\": \"未剔除客户 ID 导致 One-Hot 编码后维度暴涨与内存溢出\",\n   \"trigger\": \"customer_id 等标识列未剔除，直接进行 One-Hot 编码导致特征维度暴涨并引发内存溢出\",\n   \"fix\": \"建模前剔除 ID 等标识列，并在编码器中设置最大类别数\"\n  },\n  {\n   \"id\": \"Lesson:f2c1398b\",\n   \"title\": \"LightGBM 调参及不平衡处理\",\n   \"trigger\": \"数据量在 5k 到 10w 之间，或者样本不平衡时\",\n   \"fix\": \"设置 num_leaves 15~63, learning_rate 0.03~0.1, n_estimators 200~600；不平衡时设置 class_weight='balanced'；树模型无需标准化。\"\n  }\n ]\n}\n<</CONTEXT>>"
+    }
+  ],
+  "response": "```python\nimport numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass ChargeRatioFeatureGenerator(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"ChargeRatioFeatureGenerator\",\n        kind=OperatorKind.FEATURE,\n        version=2,\n        origin=\"synthesized\",\n        description=\"基于月费与累计消费构造资费波动比值特征，处理数值转换异常与除零风险\",\n        conditions=[\"数据包含tenure, monthly_charges, total_charges列\"],\n        dependencies=[\"pandas\", \"numpy\", \"sklearn\"],\n        params={\"monthly\": \"monthly_charges\", \"total\": \"total_charges\", \"tenure\": \"tenure\"},\n        parent=\"ChargeRatioFeatureGenerator@1\"\n    )\n\n    def __init__(self, monthly=\"monthly_charges\", total=\"total_charges\", tenure=\"tenure\"):\n        self.monthly = monthly\n        self.total = total\n        self.tenure = tenure\n\n    def fit(self, X, y=None):\n        self.n_features_in_ = X.shape[1]\n        return self\n\n    def transform(self, X):\n        X = X.copy()\n        \n        # 1. 确保数值列处理：先剔除空格，转数值，缺失值填充为0 (Lesson:69d51358)\n        # 将 total_charges 和 monthly_charges 强制转为 float\n        for col in [self.total, self.monthly, self.tenure]:\n            if col in X.columns:\n                if X[col].dtype == 'object':\n                    X[col] = pd.to_numeric(X[col].astype(str).str.strip(), errors='coerce')\n                X[col] = X[col].fillna(0)\n\n        # 2. 计算平均费用，处理 tenure 为 0 的情况\n        # avg = total / tenure。若 tenure 为 0，视为 0 消费\n        tenure_safe = X[self.tenure].replace(0, np.nan)\n        avg_charge = X[self.total] / tenure_safe\n        \n        # 3. 计算资费比值：avg / current_monthly\n        # 如果当前月费为0，避免除以0产生inf\n        monthly_safe = X[self.monthly].replace(0, np.nan)\n        ratio = avg_charge / monthly_safe\n        \n        # 4. 处理无穷大及空值 (Lesson:69d51358)\n        # 若计算出现inf或NaN，填充为1.0（表示当前月费与历史平均一致）\n        X[\"charge_ratio\"] = ratio.replace([np.inf, -np.inf], np.nan).fillna(1.0)\n        \n        return X\n```",
+  "json_mode": false,
+  "seconds": 2.9759110882878304,
+  "usage": {
+    "completion_tokens": 723,
+    "prompt_tokens": 2048,
+    "total_tokens": 2771,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 723,
+      "image_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": null,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 2048
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "input_tokens": 0,
+    "input_tokens_details": null,
+    "output_tokens": 0
+  },
+  "source": "remote"
+}

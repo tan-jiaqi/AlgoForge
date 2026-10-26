@@ -1,0 +1,9 @@
+{
+  "model": "gemini-3.5-flash",
+  "temperature": 0.2,
+  "name": "search_1",
+  "group": "search",
+  "trial": 1,
+  "request": "预测客户流失，召回率不低于0.8；优先尝试可解释模型，未达标时探索不同模型或参数。",
+  "nonce": "search-1"
+}

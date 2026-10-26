@@ -99,3 +99,20 @@ def test_tidy_existing_graph(kg):
     assert kg.neighbors("Lesson:l0", "APPLIES_TO") == ["Operator:LightGBMModel@1"], "被合并节点的边要转移"
     assert "Metric:recall_at_top_k" not in kg.g and kg.g.nodes["Metric:recall_at_20"]["description"] == "前 20% 召回"
     assert kg.tidy() == [], "整理应是幂等的"
+
+
+def test_lessons_filtered_by_modality_and_ranked_by_conditions():
+    """中文文本任务的检索不应被流失场景的表格经验占满（演示 01 曾把字符级 TF-IDF 经验挤出前 5）。"""
+    from factory.kg import DEFAULT_KG_PATH, CapabilityKG
+    from factory.schemas import Modality
+
+    kg = CapabilityKG.load(DEFAULT_KG_PATH)
+    query = "把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低于 0.8 id_columns imbalanced text_input"
+    titles = [x["title"] for x in kg.search_lessons(query, modality=Modality.TEXT,
+                                                    conditions=["id_columns", "imbalanced", "text_input"], top_k=5)]
+    assert "中文短文本字符级 TF-IDF 建模" in titles
+    assert "数值列含空白字符导致类型转换失败" not in titles, "表格专用经验不应进入文本任务"
+    assert "样本不平衡导致默认模型召回率偏低" in titles, "跨模态通用经验仍可迁移"
+    tabular = [x["title"] for x in kg.search_lessons("预测流失 string_typed_numeric", modality=Modality.TABULAR,
+                                                     conditions=["string_typed_numeric"], top_k=10)]
+    assert "数值列含空白字符导致类型转换失败" in tabular

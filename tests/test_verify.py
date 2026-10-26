@@ -150,3 +150,41 @@ def test_leakage_flagged(churn_csv, fast_verify, tmp_path):
     df.to_csv(leaky, index=False)
     r = Verifier(fast_verify).verify(_plan(), _spec(), str(leaky))
     assert DiagnosticCode.UNSTABLE in {d.code for d in r.diagnostics}
+
+
+def test_params_mismatch_allows_none_default():
+    """__init__ 用 None 作默认值、函数体内再赋列表是惯用写法，不应判为接口不一致；真正的冲突仍要报。"""
+    src = '''
+from factory.operators.base import Operator, OperatorMeta
+from factory.schemas import Modality, OperatorKind
+
+class Svc(Operator):
+    meta = OperatorMeta(name="Svc", version=2, kind=OperatorKind.FEATURE, modalities=[Modality.TABULAR],
+                        description="d", params={"cols": ["a", "b"], "flag": "Yes"})
+
+    def __init__(self, cols=None, flag={flag!r}):
+        self.cols = cols if cols is not None else ["a", "b"]
+        self.flag = flag
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        return X.copy()
+'''
+    assert check_source(src.replace("{flag!r}", "'Yes'"), class_name="Svc", kind=OperatorKind.FEATURE) == []
+    diags = check_source(src.replace("{flag!r}", "'No'"), class_name="Svc", kind=OperatorKind.FEATURE)
+    assert [d.code for d in diags] == [DiagnosticCode.BAD_INTERFACE] and "flag" in diags[0].message
+
+
+def test_load_failure_attributed_to_generated_operator(churn_csv):
+    """模块级加载失败（如继承顺序导致的 MRO 冲突）要标明算子，工作流才能交给定向修复。"""
+    gen = _gen("Bad", "        return X.copy()")
+    # BaseEstimator 排在 Operator（继承自 BaseEstimator）之前，Python 无法确定 MRO，加载即失败
+    bad = gen.source.replace("class Bad(TransformerMixin, Operator)", "class Bad(BaseEstimator, TransformerMixin, Operator)")
+    gen = gen.model_copy(update={"source": bad.replace("from sklearn.base import TransformerMixin",
+                                                       "from sklearn.base import BaseEstimator, TransformerMixin")})
+    report = Verifier(None).verify(_plan(_synth_step(gen)), _spec(), str(churn_csv), {"Bad": gen})
+    diag = report.diagnostics[0]
+    assert diag.code == DiagnosticCode.RUNTIME_ERROR and "加载生成算子失败" in diag.message
+    assert diag.operator == gen.key

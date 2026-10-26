@@ -1,0 +1,489 @@
+[
+  {
+    "round": 1,
+    "arms": {
+      "full": {
+        "selected": [
+          "lgbm_with_feature_engineering",
+          "logreg_interpretable_tuned"
+        ],
+        "candidates": [
+          {
+            "plan": "lgbm_recall_tuned",
+            "chain": "生成:TotalChargesCleaner → MissingValueImputer → 生成:IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel",
+            "prior": 0.7255,
+            "evidence": {
+              "TotalChargesCleaner": "0.712（本次 1 条）",
+              "MissingValueImputer@1": "0.715（KG 3 条、本次 1 条）",
+              "IdColumnDropper": "0.712（本次 1 条）",
+              "OneHotCategoricalEncoder@1": "0.715（KG 3 条、本次 1 条）",
+              "LightGBMModel@1": "0.741（KG 1 条、本次 1 条）"
+            },
+            "observations": {
+              "*TotalChargesCleaner": [
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "MissingValueImputer@1": [
+                {
+                  "id": "ValidationRun:e11ba947",
+                  "metric": "recall",
+                  "value": 0.71,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "id": "ValidationRun:e0d43fa3",
+                  "metric": "recall",
+                  "value": 0.66,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "id": "ValidationRun:a7f163bc",
+                  "metric": "recall",
+                  "value": 0.78,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "*IdColumnDropper": [
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "OneHotCategoricalEncoder@1": [
+                {
+                  "id": "ValidationRun:e11ba947",
+                  "metric": "recall",
+                  "value": 0.71,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "id": "ValidationRun:e0d43fa3",
+                  "metric": "recall",
+                  "value": 0.66,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "id": "ValidationRun:a7f163bc",
+                  "metric": "recall",
+                  "value": 0.78,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "LightGBMModel@1": [
+                {
+                  "id": "ValidationRun:f6e4284c",
+                  "metric": "recall",
+                  "value": 0.8,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ]
+            },
+            "selected": false,
+            "reason": "先验第 3，超出 beam 宽度 2，剪枝"
+          },
+          {
+            "plan": "lgbm_with_feature_engineering",
+            "chain": "生成:TotalChargesCleaner → 生成:ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → LightGBMModel",
+            "prior": 0.7419,
+            "evidence": {
+              "TotalChargesCleaner": "0.712（本次 1 条）",
+              "ChargeRatioFeatureGenerator": "0.800（KG 1 条）",
+              "OneHotCategoricalEncoder@1": "0.715（KG 3 条、本次 1 条）",
+              "LightGBMModel@1": "0.741（KG 1 条、本次 1 条）"
+            },
+            "observations": {
+              "*TotalChargesCleaner": [
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "*ChargeRatioFeatureGenerator": [
+                {
+                  "id": "ValidationRun:f6e4284c",
+                  "metric": "recall",
+                  "value": 0.8,
+                  "passed": true,
+                  "source": "kg"
+                }
+              ],
+              "OneHotCategoricalEncoder@1": [
+                {
+                  "id": "ValidationRun:e11ba947",
+                  "metric": "recall",
+                  "value": 0.71,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "id": "ValidationRun:e0d43fa3",
+                  "metric": "recall",
+                  "value": 0.66,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "id": "ValidationRun:a7f163bc",
+                  "metric": "recall",
+                  "value": 0.78,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "LightGBMModel@1": [
+                {
+                  "id": "ValidationRun:f6e4284c",
+                  "metric": "recall",
+                  "value": 0.8,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ]
+            },
+            "selected": true,
+            "reason": "先验第 1，进入验证"
+          },
+          {
+            "plan": "rf_recall_optimized",
+            "chain": "MissingValueImputer → OneHotCategoricalEncoder → RandomForestModel",
+            "prior": 0.7239,
+            "evidence": {
+              "MissingValueImputer@1": "0.715（KG 3 条、本次 1 条）",
+              "OneHotCategoricalEncoder@1": "0.715（KG 3 条、本次 1 条）",
+              "RandomForestModel@1": "0.730（KG 1 条）"
+            },
+            "observations": {
+              "MissingValueImputer@1": [
+                {
+                  "id": "ValidationRun:e11ba947",
+                  "metric": "recall",
+                  "value": 0.71,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "id": "ValidationRun:e0d43fa3",
+                  "metric": "recall",
+                  "value": 0.66,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "id": "ValidationRun:a7f163bc",
+                  "metric": "recall",
+                  "value": 0.78,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "OneHotCategoricalEncoder@1": [
+                {
+                  "id": "ValidationRun:e11ba947",
+                  "metric": "recall",
+                  "value": 0.71,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "id": "ValidationRun:e0d43fa3",
+                  "metric": "recall",
+                  "value": 0.66,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "id": "ValidationRun:a7f163bc",
+                  "metric": "recall",
+                  "value": 0.78,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "RandomForestModel@1": [
+                {
+                  "id": "ValidationRun:e0d43fa3",
+                  "metric": "recall",
+                  "value": 0.66,
+                  "passed": true,
+                  "source": "kg"
+                }
+              ]
+            },
+            "selected": false,
+            "reason": "先验第 4，超出 beam 宽度 2，剪枝"
+          },
+          {
+            "plan": "logreg_interpretable_tuned",
+            "chain": "MissingValueImputer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel",
+            "prior": 0.7416,
+            "evidence": {
+              "MissingValueImputer@1": "0.715（KG 3 条、本次 1 条）",
+              "OneHotCategoricalEncoder@1": "0.715（KG 3 条、本次 1 条）",
+              "StandardFeatureScaler@1": "0.755（KG 1 条）",
+              "LogisticRegressionModel@1": "0.755（KG 1 条）"
+            },
+            "observations": {
+              "MissingValueImputer@1": [
+                {
+                  "id": "ValidationRun:e11ba947",
+                  "metric": "recall",
+                  "value": 0.71,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "id": "ValidationRun:e0d43fa3",
+                  "metric": "recall",
+                  "value": 0.66,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "id": "ValidationRun:a7f163bc",
+                  "metric": "recall",
+                  "value": 0.78,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "OneHotCategoricalEncoder@1": [
+                {
+                  "id": "ValidationRun:e11ba947",
+                  "metric": "recall",
+                  "value": 0.71,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "id": "ValidationRun:e0d43fa3",
+                  "metric": "recall",
+                  "value": 0.66,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "id": "ValidationRun:a7f163bc",
+                  "metric": "recall",
+                  "value": 0.78,
+                  "passed": true,
+                  "source": "kg"
+                },
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "StandardFeatureScaler@1": [
+                {
+                  "id": "ValidationRun:e11ba947",
+                  "metric": "recall",
+                  "value": 0.71,
+                  "passed": true,
+                  "source": "kg"
+                }
+              ],
+              "LogisticRegressionModel@1": [
+                {
+                  "id": "ValidationRun:e11ba947",
+                  "metric": "recall",
+                  "value": 0.71,
+                  "passed": true,
+                  "source": "kg"
+                }
+              ]
+            },
+            "selected": true,
+            "reason": "先验第 2，进入验证"
+          }
+        ]
+      },
+      "without_history": {
+        "selected": [
+          "logreg_interpretable_tuned",
+          "rf_recall_optimized"
+        ],
+        "candidates": [
+          {
+            "plan": "lgbm_recall_tuned",
+            "chain": "生成:TotalChargesCleaner → MissingValueImputer → 生成:IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel",
+            "prior": 0.7122,
+            "evidence": {
+              "TotalChargesCleaner": "0.712（本次 1 条）",
+              "MissingValueImputer@1": "0.712（本次 1 条）",
+              "IdColumnDropper": "0.712（本次 1 条）",
+              "OneHotCategoricalEncoder@1": "0.712（本次 1 条）",
+              "LightGBMModel@1": "0.712（本次 1 条）"
+            },
+            "observations": {
+              "*TotalChargesCleaner": [
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "MissingValueImputer@1": [
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "*IdColumnDropper": [
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "OneHotCategoricalEncoder@1": [
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "LightGBMModel@1": [
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ]
+            },
+            "selected": false,
+            "reason": "先验第 4，超出 beam 宽度 2，剪枝"
+          },
+          {
+            "plan": "lgbm_with_feature_engineering",
+            "chain": "生成:TotalChargesCleaner → 生成:ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → LightGBMModel",
+            "prior": 0.7268,
+            "evidence": {
+              "TotalChargesCleaner": "0.712（本次 1 条）",
+              "ChargeRatioFeatureGenerator": "0.800（无记录，按阈值）",
+              "OneHotCategoricalEncoder@1": "0.712（本次 1 条）",
+              "LightGBMModel@1": "0.712（本次 1 条）"
+            },
+            "observations": {
+              "*TotalChargesCleaner": [
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "*ChargeRatioFeatureGenerator": [],
+              "OneHotCategoricalEncoder@1": [
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "LightGBMModel@1": [
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ]
+            },
+            "selected": false,
+            "reason": "先验第 3，超出 beam 宽度 2，剪枝"
+          },
+          {
+            "plan": "rf_recall_optimized",
+            "chain": "MissingValueImputer → OneHotCategoricalEncoder → RandomForestModel",
+            "prior": 0.7649,
+            "evidence": {
+              "MissingValueImputer@1": "0.712（本次 1 条）",
+              "OneHotCategoricalEncoder@1": "0.712（本次 1 条）",
+              "RandomForestModel@1": "0.800（无记录，按阈值）"
+            },
+            "observations": {
+              "MissingValueImputer@1": [
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "OneHotCategoricalEncoder@1": [
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "RandomForestModel@1": []
+            },
+            "selected": true,
+            "reason": "先验第 2，进入验证"
+          },
+          {
+            "plan": "logreg_interpretable_tuned",
+            "chain": "MissingValueImputer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel",
+            "prior": 0.7707,
+            "evidence": {
+              "MissingValueImputer@1": "0.712（本次 1 条）",
+              "OneHotCategoricalEncoder@1": "0.712（本次 1 条）",
+              "StandardFeatureScaler@1": "0.800（无记录，按阈值）",
+              "LogisticRegressionModel@1": "0.800（无记录，按阈值）"
+            },
+            "observations": {
+              "MissingValueImputer@1": [
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "OneHotCategoricalEncoder@1": [
+                {
+                  "source": "current_run",
+                  "value": 0.6243
+                }
+              ],
+              "StandardFeatureScaler@1": [],
+              "LogisticRegressionModel@1": []
+            },
+            "selected": true,
+            "reason": "先验第 1，进入验证"
+          }
+        ]
+      }
+    },
+    "selection_changed": true
+  }
+]

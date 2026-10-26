@@ -1,0 +1,3050 @@
+[
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.8,
+    "name": "kg_full_1",
+    "group": "kg",
+    "trial": 1,
+    "knowledge_mode": "full",
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75",
+    "status": "failed",
+    "repairs": 0,
+    "execution_error": false,
+    "original_diagnostic_resolved": 0,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [],
+    "reused": [
+      "LightGBMModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1"
+    ],
+    "best_reused": [
+      "LightGBMModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1"
+    ],
+    "best_plan": "lightgbm_churn_prediction",
+    "metrics": {
+      "recall": 0.603,
+      "roc_auc": 0.7803,
+      "precision": 0.4944,
+      "f1": 0.543,
+      "recall_at_20": 0.4176
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "TotalChargesCleaner",
+          "kind": "imputer",
+          "purpose": "将字符串类型的数值列转换为浮点型，处理空白值并填充缺失值",
+          "inputs": "包含 total_charges 的 DataFrame",
+          "outputs": "数值型 total_charges 列的 DataFrame",
+          "reference": "TotalChargesCleaner@1"
+        },
+        "params": {},
+        "rationale": "根据 Lesson:69d51358，需先处理 total_charges 列的脏数据，防止类型转换错误。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@1"
+        ]
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "处理 monthly_charges 等其他列的缺失值。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "IdColumnDropper",
+          "kind": "feature",
+          "purpose": "剔除客户 ID 列以防止维度爆炸和过拟合",
+          "inputs": "包含 customer_id 的 DataFrame",
+          "outputs": "剔除 id 列后的 DataFrame",
+          "reference": "IdColumnDropper@1"
+        },
+        "params": {},
+        "rationale": "根据 Lesson:88299a38，建模前必须剔除 ID 列。",
+        "evidence_ids": [
+          "Operator:IdColumnDropper@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {
+          "max_categories": 10
+        },
+        "rationale": "对类别特征进行编码，限制类别数量以控制特征维度。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LightGBMModel@1",
+        "synth_spec": null,
+        "params": {
+          "class_weight": "balanced",
+          "n_estimators": 500,
+          "learning_rate": 0.05
+        },
+        "rationale": "使用 LightGBM 并配合 class_weight='balanced' 优化召回率，满足召回优先的业务目标，参考 Lesson:9e9e77d6。",
+        "evidence_ids": [
+          "Operator:LightGBMModel@1",
+          "ValidationRun:f6e4284c"
+        ]
+      }
+    ],
+    "calls": 3,
+    "remote_calls": 3,
+    "seconds": 53.56999999999999,
+    "tokens": 15313,
+    "recorded_llm_seconds": 45.5660295188427,
+    "search_rounds": 0,
+    "log": [
+      "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+      "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+      "[PLAN] 候选方案：['lightgbm_churn_prediction(*TotalChargesCleaner → MissingValueImputer → *IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel)']",
+      "[PLAN] 完成，用时 5.8s → BUILD",
+      "[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将字符串类型的数值列转换为浮点型，处理空白值并填充缺失值",
+      "[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：剔除客户 ID 列以防止维度爆炸和过拟合",
+      "[BUILD] 完成，用时 39.9s → VERIFY",
+      "[VERIFY] lightgbm_churn_prediction：未通过，recall=0.6030；M_THRESHOLD recall = 0.6030 低于阈值 0.75",
+      "[VERIFY] 完成，用时 7.8s → ROUTE",
+      "[ROUTE] 没有方案通过验证",
+      "[ROUTE] 完成，用时 0.0s → CURATE",
+      "[CURATE] 写入 KG：1 条 ValidationRun；注册新算子 []；新增经验 0 条",
+      "[CURATE] 完成，用时 0.0s → FAILED"
+    ],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.8,
+    "name": "kg_no_lessons_1",
+    "group": "kg",
+    "trial": 1,
+    "knowledge_mode": "no_lessons",
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75",
+    "status": "failed",
+    "repairs": 0,
+    "execution_error": false,
+    "original_diagnostic_resolved": 0,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [],
+    "reused": [
+      "LightGBMModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1"
+    ],
+    "best_reused": [
+      "LightGBMModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1"
+    ],
+    "best_plan": "lgbm_churn_prediction_pipeline",
+    "metrics": {
+      "recall": 0.603,
+      "roc_auc": 0.7803,
+      "precision": 0.4944,
+      "f1": 0.543,
+      "recall_at_20": 0.4176
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "TotalChargesCleaner",
+          "kind": "imputer",
+          "purpose": "将包含非数值字符的total_charges列清理并转换为浮点型，处理数据脏值问题",
+          "inputs": "包含脏字符串数据的DataFrame",
+          "outputs": "清理后的数值型DataFrame",
+          "reference": "TotalChargesCleaner@1"
+        },
+        "params": {},
+        "rationale": "任务数据包含字符串类型的数值列，必须先进行预处理以转化为数值型供后续模型使用。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@1"
+        ]
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "处理剩余数值特征和类别特征的缺失值，保证数据完整性。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "IdColumnDropper",
+          "kind": "feature",
+          "purpose": "删除客户ID列，防止模型过拟合噪声",
+          "inputs": "原始数据",
+          "outputs": "删除ID列后的数据",
+          "reference": "IdColumnDropper@1"
+        },
+        "params": {},
+        "rationale": "客户ID无预测价值，需剔除避免模型记忆化。",
+        "evidence_ids": [
+          "Operator:IdColumnDropper@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "对类别特征进行One-Hot编码，满足模型输入要求。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LightGBMModel@1",
+        "synth_spec": null,
+        "params": {
+          "class_weight": "balanced",
+          "learning_rate": 0.05,
+          "n_estimators": 500,
+          "num_leaves": 31,
+          "random_state": 42
+        },
+        "rationale": "LightGBM在表格数据且不平衡的情况下表现优异，通过设置class_weight=balanced优先保证召回率达到0.75的目标。",
+        "evidence_ids": [
+          "Operator:LightGBMModel@1",
+          "ValidationRun:f6e4284c"
+        ]
+      }
+    ],
+    "calls": 3,
+    "remote_calls": 3,
+    "seconds": 19.27,
+    "tokens": 13313,
+    "recorded_llm_seconds": 9.954278722405434,
+    "search_rounds": 0,
+    "log": [
+      "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+      "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+      "[PLAN] 候选方案：['lgbm_churn_prediction_pipeline(*TotalChargesCleaner → MissingValueImputer → *IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel)']",
+      "[PLAN] 完成，用时 4.9s → BUILD",
+      "[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将包含非数值字符的total_charges列清理并转换为浮点型，处理数据脏值问题",
+      "[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：删除客户ID列，防止模型过拟合噪声",
+      "[BUILD] 完成，用时 5.2s → VERIFY",
+      "[VERIFY] lgbm_churn_prediction_pipeline：未通过，recall=0.6030；M_THRESHOLD recall = 0.6030 低于阈值 0.75",
+      "[VERIFY] 完成，用时 9.2s → ROUTE",
+      "[ROUTE] 没有方案通过验证",
+      "[ROUTE] 完成，用时 0.0s → CURATE",
+      "[CURATE] 写入 KG：1 条 ValidationRun；注册新算子 []；新增经验 0 条",
+      "[CURATE] 完成，用时 0.0s → FAILED"
+    ],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.8,
+    "name": "kg_catalog_1",
+    "group": "kg",
+    "trial": 1,
+    "knowledge_mode": "catalog",
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75",
+    "status": "failed",
+    "repairs": 1,
+    "execution_error": false,
+    "original_diagnostic_resolved": 1,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [
+      "Lesson:298ee062"
+    ],
+    "reused": [
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1"
+    ],
+    "best_reused": [
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1"
+    ],
+    "best_plan": "rf_churn_pipeline",
+    "metrics": {
+      "recall": 0.4949,
+      "roc_auc": 0.694,
+      "precision": 0.4041,
+      "f1": 0.4447,
+      "recall_at_20": 0.3256
+    },
+    "selected_steps": [
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "StringNumericCleaner",
+          "kind": "feature",
+          "purpose": "将字符串格式的数值列转换为浮点数，并处理非法字符",
+          "inputs": "包含脏数据字符串列的 DataFrame",
+          "outputs": "数值类型列的 DataFrame",
+          "reference": null
+        },
+        "params": {},
+        "rationale": "处理 total_charges 列中存在的 string_typed_numeric 问题，保证后续模型输入正确。",
+        "evidence_ids": []
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "对 monthly_charges 和 payment_method 等存在的缺失值进行中位数/众数填补。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {
+          "max_categories": 10
+        },
+        "rationale": "将类别型特征转换为数值表示，以适应模型输入需求。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "RandomForestModel@1",
+        "synth_spec": null,
+        "params": {
+          "class_weight": "balanced",
+          "n_estimators": 500
+        },
+        "rationale": "随机森林在处理不平衡数据方面表现稳健，且通过特征重要性提供可解释性，满足召回率要求。",
+        "evidence_ids": [
+          "Operator:RandomForestModel@1"
+        ]
+      }
+    ],
+    "calls": 4,
+    "remote_calls": 4,
+    "seconds": 38.61,
+    "tokens": 10763,
+    "recorded_llm_seconds": 13.419094637036324,
+    "search_rounds": 0,
+    "log": [
+      "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+      "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+      "[PLAN] 候选方案：['rf_churn_pipeline(*StringNumericCleaner → MissingValueImputer → OneHotCategoricalEncoder → RandomForestModel)']",
+      "[PLAN] 完成，用时 4.3s → BUILD",
+      "[BUILD] 生成算子 StringNumericCleaner@1：将字符串格式的数值列转换为浮点数，并处理非法字符",
+      "[BUILD] 完成，用时 3.1s → VERIFY",
+      "[VERIFY] rf_churn_pipeline：未通过，recall=nan；E_NAN 输出引入了新的 NaN/Inf",
+      "[VERIFY] 完成，用时 1.6s → ROUTE",
+      "[ROUTE] 完成，用时 0.0s → REPAIR",
+      "[REPAIR] 修复 StringNumericCleaner@1 第 1 轮：E_NAN 输出引入了新的 NaN/Inf",
+      "[REPAIR] 完成，用时 3.4s → VERIFY",
+      "[VERIFY] rf_churn_pipeline：未通过，recall=0.4949；M_THRESHOLD recall = 0.4949 低于阈值 0.75",
+      "[VERIFY] 完成，用时 23.4s → ROUTE",
+      "[ROUTE] 没有方案通过验证",
+      "[ROUTE] 完成，用时 0.0s → CURATE",
+      "[CURATE] 写入 KG：1 条 ValidationRun；注册新算子 []；新增经验 1 条",
+      "[CURATE] 完成，用时 2.7s → FAILED"
+    ],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.8,
+    "name": "kg_full_2",
+    "group": "kg",
+    "trial": 2,
+    "knowledge_mode": "full",
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75",
+    "status": "failed",
+    "repairs": 0,
+    "execution_error": false,
+    "original_diagnostic_resolved": 0,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [],
+    "reused": [
+      "LightGBMModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1"
+    ],
+    "best_reused": [
+      "LightGBMModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1"
+    ],
+    "best_plan": "lightgbm_churn_prediction",
+    "metrics": {
+      "recall": 0.603,
+      "roc_auc": 0.7803,
+      "precision": 0.4944,
+      "f1": 0.543,
+      "recall_at_20": 0.4176
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "TotalChargesCleaner",
+          "kind": "imputer",
+          "purpose": "将字符串类型的数值列转换为浮点型，处理空白值并填充缺失值",
+          "inputs": "包含 total_charges 的 DataFrame",
+          "outputs": "数值型 total_charges 列的 DataFrame",
+          "reference": "TotalChargesCleaner@1"
+        },
+        "params": {},
+        "rationale": "根据 Lesson:69d51358，需先处理 total_charges 列的脏数据，防止类型转换错误。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@1"
+        ]
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "处理 monthly_charges 等其他列的缺失值。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "IdColumnDropper",
+          "kind": "feature",
+          "purpose": "剔除客户 ID 列以防止维度爆炸和过拟合",
+          "inputs": "包含 customer_id 的 DataFrame",
+          "outputs": "剔除 id 列后的 DataFrame",
+          "reference": "IdColumnDropper@1"
+        },
+        "params": {},
+        "rationale": "根据 Lesson:88299a38，建模前必须剔除 ID 列。",
+        "evidence_ids": [
+          "Operator:IdColumnDropper@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {
+          "max_categories": 10
+        },
+        "rationale": "对类别特征进行编码，限制类别数量以控制特征维度。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LightGBMModel@1",
+        "synth_spec": null,
+        "params": {
+          "class_weight": "balanced",
+          "n_estimators": 500,
+          "learning_rate": 0.05
+        },
+        "rationale": "使用 LightGBM 并配合 class_weight='balanced' 优化召回率，满足召回优先的业务目标，参考 Lesson:9e9e77d6。",
+        "evidence_ids": [
+          "Operator:LightGBMModel@1",
+          "ValidationRun:f6e4284c"
+        ]
+      }
+    ],
+    "calls": 3,
+    "remote_calls": 3,
+    "seconds": 20.84,
+    "tokens": 15313,
+    "recorded_llm_seconds": 11.450154080986977,
+    "search_rounds": 0,
+    "log": [
+      "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+      "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+      "[PLAN] 候选方案：['lightgbm_churn_prediction(*TotalChargesCleaner → MissingValueImputer → *IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel)']",
+      "[PLAN] 完成，用时 6.5s → BUILD",
+      "[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将字符串类型的数值列转换为浮点型，处理空白值并填充缺失值",
+      "[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：剔除客户 ID 列以防止维度爆炸和过拟合",
+      "[BUILD] 完成，用时 5.2s → VERIFY",
+      "[VERIFY] lightgbm_churn_prediction：未通过，recall=0.6030；M_THRESHOLD recall = 0.6030 低于阈值 0.75",
+      "[VERIFY] 完成，用时 9.2s → ROUTE",
+      "[ROUTE] 没有方案通过验证",
+      "[ROUTE] 完成，用时 0.0s → CURATE",
+      "[CURATE] 写入 KG：1 条 ValidationRun；注册新算子 []；新增经验 0 条",
+      "[CURATE] 完成，用时 0.0s → FAILED"
+    ],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.8,
+    "name": "kg_no_lessons_2",
+    "group": "kg",
+    "trial": 2,
+    "knowledge_mode": "no_lessons",
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75",
+    "status": "failed",
+    "repairs": 0,
+    "execution_error": false,
+    "original_diagnostic_resolved": 0,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [],
+    "reused": [
+      "LightGBMModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1"
+    ],
+    "best_reused": [
+      "LightGBMModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1"
+    ],
+    "best_plan": "lgbm_churn_prediction_pipeline",
+    "metrics": {
+      "recall": 0.603,
+      "roc_auc": 0.7803,
+      "precision": 0.4944,
+      "f1": 0.543,
+      "recall_at_20": 0.4176
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "TotalChargesCleaner",
+          "kind": "imputer",
+          "purpose": "将包含非数值字符的total_charges列清理并转换为浮点型，处理数据脏值问题",
+          "inputs": "包含脏字符串数据的DataFrame",
+          "outputs": "清理后的数值型DataFrame",
+          "reference": "TotalChargesCleaner@1"
+        },
+        "params": {},
+        "rationale": "任务数据包含字符串类型的数值列，必须先进行预处理以转化为数值型供后续模型使用。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@1"
+        ]
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "处理剩余数值特征和类别特征的缺失值，保证数据完整性。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "IdColumnDropper",
+          "kind": "feature",
+          "purpose": "删除客户ID列，防止模型过拟合噪声",
+          "inputs": "原始数据",
+          "outputs": "删除ID列后的数据",
+          "reference": "IdColumnDropper@1"
+        },
+        "params": {},
+        "rationale": "客户ID无预测价值，需剔除避免模型记忆化。",
+        "evidence_ids": [
+          "Operator:IdColumnDropper@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "对类别特征进行One-Hot编码，满足模型输入要求。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LightGBMModel@1",
+        "synth_spec": null,
+        "params": {
+          "class_weight": "balanced",
+          "learning_rate": 0.05,
+          "n_estimators": 500,
+          "num_leaves": 31,
+          "random_state": 42
+        },
+        "rationale": "LightGBM在表格数据且不平衡的情况下表现优异，通过设置class_weight=balanced优先保证召回率达到0.75的目标。",
+        "evidence_ids": [
+          "Operator:LightGBMModel@1",
+          "ValidationRun:f6e4284c"
+        ]
+      }
+    ],
+    "calls": 3,
+    "remote_calls": 3,
+    "seconds": 19.450000000000003,
+    "tokens": 13313,
+    "recorded_llm_seconds": 9.954284466803074,
+    "search_rounds": 0,
+    "log": [
+      "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+      "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+      "[PLAN] 候选方案：['lgbm_churn_prediction_pipeline(*TotalChargesCleaner → MissingValueImputer → *IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel)']",
+      "[PLAN] 完成，用时 4.8s → BUILD",
+      "[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将包含非数值字符的total_charges列清理并转换为浮点型，处理数据脏值问题",
+      "[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：删除客户ID列，防止模型过拟合噪声",
+      "[BUILD] 完成，用时 5.4s → VERIFY",
+      "[VERIFY] lgbm_churn_prediction_pipeline：未通过，recall=0.6030；M_THRESHOLD recall = 0.6030 低于阈值 0.75",
+      "[VERIFY] 完成，用时 9.3s → ROUTE",
+      "[ROUTE] 没有方案通过验证",
+      "[ROUTE] 完成，用时 0.0s → CURATE",
+      "[CURATE] 写入 KG：1 条 ValidationRun；注册新算子 []；新增经验 0 条",
+      "[CURATE] 完成，用时 0.0s → FAILED"
+    ],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.8,
+    "name": "kg_catalog_2",
+    "group": "kg",
+    "trial": 2,
+    "knowledge_mode": "catalog",
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75",
+    "status": "failed",
+    "repairs": 1,
+    "execution_error": false,
+    "original_diagnostic_resolved": 1,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [
+      "Lesson:2bef5526"
+    ],
+    "reused": [
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1"
+    ],
+    "best_reused": [
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1"
+    ],
+    "best_plan": "random_forest_churn_prediction",
+    "metrics": {
+      "recall": 0.5969,
+      "roc_auc": 0.7869,
+      "precision": 0.5175,
+      "f1": 0.5541,
+      "recall_at_20": 0.4314
+    },
+    "selected_steps": [
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "DataPreprocessor",
+          "kind": "feature",
+          "purpose": "删除无关的客户标识列，并将字符串形式的数值列转换为浮点数以供模型处理。",
+          "inputs": "包含 customer_id 和 string_typed_numeric 的原始数据",
+          "outputs": "移除标识列并修正数据类型的 DataFrame",
+          "reference": null
+        },
+        "params": {},
+        "rationale": "需要处理客户ID列带来的干扰以及 total_charges 列的字符串格式问题，这是数据预处理的第一步。",
+        "evidence_ids": []
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "针对 payment_method 和 monthly_charges 等字段的缺失值进行中位数/众数填补。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "将类别型特征转换为数值型以供模型读取，利用其对低基数特征的处理能力。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "RandomForestModel@1",
+        "synth_spec": null,
+        "params": {
+          "class_weight": "balanced",
+          "n_estimators": 300
+        },
+        "rationale": "随机森林在处理表格数据时稳健性好，且可通过特征重要性满足可解释性要求；class_weight='balanced' 针对不平衡数据进行优化，以提升召回率。",
+        "evidence_ids": [
+          "Operator:RandomForestModel@1"
+        ]
+      }
+    ],
+    "calls": 4,
+    "remote_calls": 4,
+    "seconds": 33.37,
+    "tokens": 11822,
+    "recorded_llm_seconds": 16.24964126199484,
+    "search_rounds": 0,
+    "log": [
+      "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+      "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+      "[PLAN] 候选方案：['random_forest_churn_prediction(*DataPreprocessor → MissingValueImputer → OneHotCategoricalEncoder → RandomForestModel)']",
+      "[PLAN] 完成，用时 5.4s → BUILD",
+      "[BUILD] 生成算子 DataPreprocessor@1：删除无关的客户标识列，并将字符串形式的数值列转换为浮点数以供模型处理。",
+      "[BUILD] 完成，用时 2.8s → VERIFY",
+      "[VERIFY] random_forest_churn_prediction：未通过，recall=nan；E_RUNTIME TypeError: Cannot interpret '<StringDtype(na_value=nan)>' as a data type (at issubdtype:534)",
+      "[VERIFY] 完成，用时 1.6s → ROUTE",
+      "[ROUTE] 完成，用时 0.0s → REPAIR",
+      "[REPAIR] 修复 DataPreprocessor@1 第 1 轮：E_RUNTIME TypeError: Cannot interpret '<StringDtype(na_value=nan)>' as a data type (at iss",
+      "[REPAIR] 完成，用时 2.8s → VERIFY",
+      "[VERIFY] random_forest_churn_prediction：未通过，recall=0.5969；M_THRESHOLD recall = 0.5969 低于阈值 0.75",
+      "[VERIFY] 完成，用时 15.3s → ROUTE",
+      "[ROUTE] 没有方案通过验证",
+      "[ROUTE] 完成，用时 0.0s → CURATE",
+      "[CURATE] 写入 KG：1 条 ValidationRun；注册新算子 []；新增经验 1 条",
+      "[CURATE] 完成，用时 5.5s → FAILED"
+    ],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.8,
+    "name": "kg_full_3",
+    "group": "kg",
+    "trial": 3,
+    "knowledge_mode": "full",
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75",
+    "status": "failed",
+    "repairs": 0,
+    "execution_error": false,
+    "original_diagnostic_resolved": 0,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [],
+    "reused": [
+      "LightGBMModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1"
+    ],
+    "best_reused": [
+      "LightGBMModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1"
+    ],
+    "best_plan": "lightgbm_churn_prediction",
+    "metrics": {
+      "recall": 0.603,
+      "roc_auc": 0.7803,
+      "precision": 0.4944,
+      "f1": 0.543,
+      "recall_at_20": 0.4176
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "TotalChargesCleaner",
+          "kind": "imputer",
+          "purpose": "将字符串类型的数值列转换为浮点型，处理空白值并填充缺失值",
+          "inputs": "包含 total_charges 的 DataFrame",
+          "outputs": "数值型 total_charges 列的 DataFrame",
+          "reference": "TotalChargesCleaner@1"
+        },
+        "params": {},
+        "rationale": "根据 Lesson:69d51358，需先处理 total_charges 列的脏数据，防止类型转换错误。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@1"
+        ]
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "处理 monthly_charges 等其他列的缺失值。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "IdColumnDropper",
+          "kind": "feature",
+          "purpose": "剔除客户 ID 列以防止维度爆炸和过拟合",
+          "inputs": "包含 customer_id 的 DataFrame",
+          "outputs": "剔除 id 列后的 DataFrame",
+          "reference": "IdColumnDropper@1"
+        },
+        "params": {},
+        "rationale": "根据 Lesson:88299a38，建模前必须剔除 ID 列。",
+        "evidence_ids": [
+          "Operator:IdColumnDropper@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {
+          "max_categories": 10
+        },
+        "rationale": "对类别特征进行编码，限制类别数量以控制特征维度。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LightGBMModel@1",
+        "synth_spec": null,
+        "params": {
+          "class_weight": "balanced",
+          "n_estimators": 500,
+          "learning_rate": 0.05
+        },
+        "rationale": "使用 LightGBM 并配合 class_weight='balanced' 优化召回率，满足召回优先的业务目标，参考 Lesson:9e9e77d6。",
+        "evidence_ids": [
+          "Operator:LightGBMModel@1",
+          "ValidationRun:f6e4284c"
+        ]
+      }
+    ],
+    "calls": 3,
+    "remote_calls": 3,
+    "seconds": 25.52,
+    "tokens": 15313,
+    "recorded_llm_seconds": 17.315693251788616,
+    "search_rounds": 0,
+    "log": [
+      "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+      "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+      "[PLAN] 候选方案：['lightgbm_churn_prediction(*TotalChargesCleaner → MissingValueImputer → *IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel)']",
+      "[PLAN] 完成，用时 6.6s → BUILD",
+      "[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将字符串类型的数值列转换为浮点型，处理空白值并填充缺失值",
+      "[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：剔除客户 ID 列以防止维度爆炸和过拟合",
+      "[BUILD] 完成，用时 10.9s → VERIFY",
+      "[VERIFY] lightgbm_churn_prediction：未通过，recall=0.6030；M_THRESHOLD recall = 0.6030 低于阈值 0.75",
+      "[VERIFY] 完成，用时 8.0s → ROUTE",
+      "[ROUTE] 没有方案通过验证",
+      "[ROUTE] 完成，用时 0.0s → CURATE",
+      "[CURATE] 写入 KG：1 条 ValidationRun；注册新算子 []；新增经验 0 条",
+      "[CURATE] 完成，用时 0.0s → FAILED"
+    ],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.8,
+    "name": "kg_no_lessons_3",
+    "group": "kg",
+    "trial": 3,
+    "knowledge_mode": "no_lessons",
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75",
+    "status": "failed",
+    "repairs": 0,
+    "execution_error": false,
+    "original_diagnostic_resolved": 0,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [],
+    "reused": [
+      "LightGBMModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1"
+    ],
+    "best_reused": [
+      "LightGBMModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1"
+    ],
+    "best_plan": "lgbm_churn_prediction_pipeline",
+    "metrics": {
+      "recall": 0.603,
+      "roc_auc": 0.7803,
+      "precision": 0.4944,
+      "f1": 0.543,
+      "recall_at_20": 0.4176
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "TotalChargesCleaner",
+          "kind": "imputer",
+          "purpose": "将包含非数值字符的total_charges列清理并转换为浮点型，处理数据脏值问题",
+          "inputs": "包含脏字符串数据的DataFrame",
+          "outputs": "清理后的数值型DataFrame",
+          "reference": "TotalChargesCleaner@1"
+        },
+        "params": {},
+        "rationale": "任务数据包含字符串类型的数值列，必须先进行预处理以转化为数值型供后续模型使用。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@1"
+        ]
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "处理剩余数值特征和类别特征的缺失值，保证数据完整性。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "IdColumnDropper",
+          "kind": "feature",
+          "purpose": "删除客户ID列，防止模型过拟合噪声",
+          "inputs": "原始数据",
+          "outputs": "删除ID列后的数据",
+          "reference": "IdColumnDropper@1"
+        },
+        "params": {},
+        "rationale": "客户ID无预测价值，需剔除避免模型记忆化。",
+        "evidence_ids": [
+          "Operator:IdColumnDropper@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "对类别特征进行One-Hot编码，满足模型输入要求。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LightGBMModel@1",
+        "synth_spec": null,
+        "params": {
+          "class_weight": "balanced",
+          "learning_rate": 0.05,
+          "n_estimators": 500,
+          "num_leaves": 31,
+          "random_state": 42
+        },
+        "rationale": "LightGBM在表格数据且不平衡的情况下表现优异，通过设置class_weight=balanced优先保证召回率达到0.75的目标。",
+        "evidence_ids": [
+          "Operator:LightGBMModel@1",
+          "ValidationRun:f6e4284c"
+        ]
+      }
+    ],
+    "calls": 3,
+    "remote_calls": 3,
+    "seconds": 18.91,
+    "tokens": 13313,
+    "recorded_llm_seconds": 10.843590423464775,
+    "search_rounds": 0,
+    "log": [
+      "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+      "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+      "[PLAN] 候选方案：['lgbm_churn_prediction_pipeline(*TotalChargesCleaner → MissingValueImputer → *IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel)']",
+      "[PLAN] 完成，用时 5.3s → BUILD",
+      "[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将包含非数值字符的total_charges列清理并转换为浮点型，处理数据脏值问题",
+      "[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：删除客户ID列，防止模型过拟合噪声",
+      "[BUILD] 完成，用时 5.7s → VERIFY",
+      "[VERIFY] lgbm_churn_prediction_pipeline：未通过，recall=0.6030；M_THRESHOLD recall = 0.6030 低于阈值 0.75",
+      "[VERIFY] 完成，用时 7.9s → ROUTE",
+      "[ROUTE] 没有方案通过验证",
+      "[ROUTE] 完成，用时 0.0s → CURATE",
+      "[CURATE] 写入 KG：1 条 ValidationRun；注册新算子 []；新增经验 0 条",
+      "[CURATE] 完成，用时 0.0s → FAILED"
+    ],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.8,
+    "name": "kg_catalog_3",
+    "group": "kg",
+    "trial": 3,
+    "knowledge_mode": "catalog",
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75",
+    "status": "failed",
+    "repairs": 1,
+    "execution_error": false,
+    "original_diagnostic_resolved": 1,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [
+      "Lesson:298ee062"
+    ],
+    "reused": [
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1"
+    ],
+    "best_reused": [
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1"
+    ],
+    "best_plan": "rf_churn_pipeline",
+    "metrics": {
+      "recall": 0.4949,
+      "roc_auc": 0.694,
+      "precision": 0.4041,
+      "f1": 0.4447,
+      "recall_at_20": 0.3256
+    },
+    "selected_steps": [
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "StringNumericCleaner",
+          "kind": "feature",
+          "purpose": "将字符串格式的数值列转换为浮点数，并处理非法字符",
+          "inputs": "包含脏数据字符串列的 DataFrame",
+          "outputs": "数值类型列的 DataFrame",
+          "reference": null
+        },
+        "params": {},
+        "rationale": "处理 total_charges 列中存在的 string_typed_numeric 问题，保证后续模型输入正确。",
+        "evidence_ids": []
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "对 monthly_charges 和 payment_method 等存在的缺失值进行中位数/众数填补。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {
+          "max_categories": 10
+        },
+        "rationale": "将类别型特征转换为数值表示，以适应模型输入需求。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "RandomForestModel@1",
+        "synth_spec": null,
+        "params": {
+          "class_weight": "balanced",
+          "n_estimators": 500
+        },
+        "rationale": "随机森林在处理不平衡数据方面表现稳健，且通过特征重要性提供可解释性，满足召回率要求。",
+        "evidence_ids": [
+          "Operator:RandomForestModel@1"
+        ]
+      }
+    ],
+    "calls": 4,
+    "remote_calls": 4,
+    "seconds": 42.120000000000005,
+    "tokens": 10763,
+    "recorded_llm_seconds": 16.011581897735596,
+    "search_rounds": 0,
+    "log": [
+      "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+      "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+      "[PLAN] 候选方案：['rf_churn_pipeline(*StringNumericCleaner → MissingValueImputer → OneHotCategoricalEncoder → RandomForestModel)']",
+      "[PLAN] 完成，用时 5.9s → BUILD",
+      "[BUILD] 生成算子 StringNumericCleaner@1：将字符串格式的数值列转换为浮点数，并处理非法字符",
+      "[BUILD] 完成，用时 3.4s → VERIFY",
+      "[VERIFY] rf_churn_pipeline：未通过，recall=nan；E_NAN 输出引入了新的 NaN/Inf",
+      "[VERIFY] 完成，用时 1.7s → ROUTE",
+      "[ROUTE] 完成，用时 0.0s → REPAIR",
+      "[REPAIR] 修复 StringNumericCleaner@1 第 1 轮：E_NAN 输出引入了新的 NaN/Inf",
+      "[REPAIR] 完成，用时 3.1s → VERIFY",
+      "[VERIFY] rf_churn_pipeline：未通过，recall=0.4949；M_THRESHOLD recall = 0.4949 低于阈值 0.75",
+      "[VERIFY] 完成，用时 24.3s → ROUTE",
+      "[ROUTE] 没有方案通过验证",
+      "[ROUTE] 完成，用时 0.0s → CURATE",
+      "[CURATE] 写入 KG：1 条 ValidationRun；注册新算子 []；新增经验 1 条",
+      "[CURATE] 完成，用时 3.8s → FAILED"
+    ],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.8,
+    "name": "probe_1",
+    "group": "probe",
+    "trial": 1,
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；将 total_charges 的空白字符串转换并填补为合理数值。",
+    "status": "failed",
+    "repairs": 1,
+    "execution_error": false,
+    "original_diagnostic_resolved": 1,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [
+      "Lesson:cd3a1970"
+    ],
+    "reused": [
+      "LightGBMModel@1",
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_reused": [
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1"
+    ],
+    "best_plan": "random_forest_pipeline",
+    "metrics": {
+      "recall": 0.6775,
+      "roc_auc": 0.8008,
+      "precision": 0.501,
+      "f1": 0.5758,
+      "recall_at_20": 0.4495
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "TotalChargesCleaner",
+          "kind": "imputer",
+          "purpose": "清理脏数据",
+          "inputs": "DataFrame",
+          "outputs": "DataFrame",
+          "reference": "TotalChargesCleaner@1"
+        },
+        "params": {},
+        "rationale": "数据清洗第一步。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@1"
+        ]
+      },
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "ChargeRatioFeatureGenerator",
+          "kind": "feature",
+          "purpose": "生成消费趋势特征",
+          "inputs": "金额列和时长列",
+          "outputs": "比值特征",
+          "reference": "ChargeRatioFeatureGenerator@1"
+        },
+        "params": {},
+        "rationale": "通过领域知识构造特征提升模型感知能力。",
+        "evidence_ids": [
+          "Operator:ChargeRatioFeatureGenerator@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "编码。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "RandomForestModel@1",
+        "synth_spec": null,
+        "params": {
+          "n_estimators": 400,
+          "max_depth": 12,
+          "class_weight": "balanced"
+        },
+        "rationale": "利用随机森林非线性拟合能力，通过调整深度控制过拟合。",
+        "evidence_ids": [
+          "Operator:RandomForestModel@1",
+          "Lesson:57718714"
+        ]
+      }
+    ],
+    "calls": 7,
+    "remote_calls": 7,
+    "seconds": 106.60999999999999,
+    "tokens": 25316,
+    "recorded_llm_seconds": 75.86272935569286,
+    "search_rounds": 0,
+    "log": [
+      "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+      "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+      "[PLAN] 候选方案：['lgbm_pipeline(*TotalChargesCleaner → MissingValueImputer → *IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel)', 'logistic_interpretable_pipeline(*TotalChargesCleaner → *TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)', 'random_forest_pipeline(*TotalChargesCleaner → *ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → RandomForestModel)']",
+      "[PLAN] 完成，用时 22.2s → BUILD",
+      "[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将字符串类型的total_charges转换为数值，处理空白符并填补缺失值",
+      "[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：删除客户ID等标识列以避免编码后维度爆炸",
+      "[BUILD] 生成算子 TenureBucketizer@2（参考 TenureBucketizer@1）：对tenure进行分箱以提升线性模型可解释性",
+      "[BUILD] 生成算子 ChargeRatioFeatureGenerator@2（参考 ChargeRatioFeatureGenerator@1）：生成消费趋势特征",
+      "[BUILD] 完成，用时 48.8s → VERIFY",
+      "[VERIFY] lgbm_pipeline：未通过，recall=nan；E_INTERFACE meta.params 与 __init__ 默认值不一致：[\"id_cols: meta=['customer_id'], __init__=('customer_id',)\"]",
+      "[VERIFY] logistic_interpretable_pipeline：未通过，recall=nan；E_RUNTIME ValueError: Input X contains NaN.\nLogisticRegression does not accept missing values encoded as NaN natively. For supervised learning, you might want to consider sklearn.ensemble.HistGradientBoostingClassifier and Regressor which accept missing values encoded as NaNs natively. Alternatively, it is possible to pr (at _assert_all_finite_element_wise:186)",
+      "[VERIFY] random_forest_pipeline：未通过，recall=0.6775；M_THRESHOLD recall = 0.6775 低于阈值 0.75",
+      "[VERIFY] 完成，用时 23.3s → ROUTE",
+      "[ROUTE] 完成，用时 0.0s → REPAIR",
+      "[REPAIR] 修复 IdColumnDropper@2 第 1 轮：E_INTERFACE meta.params 与 __init__ 默认值不一致：[\"id_cols: meta=['customer_id'], __init__=('custom",
+      "[REPAIR] 完成，用时 2.8s → VERIFY",
+      "[VERIFY] lgbm_pipeline：未通过，recall=0.6544；M_THRESHOLD recall = 0.6544 低于阈值 0.75",
+      "[VERIFY] 完成，用时 7.3s → ROUTE",
+      "[ROUTE] 没有方案通过验证",
+      "[ROUTE] 完成，用时 0.0s → CURATE",
+      "[CURATE] 写入 KG：3 条 ValidationRun；注册新算子 []；新增经验 1 条",
+      "[CURATE] 完成，用时 2.2s → FAILED"
+    ],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.8,
+    "name": "probe_3",
+    "group": "probe",
+    "trial": 3,
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；增加累计费用与月费的比值特征，正确处理缺失和零分母。",
+    "status": "failed",
+    "repairs": 1,
+    "execution_error": false,
+    "original_diagnostic_resolved": 1,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [
+      "Lesson:e1a9809a"
+    ],
+    "reused": [
+      "LightGBMModel@1",
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_reused": [
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1"
+    ],
+    "best_plan": "random_forest_robust_pipeline",
+    "metrics": {
+      "recall": 0.6789,
+      "roc_auc": 0.7997,
+      "precision": 0.5004,
+      "f1": 0.5759,
+      "recall_at_20": 0.4495
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "通用填补策略。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "ServiceCountFeature",
+          "kind": "feature",
+          "purpose": "统计业务粘性特征",
+          "inputs": "类别服务相关列",
+          "outputs": "新特征列",
+          "reference": "ServiceCountFeature@1"
+        },
+        "params": {},
+        "rationale": "利用业务逻辑提取粘性特征提升模型对复杂流失行为的建模能力。",
+        "evidence_ids": [
+          "Operator:ServiceCountFeature@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "类别特征编码。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "RandomForestModel@1",
+        "synth_spec": null,
+        "params": {
+          "class_weight": "balanced",
+          "n_estimators": 300,
+          "max_depth": 12
+        },
+        "rationale": "随机森林鲁棒性强，设置深度防过拟合，并引入服务数量特征。",
+        "evidence_ids": [
+          "Operator:RandomForestModel@1",
+          "Lesson:57718714"
+        ]
+      }
+    ],
+    "calls": 7,
+    "remote_calls": 7,
+    "seconds": 104.76,
+    "tokens": 25898,
+    "recorded_llm_seconds": 78.11637773364782,
+    "search_rounds": 0,
+    "log": [
+      "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+      "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+      "[PLAN] 候选方案：['lgbm_recall_priority_pipeline(*TotalChargesCleaner → *ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → LightGBMModel)', 'interpretable_logreg_pipeline(*TotalChargesCleaner → *IdColumnDropper → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)', 'random_forest_robust_pipeline(MissingValueImputer → *ServiceCountFeature → OneHotCategoricalEncoder → RandomForestModel)']",
+      "[PLAN] 完成，用时 6.9s → BUILD",
+      "[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将字符串类型的数值列转换为浮点型，处理非数值字符并填补缺失值",
+      "[BUILD] 生成算子 ChargeRatioFeatureGenerator@2（参考 ChargeRatioFeatureGenerator@1）：构造月费与累计费用的比值特征，需处理零分母",
+      "[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：剔除ID列避免维度爆炸",
+      "[BUILD] 生成算子 ServiceCountFeature@2（参考 ServiceCountFeature@1）：统计业务粘性特征",
+      "[BUILD] 完成，用时 25.3s → VERIFY",
+      "[VERIFY] lgbm_recall_priority_pipeline：未通过，recall=0.5912；M_THRESHOLD recall = 0.5912 低于阈值 0.75",
+      "[VERIFY] interpretable_logreg_pipeline：未通过，recall=nan；E_RUNTIME 未见类别/缺失值健壮性检查失败：ValueError: Input X contains NaN.\nLogisticRegression does not accept missing values encoded as NaN natively. For supervised learning, you might want to consider sklearn.ensemble.HistGradientBoostingClassifier and Regressor which accept missing values encoded as NaNs natively. Alternatively, it is possible to pr (at _assert_all_finite_element_wise:186)",
+      "[VERIFY] random_forest_robust_pipeline：未通过，recall=nan；E_INTERFACE meta.params 与 __init__ 默认值不一致：[\"service_cols: meta=['online_security', 'tech_support', 'streaming_tv'], __init__=('online_security', 'tech_support', 'streaming_tv')\"]",
+      "[VERIFY] 完成，用时 10.0s → ROUTE",
+      "[ROUTE] 完成，用时 0.0s → REPAIR",
+      "[REPAIR] 修复 ServiceCountFeature@2 第 1 轮：E_INTERFACE meta.params 与 __init__ 默认值不一致：[\"service_cols: meta=['online_security', 'tech_sup",
+      "[REPAIR] 完成，用时 43.2s → VERIFY",
+      "[VERIFY] random_forest_robust_pipeline：未通过，recall=0.6789；M_THRESHOLD recall = 0.6789 低于阈值 0.75",
+      "[VERIFY] 完成，用时 16.4s → ROUTE",
+      "[ROUTE] 没有方案通过验证",
+      "[ROUTE] 完成，用时 0.0s → CURATE",
+      "[CURATE] 写入 KG：3 条 ValidationRun；注册新算子 []；新增经验 1 条",
+      "[CURATE] 完成，用时 2.9s → FAILED"
+    ],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.8,
+    "name": "repair_natural_1",
+    "group": "repair_natural",
+    "trial": 1,
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；将 total_charges 的空白字符串转换并填补为合理数值。",
+    "status": "failed",
+    "repairs": 1,
+    "execution_error": false,
+    "original_diagnostic_resolved": 1,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [
+      "Lesson:cd3a1970"
+    ],
+    "reused": [
+      "LightGBMModel@1",
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_reused": [
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1"
+    ],
+    "best_plan": "random_forest_pipeline",
+    "metrics": {
+      "recall": 0.6775,
+      "roc_auc": 0.8008,
+      "precision": 0.501,
+      "f1": 0.5758,
+      "recall_at_20": 0.4495
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "TotalChargesCleaner",
+          "kind": "imputer",
+          "purpose": "清理脏数据",
+          "inputs": "DataFrame",
+          "outputs": "DataFrame",
+          "reference": "TotalChargesCleaner@1"
+        },
+        "params": {},
+        "rationale": "数据清洗第一步。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@1"
+        ]
+      },
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "ChargeRatioFeatureGenerator",
+          "kind": "feature",
+          "purpose": "生成消费趋势特征",
+          "inputs": "金额列和时长列",
+          "outputs": "比值特征",
+          "reference": "ChargeRatioFeatureGenerator@1"
+        },
+        "params": {},
+        "rationale": "通过领域知识构造特征提升模型感知能力。",
+        "evidence_ids": [
+          "Operator:ChargeRatioFeatureGenerator@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "编码。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "RandomForestModel@1",
+        "synth_spec": null,
+        "params": {
+          "n_estimators": 400,
+          "max_depth": 12,
+          "class_weight": "balanced"
+        },
+        "rationale": "利用随机森林非线性拟合能力，通过调整深度控制过拟合。",
+        "evidence_ids": [
+          "Operator:RandomForestModel@1",
+          "Lesson:57718714"
+        ]
+      }
+    ],
+    "calls": 7,
+    "remote_calls": 7,
+    "seconds": 56.07000000000001,
+    "tokens": 25316,
+    "recorded_llm_seconds": 28.611764512956142,
+    "search_rounds": 0,
+    "log": [
+      "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+      "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+      "[PLAN] 候选方案：['lgbm_pipeline(*TotalChargesCleaner → MissingValueImputer → *IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel)', 'logistic_interpretable_pipeline(*TotalChargesCleaner → *TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)', 'random_forest_pipeline(*TotalChargesCleaner → *ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → RandomForestModel)']",
+      "[PLAN] 完成，用时 11.6s → BUILD",
+      "[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将字符串类型的total_charges转换为数值，处理空白符并填补缺失值",
+      "[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：删除客户ID等标识列以避免编码后维度爆炸",
+      "[BUILD] 生成算子 TenureBucketizer@2（参考 TenureBucketizer@1）：对tenure进行分箱以提升线性模型可解释性",
+      "[BUILD] 生成算子 ChargeRatioFeatureGenerator@2（参考 ChargeRatioFeatureGenerator@1）：生成消费趋势特征",
+      "[BUILD] 完成，用时 10.4s → VERIFY",
+      "[VERIFY] lgbm_pipeline：未通过，recall=nan；E_INTERFACE meta.params 与 __init__ 默认值不一致：[\"id_cols: meta=['customer_id'], __init__=('customer_id',)\"]",
+      "[VERIFY] logistic_interpretable_pipeline：未通过，recall=nan；E_RUNTIME ValueError: Input X contains NaN.\nLogisticRegression does not accept missing values encoded as NaN natively. For supervised learning, you might want to consider sklearn.ensemble.HistGradientBoostingClassifier and Regressor which accept missing values encoded as NaNs natively. Alternatively, it is possible to pr (at _assert_all_finite_element_wise:186)",
+      "[VERIFY] random_forest_pipeline：未通过，recall=0.6775；M_THRESHOLD recall = 0.6775 低于阈值 0.75",
+      "[VERIFY] 完成，用时 20.1s → ROUTE",
+      "[ROUTE] 完成，用时 0.0s → REPAIR",
+      "[REPAIR] 修复 IdColumnDropper@2 第 1 轮：E_INTERFACE meta.params 与 __init__ 默认值不一致：[\"id_cols: meta=['customer_id'], __init__=('custom",
+      "[REPAIR] 完成，用时 3.6s → VERIFY",
+      "[VERIFY] lgbm_pipeline：未通过，recall=0.6544；M_THRESHOLD recall = 0.6544 低于阈值 0.75",
+      "[VERIFY] 完成，用时 7.2s → ROUTE",
+      "[ROUTE] 没有方案通过验证",
+      "[ROUTE] 完成，用时 0.0s → CURATE",
+      "[CURATE] 写入 KG：3 条 ValidationRun；注册新算子 []；新增经验 1 条",
+      "[CURATE] 完成，用时 3.3s → FAILED"
+    ],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.8,
+    "name": "repair_natural_2",
+    "group": "repair_natural",
+    "trial": 2,
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；将 total_charges 的空白字符串转换并填补为合理数值。",
+    "status": "failed",
+    "repairs": 1,
+    "execution_error": false,
+    "original_diagnostic_resolved": 1,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [
+      "Lesson:cd3a1970"
+    ],
+    "reused": [
+      "LightGBMModel@1",
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_reused": [
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1"
+    ],
+    "best_plan": "random_forest_pipeline",
+    "metrics": {
+      "recall": 0.6775,
+      "roc_auc": 0.8008,
+      "precision": 0.501,
+      "f1": 0.5758,
+      "recall_at_20": 0.4495
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "TotalChargesCleaner",
+          "kind": "imputer",
+          "purpose": "清理脏数据",
+          "inputs": "DataFrame",
+          "outputs": "DataFrame",
+          "reference": "TotalChargesCleaner@1"
+        },
+        "params": {},
+        "rationale": "数据清洗第一步。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@1"
+        ]
+      },
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "ChargeRatioFeatureGenerator",
+          "kind": "feature",
+          "purpose": "生成消费趋势特征",
+          "inputs": "金额列和时长列",
+          "outputs": "比值特征",
+          "reference": "ChargeRatioFeatureGenerator@1"
+        },
+        "params": {},
+        "rationale": "通过领域知识构造特征提升模型感知能力。",
+        "evidence_ids": [
+          "Operator:ChargeRatioFeatureGenerator@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "编码。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "RandomForestModel@1",
+        "synth_spec": null,
+        "params": {
+          "n_estimators": 400,
+          "max_depth": 12,
+          "class_weight": "balanced"
+        },
+        "rationale": "利用随机森林非线性拟合能力，通过调整深度控制过拟合。",
+        "evidence_ids": [
+          "Operator:RandomForestModel@1",
+          "Lesson:57718714"
+        ]
+      }
+    ],
+    "calls": 7,
+    "remote_calls": 7,
+    "seconds": 80.27,
+    "tokens": 25316,
+    "recorded_llm_seconds": 50.25634250044823,
+    "search_rounds": 0,
+    "log": [
+      "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+      "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+      "[PLAN] 候选方案：['lgbm_pipeline(*TotalChargesCleaner → MissingValueImputer → *IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel)', 'logistic_interpretable_pipeline(*TotalChargesCleaner → *TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)', 'random_forest_pipeline(*TotalChargesCleaner → *ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → RandomForestModel)']",
+      "[PLAN] 完成，用时 7.3s → BUILD",
+      "[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将字符串类型的total_charges转换为数值，处理空白符并填补缺失值",
+      "[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：删除客户ID等标识列以避免编码后维度爆炸",
+      "[BUILD] 生成算子 TenureBucketizer@2（参考 TenureBucketizer@1）：对tenure进行分箱以提升线性模型可解释性",
+      "[BUILD] 生成算子 ChargeRatioFeatureGenerator@2（参考 ChargeRatioFeatureGenerator@1）：生成消费趋势特征",
+      "[BUILD] 完成，用时 37.4s → VERIFY",
+      "[VERIFY] lgbm_pipeline：未通过，recall=nan；E_INTERFACE meta.params 与 __init__ 默认值不一致：[\"id_cols: meta=['customer_id'], __init__=('customer_id',)\"]",
+      "[VERIFY] logistic_interpretable_pipeline：未通过，recall=nan；E_RUNTIME ValueError: Input X contains NaN.\nLogisticRegression does not accept missing values encoded as NaN natively. For supervised learning, you might want to consider sklearn.ensemble.HistGradientBoostingClassifier and Regressor which accept missing values encoded as NaNs natively. Alternatively, it is possible to pr (at _assert_all_finite_element_wise:186)",
+      "[VERIFY] random_forest_pipeline：未通过，recall=0.6775；M_THRESHOLD recall = 0.6775 低于阈值 0.75",
+      "[VERIFY] 完成，用时 22.5s → ROUTE",
+      "[ROUTE] 完成，用时 0.0s → REPAIR",
+      "[REPAIR] 修复 IdColumnDropper@2 第 1 轮：E_INTERFACE meta.params 与 __init__ 默认值不一致：[\"id_cols: meta=['customer_id'], __init__=('custom",
+      "[REPAIR] 完成，用时 3.1s → VERIFY",
+      "[VERIFY] lgbm_pipeline：未通过，recall=0.6544；M_THRESHOLD recall = 0.6544 低于阈值 0.75",
+      "[VERIFY] 完成，用时 7.3s → ROUTE",
+      "[ROUTE] 没有方案通过验证",
+      "[ROUTE] 完成，用时 0.0s → CURATE",
+      "[CURATE] 写入 KG：3 条 ValidationRun；注册新算子 []；新增经验 1 条",
+      "[CURATE] 完成，用时 2.7s → FAILED"
+    ],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.8,
+    "name": "repair_natural_3",
+    "group": "repair_natural",
+    "trial": 3,
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；将 total_charges 的空白字符串转换并填补为合理数值。",
+    "status": "failed",
+    "repairs": 1,
+    "execution_error": false,
+    "original_diagnostic_resolved": 1,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [
+      "Lesson:cd3a1970"
+    ],
+    "reused": [
+      "LightGBMModel@1",
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_reused": [
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1"
+    ],
+    "best_plan": "random_forest_pipeline",
+    "metrics": {
+      "recall": 0.6775,
+      "roc_auc": 0.8008,
+      "precision": 0.501,
+      "f1": 0.5758,
+      "recall_at_20": 0.4495
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "TotalChargesCleaner",
+          "kind": "imputer",
+          "purpose": "清理脏数据",
+          "inputs": "DataFrame",
+          "outputs": "DataFrame",
+          "reference": "TotalChargesCleaner@1"
+        },
+        "params": {},
+        "rationale": "数据清洗第一步。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@1"
+        ]
+      },
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "ChargeRatioFeatureGenerator",
+          "kind": "feature",
+          "purpose": "生成消费趋势特征",
+          "inputs": "金额列和时长列",
+          "outputs": "比值特征",
+          "reference": "ChargeRatioFeatureGenerator@1"
+        },
+        "params": {},
+        "rationale": "通过领域知识构造特征提升模型感知能力。",
+        "evidence_ids": [
+          "Operator:ChargeRatioFeatureGenerator@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "编码。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "RandomForestModel@1",
+        "synth_spec": null,
+        "params": {
+          "n_estimators": 400,
+          "max_depth": 12,
+          "class_weight": "balanced"
+        },
+        "rationale": "利用随机森林非线性拟合能力，通过调整深度控制过拟合。",
+        "evidence_ids": [
+          "Operator:RandomForestModel@1",
+          "Lesson:57718714"
+        ]
+      }
+    ],
+    "calls": 7,
+    "remote_calls": 7,
+    "seconds": 92.65,
+    "tokens": 25316,
+    "recorded_llm_seconds": 65.04653757065535,
+    "search_rounds": 0,
+    "log": [
+      "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+      "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+      "[PLAN] 候选方案：['lgbm_pipeline(*TotalChargesCleaner → MissingValueImputer → *IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel)', 'logistic_interpretable_pipeline(*TotalChargesCleaner → *TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)', 'random_forest_pipeline(*TotalChargesCleaner → *ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → RandomForestModel)']",
+      "[PLAN] 完成，用时 7.0s → BUILD",
+      "[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将字符串类型的total_charges转换为数值，处理空白符并填补缺失值",
+      "[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：删除客户ID等标识列以避免编码后维度爆炸",
+      "[BUILD] 生成算子 TenureBucketizer@2（参考 TenureBucketizer@1）：对tenure进行分箱以提升线性模型可解释性",
+      "[BUILD] 生成算子 ChargeRatioFeatureGenerator@2（参考 ChargeRatioFeatureGenerator@1）：生成消费趋势特征",
+      "[BUILD] 完成，用时 12.3s → VERIFY",
+      "[VERIFY] lgbm_pipeline：未通过，recall=nan；E_INTERFACE meta.params 与 __init__ 默认值不一致：[\"id_cols: meta=['customer_id'], __init__=('customer_id',)\"]",
+      "[VERIFY] logistic_interpretable_pipeline：未通过，recall=nan；E_RUNTIME ValueError: Input X contains NaN.\nLogisticRegression does not accept missing values encoded as NaN natively. For supervised learning, you might want to consider sklearn.ensemble.HistGradientBoostingClassifier and Regressor which accept missing values encoded as NaNs natively. Alternatively, it is possible to pr (at _assert_all_finite_element_wise:186)",
+      "[VERIFY] random_forest_pipeline：未通过，recall=0.6775；M_THRESHOLD recall = 0.6775 低于阈值 0.75",
+      "[VERIFY] 完成，用时 20.3s → ROUTE",
+      "[ROUTE] 完成，用时 0.0s → REPAIR",
+      "[REPAIR] 修复 IdColumnDropper@2 第 1 轮：E_INTERFACE meta.params 与 __init__ 默认值不一致：[\"id_cols: meta=['customer_id'], __init__=('custom",
+      "[REPAIR] 完成，用时 3.5s → VERIFY",
+      "[VERIFY] lgbm_pipeline：未通过，recall=0.6544；M_THRESHOLD recall = 0.6544 低于阈值 0.75",
+      "[VERIFY] 完成，用时 7.1s → ROUTE",
+      "[ROUTE] 没有方案通过验证",
+      "[ROUTE] 完成，用时 0.0s → CURATE",
+      "[CURATE] 写入 KG：3 条 ValidationRun；注册新算子 []；新增经验 1 条",
+      "[CURATE] 完成，用时 42.5s → FAILED"
+    ],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.2,
+    "name": "search_1",
+    "group": "search",
+    "trial": 1,
+    "request": "预测客户流失，召回率不低于0.8；优先尝试可解释模型，未达标时探索不同模型或参数。",
+    "nonce": "search-1",
+    "status": "succeeded",
+    "repairs": 0,
+    "execution_error": false,
+    "original_diagnostic_resolved": 0,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [],
+    "reused": [
+      "LightGBMModel@1",
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_reused": [
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_plan": "logreg_interpretable_tuned",
+    "metrics": {
+      "recall": 0.8475,
+      "roc_auc": 0.814,
+      "precision": 0.443,
+      "f1": 0.5818,
+      "recall_at_20": 0.4567
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "scaler",
+        "action": "reuse",
+        "operator_ref": "StandardFeatureScaler@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "",
+        "evidence_ids": [
+          "Operator:StandardFeatureScaler@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LogisticRegressionModel@1",
+        "synth_spec": null,
+        "params": {
+          "C": 0.5,
+          "class_weight": {
+            "0": 1,
+            "1": 4
+          },
+          "random_state": 42
+        },
+        "rationale": "",
+        "evidence_ids": [
+          "Operator:LogisticRegressionModel@1",
+          "Lesson:74e2da10"
+        ]
+      }
+    ],
+    "calls": 6,
+    "remote_calls": 6,
+    "seconds": 45.44,
+    "tokens": 45149,
+    "recorded_llm_seconds": 25.374072551727295,
+    "search_rounds": 1,
+    "log": [],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.2,
+    "name": "search_2",
+    "group": "search",
+    "trial": 2,
+    "request": "预测客户流失，召回率不低于0.8；优先尝试可解释模型，未达标时探索不同模型或参数。",
+    "nonce": "search-2",
+    "status": "succeeded",
+    "repairs": 0,
+    "execution_error": false,
+    "original_diagnostic_resolved": 0,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [],
+    "reused": [
+      "LightGBMModel@1",
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_reused": [
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_plan": "interpretable_logreg_pipeline",
+    "metrics": {
+      "recall": 0.8475,
+      "roc_auc": 0.814,
+      "precision": 0.443,
+      "f1": 0.5818,
+      "recall_at_20": 0.4567
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "scaler",
+        "action": "reuse",
+        "operator_ref": "StandardFeatureScaler@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "",
+        "evidence_ids": [
+          "Operator:StandardFeatureScaler@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LogisticRegressionModel@1",
+        "synth_spec": null,
+        "params": {
+          "C": 0.5,
+          "class_weight": {
+            "0": 1,
+            "1": 4
+          },
+          "max_iter": 1000,
+          "random_state": 42
+        },
+        "rationale": "",
+        "evidence_ids": [
+          "Operator:LogisticRegressionModel@1"
+        ]
+      }
+    ],
+    "calls": 6,
+    "remote_calls": 6,
+    "seconds": 45.19,
+    "tokens": 44811,
+    "recorded_llm_seconds": 25.045235224068165,
+    "search_rounds": 1,
+    "log": [],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.2,
+    "name": "probe_2",
+    "group": "probe",
+    "trial": 2,
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；正确处理累计费用的空白字符串，并增加在网时长分桶特征。",
+    "status": "succeeded",
+    "repairs": 0,
+    "execution_error": false,
+    "original_diagnostic_resolved": 0,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [
+      "TotalChargesCleaner@2"
+    ],
+    "lessons_learned": [],
+    "reused": [
+      "LightGBMModel@1",
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_reused": [
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_plan": "interpretable_logreg_pipeline",
+    "metrics": {
+      "recall": 0.7785,
+      "roc_auc": 0.8134,
+      "precision": 0.4814,
+      "f1": 0.5948,
+      "recall_at_20": 0.4542
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "TotalChargesCleaner",
+          "kind": "imputer",
+          "purpose": "处理数值列脏数据",
+          "inputs": "原始数据",
+          "outputs": "处理后数据",
+          "reference": "TotalChargesCleaner@1"
+        },
+        "params": {},
+        "rationale": "清理数值列，参考 Lesson:69d51358。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@1"
+        ]
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "补充缺失数据。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {
+          "max_categories": 20
+        },
+        "rationale": "线性模型需要编码化类别特征。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "scaler",
+        "action": "reuse",
+        "operator_ref": "StandardFeatureScaler@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "逻辑回归必须先标准化，参考 Lesson:74e2da10。",
+        "evidence_ids": [
+          "Operator:StandardFeatureScaler@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LogisticRegressionModel@1",
+        "synth_spec": null,
+        "params": {
+          "class_weight": "balanced"
+        },
+        "rationale": "逻辑回归满足可解释性需求。",
+        "evidence_ids": [
+          "Operator:LogisticRegressionModel@1"
+        ]
+      }
+    ],
+    "calls": 3,
+    "remote_calls": 3,
+    "seconds": 45.35,
+    "tokens": 27947,
+    "recorded_llm_seconds": 16.827126376330853,
+    "search_rounds": 0,
+    "log": [],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.2,
+    "name": "repair_injected_1",
+    "group": "repair_injected",
+    "trial": 1,
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；正确处理累计费用的空白字符串，并增加在网时长分桶特征。",
+    "seed": "probe_2",
+    "nonce": "injected-1",
+    "status": "succeeded",
+    "repairs": 1,
+    "execution_error": false,
+    "original_diagnostic_resolved": 1,
+    "complete_repair_chain": true,
+    "repaired_registered": [
+      "TotalChargesCleaner@2"
+    ],
+    "registered": [
+      "TotalChargesCleaner@2"
+    ],
+    "lessons_learned": [
+      "Lesson:6375318f"
+    ],
+    "reused": [
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_reused": [
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_plan": "interpretable_logreg_pipeline",
+    "metrics": {
+      "recall": 0.7785,
+      "roc_auc": 0.8134,
+      "precision": 0.4814,
+      "f1": 0.5948,
+      "recall_at_20": 0.4542
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "TotalChargesCleaner",
+          "kind": "imputer",
+          "purpose": "处理数值列脏数据",
+          "inputs": "原始数据",
+          "outputs": "处理后数据",
+          "reference": "TotalChargesCleaner@1"
+        },
+        "params": {},
+        "rationale": "清理数值列，参考 Lesson:69d51358。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@1"
+        ]
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "补充缺失数据。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {
+          "max_categories": 20
+        },
+        "rationale": "线性模型需要编码化类别特征。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "scaler",
+        "action": "reuse",
+        "operator_ref": "StandardFeatureScaler@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "逻辑回归必须先标准化，参考 Lesson:74e2da10。",
+        "evidence_ids": [
+          "Operator:StandardFeatureScaler@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LogisticRegressionModel@1",
+        "synth_spec": null,
+        "params": {
+          "class_weight": "balanced"
+        },
+        "rationale": "逻辑回归满足可解释性需求。",
+        "evidence_ids": [
+          "Operator:LogisticRegressionModel@1"
+        ]
+      }
+    ],
+    "calls": 2,
+    "remote_calls": 2,
+    "seconds": 56.919999999999995,
+    "tokens": 4530,
+    "recorded_llm_seconds": 47.387735694646835,
+    "search_rounds": 0,
+    "log": [],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.2,
+    "name": "repair_injected_2",
+    "group": "repair_injected",
+    "trial": 2,
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；正确处理累计费用的空白字符串，并增加在网时长分桶特征。",
+    "seed": "probe_2",
+    "nonce": "injected-2",
+    "status": "succeeded",
+    "repairs": 1,
+    "execution_error": false,
+    "original_diagnostic_resolved": 1,
+    "complete_repair_chain": true,
+    "repaired_registered": [
+      "TotalChargesCleaner@2"
+    ],
+    "registered": [
+      "TotalChargesCleaner@2"
+    ],
+    "lessons_learned": [
+      "Lesson:0e95d8d7"
+    ],
+    "reused": [
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_reused": [
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_plan": "interpretable_logreg_pipeline",
+    "metrics": {
+      "recall": 0.7785,
+      "roc_auc": 0.8134,
+      "precision": 0.4814,
+      "f1": 0.5948,
+      "recall_at_20": 0.4542
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "TotalChargesCleaner",
+          "kind": "imputer",
+          "purpose": "处理数值列脏数据",
+          "inputs": "原始数据",
+          "outputs": "处理后数据",
+          "reference": "TotalChargesCleaner@1"
+        },
+        "params": {},
+        "rationale": "清理数值列，参考 Lesson:69d51358。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@1"
+        ]
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "补充缺失数据。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {
+          "max_categories": 20
+        },
+        "rationale": "线性模型需要编码化类别特征。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "scaler",
+        "action": "reuse",
+        "operator_ref": "StandardFeatureScaler@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "逻辑回归必须先标准化，参考 Lesson:74e2da10。",
+        "evidence_ids": [
+          "Operator:StandardFeatureScaler@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LogisticRegressionModel@1",
+        "synth_spec": null,
+        "params": {
+          "class_weight": "balanced"
+        },
+        "rationale": "逻辑回归满足可解释性需求。",
+        "evidence_ids": [
+          "Operator:LogisticRegressionModel@1"
+        ]
+      }
+    ],
+    "calls": 2,
+    "remote_calls": 2,
+    "seconds": 44.22,
+    "tokens": 4590,
+    "recorded_llm_seconds": 34.88002252578735,
+    "search_rounds": 0,
+    "log": [],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.2,
+    "name": "repair_injected_3",
+    "group": "repair_injected",
+    "trial": 3,
+    "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；正确处理累计费用的空白字符串，并增加在网时长分桶特征。",
+    "seed": "probe_2",
+    "nonce": "injected-3",
+    "status": "succeeded",
+    "repairs": 1,
+    "execution_error": false,
+    "original_diagnostic_resolved": 1,
+    "complete_repair_chain": true,
+    "repaired_registered": [
+      "TotalChargesCleaner@2"
+    ],
+    "registered": [
+      "TotalChargesCleaner@2"
+    ],
+    "lessons_learned": [
+      "Lesson:cf247d47"
+    ],
+    "reused": [
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_reused": [
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_plan": "interpretable_logreg_pipeline",
+    "metrics": {
+      "recall": 0.7785,
+      "roc_auc": 0.8134,
+      "precision": 0.4814,
+      "f1": 0.5948,
+      "recall_at_20": 0.4542
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "TotalChargesCleaner",
+          "kind": "imputer",
+          "purpose": "处理数值列脏数据",
+          "inputs": "原始数据",
+          "outputs": "处理后数据",
+          "reference": "TotalChargesCleaner@1"
+        },
+        "params": {},
+        "rationale": "清理数值列，参考 Lesson:69d51358。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@1"
+        ]
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "补充缺失数据。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {
+          "max_categories": 20
+        },
+        "rationale": "线性模型需要编码化类别特征。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "scaler",
+        "action": "reuse",
+        "operator_ref": "StandardFeatureScaler@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "逻辑回归必须先标准化，参考 Lesson:74e2da10。",
+        "evidence_ids": [
+          "Operator:StandardFeatureScaler@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LogisticRegressionModel@1",
+        "synth_spec": null,
+        "params": {
+          "class_weight": "balanced"
+        },
+        "rationale": "逻辑回归满足可解释性需求。",
+        "evidence_ids": [
+          "Operator:LogisticRegressionModel@1"
+        ]
+      }
+    ],
+    "calls": 2,
+    "remote_calls": 2,
+    "seconds": 15.4,
+    "tokens": 4727,
+    "recorded_llm_seconds": 5.7036552876234055,
+    "search_rounds": 0,
+    "log": [],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.2,
+    "name": "repair_injected_1_reuse",
+    "group": "reuse",
+    "trial": 1,
+    "seed": "repair_injected_1",
+    "nonce": "reuse-repair_injected_1",
+    "request": "预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户，召回率不低于0.75",
+    "status": "succeeded",
+    "repairs": 0,
+    "execution_error": false,
+    "original_diagnostic_resolved": 0,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [
+      "IdColumnDropper@2"
+    ],
+    "lessons_learned": [],
+    "reused": [
+      "LightGBMModel@1",
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1",
+      "StandardFeatureScaler@1",
+      "TotalChargesCleaner@2"
+    ],
+    "best_reused": [
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "StandardFeatureScaler@1",
+      "TotalChargesCleaner@2"
+    ],
+    "best_plan": "interpretable_logreg_pipeline",
+    "metrics": {
+      "recall": 0.778,
+      "roc_auc": 0.8134,
+      "precision": 0.4812,
+      "f1": 0.5945,
+      "recall_at_20": 0.456
+    },
+    "selected_steps": [
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "IdColumnDropper",
+          "kind": "feature",
+          "purpose": "删除客户ID列以防止编码维度爆炸",
+          "inputs": "包含 customer_id 的 DataFrame",
+          "outputs": "剔除 customer_id 的 DataFrame",
+          "reference": "IdColumnDropper@1"
+        },
+        "params": {},
+        "rationale": "根据 Lesson:88299a38，删除标识列避免维度过高。",
+        "evidence_ids": [
+          "Operator:IdColumnDropper@1"
+        ]
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "TotalChargesCleaner@2",
+        "synth_spec": null,
+        "params": {
+          "col": "total_charges",
+          "tenure_col": "tenure"
+        },
+        "rationale": "利用经过验证的算子处理总费用的缺失和类型转换问题。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@2"
+        ]
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "对其他列进行通用缺失值填补。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {
+          "max_categories": 20
+        },
+        "rationale": "对类别特征进行 One-Hot 编码。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "scaler",
+        "action": "reuse",
+        "operator_ref": "StandardFeatureScaler@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "根据 Lesson:74e2da10，逻辑回归必须先标准化。",
+        "evidence_ids": [
+          "Operator:StandardFeatureScaler@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LogisticRegressionModel@1",
+        "synth_spec": null,
+        "params": {
+          "C": 1.0,
+          "class_weight": "balanced"
+        },
+        "rationale": "逻辑回归具备高可解释性，且使用 balanced 权重应对样本不平衡。",
+        "evidence_ids": [
+          "Operator:LogisticRegressionModel@1"
+        ]
+      }
+    ],
+    "calls": 4,
+    "remote_calls": 4,
+    "seconds": 63.580000000000005,
+    "tokens": 32445,
+    "recorded_llm_seconds": 28.479853108525276,
+    "search_rounds": 0,
+    "log": [],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.2,
+    "name": "repair_injected_2_reuse",
+    "group": "reuse",
+    "trial": 2,
+    "seed": "repair_injected_2",
+    "nonce": "reuse-repair_injected_2",
+    "request": "预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户，召回率不低于0.75",
+    "status": "succeeded",
+    "repairs": 0,
+    "execution_error": false,
+    "original_diagnostic_resolved": 0,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [],
+    "reused": [
+      "LightGBMModel@1",
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1",
+      "StandardFeatureScaler@1",
+      "TotalChargesCleaner@2"
+    ],
+    "best_reused": [
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "StandardFeatureScaler@1",
+      "TotalChargesCleaner@2"
+    ],
+    "best_plan": "interpretable_logreg_pipeline",
+    "metrics": {
+      "recall": 0.7785,
+      "roc_auc": 0.8134,
+      "precision": 0.4814,
+      "f1": 0.5948,
+      "recall_at_20": 0.4542
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "TotalChargesCleaner@2",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "处理总费用列的格式及缺失值，这是逻辑回归的先决步骤。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@2"
+        ]
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "补全剩余的缺失值。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "对类别特征进行编码以适应线性模型。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "scaler",
+        "action": "reuse",
+        "operator_ref": "StandardFeatureScaler@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "逻辑回归必须进行标准化以确保模型可解释性。",
+        "evidence_ids": [
+          "Operator:StandardFeatureScaler@1",
+          "Lesson:74e2da10"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LogisticRegressionModel@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "使用逻辑回归提供高解释性，并配置 balanced 权重优化召回率。",
+        "evidence_ids": [
+          "Operator:LogisticRegressionModel@1",
+          "Lesson:9e9e77d6"
+        ]
+      }
+    ],
+    "calls": 2,
+    "remote_calls": 2,
+    "seconds": 43.89000000000001,
+    "tokens": 26080,
+    "recorded_llm_seconds": 10.058596171438694,
+    "search_rounds": 0,
+    "log": [],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.2,
+    "name": "repair_injected_3_reuse",
+    "group": "reuse",
+    "trial": 3,
+    "seed": "repair_injected_3",
+    "nonce": "reuse-repair_injected_3",
+    "request": "预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户，召回率不低于0.75",
+    "status": "succeeded",
+    "repairs": 1,
+    "execution_error": false,
+    "original_diagnostic_resolved": 1,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [
+      "DropIdColumn@1"
+    ],
+    "lessons_learned": [
+      "Lesson:7ee7f627"
+    ],
+    "reused": [
+      "LightGBMModel@1",
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1",
+      "StandardFeatureScaler@1",
+      "TotalChargesCleaner@2"
+    ],
+    "best_reused": [
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "StandardFeatureScaler@1",
+      "TotalChargesCleaner@2"
+    ],
+    "best_plan": "interpretable_logreg_pipeline",
+    "metrics": {
+      "recall": 0.7793,
+      "roc_auc": 0.8135,
+      "precision": 0.4829,
+      "f1": 0.5962,
+      "recall_at_20": 0.4542
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "TotalChargesCleaner@2",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "处理总费用列的字符串异常并集成时长特征，满足业务需求且有历史验证记录。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@2",
+          "ValidationRun:repair_injected_3-interpretable_logreg_pipeline"
+        ]
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "兜底填补其他数值与类别列缺失值，确保数据完整性。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "DropIdColumn",
+          "kind": "feature",
+          "purpose": "删除客户ID列以防止过拟合和特征维度暴涨",
+          "inputs": "原始特征表",
+          "outputs": "剔除ID列后的特征表",
+          "reference": "IdColumnDropper@1"
+        },
+        "params": {},
+        "rationale": "剔除ID标识列以避免编码维度暴涨，符合 Lesson:88299a38。",
+        "evidence_ids": [
+          "Operator:IdColumnDropper@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {
+          "max_categories": 10
+        },
+        "rationale": "对类别特征进行One-Hot编码，限制维度以提升模型表现。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "scaler",
+        "action": "reuse",
+        "operator_ref": "StandardFeatureScaler@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "逻辑回归必须标准化，以便输出可解释的系数。",
+        "evidence_ids": [
+          "Operator:StandardFeatureScaler@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LogisticRegressionModel@1",
+        "synth_spec": null,
+        "params": {
+          "C": 0.5,
+          "class_weight": "balanced"
+        },
+        "rationale": "使用逻辑回归提供高可解释性，并设置 balanced 权重以满足召回率需求。",
+        "evidence_ids": [
+          "Operator:LogisticRegressionModel@1"
+        ]
+      }
+    ],
+    "calls": 6,
+    "remote_calls": 6,
+    "seconds": 92.09,
+    "tokens": 24074,
+    "recorded_llm_seconds": 61.95206156373024,
+    "search_rounds": 0,
+    "log": [],
+    "returncode": 0
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "temperature": 0.2,
+    "name": "search_3",
+    "group": "search",
+    "trial": 3,
+    "request": "预测客户流失，召回率不低于0.8；优先尝试可解释模型，未达标时探索不同模型或参数。",
+    "nonce": "search-3",
+    "status": "failed",
+    "repairs": 1,
+    "execution_error": false,
+    "original_diagnostic_resolved": 1,
+    "complete_repair_chain": false,
+    "repaired_registered": [],
+    "registered": [],
+    "lessons_learned": [
+      "Lesson:ab7c0120"
+    ],
+    "reused": [
+      "LightGBMModel@1",
+      "LogisticRegressionModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1",
+      "RandomForestModel@1",
+      "StandardFeatureScaler@1"
+    ],
+    "best_reused": [
+      "LightGBMModel@1",
+      "MissingValueImputer@1",
+      "OneHotCategoricalEncoder@1"
+    ],
+    "best_plan": "lgbm_imbalanced_pipeline",
+    "metrics": {
+      "recall": 0.6243,
+      "roc_auc": 0.7835,
+      "precision": 0.4923,
+      "f1": 0.5502,
+      "recall_at_20": 0.4204
+    },
+    "selected_steps": [
+      {
+        "kind": "imputer",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "TotalChargesCleaner",
+          "kind": "imputer",
+          "purpose": "将total_charges字段中的空白字符串转换为数值，并处理异常值以符合后续模型计算需求",
+          "inputs": "包含 total_charges 的原始数据",
+          "outputs": "修正后的数值类型 total_charges 列",
+          "reference": "TotalChargesCleaner@1"
+        },
+        "params": {},
+        "rationale": "根据Lesson:69d51358，需要对脏数据进行清洗以支持后续数值计算。",
+        "evidence_ids": [
+          "Operator:TotalChargesCleaner@1"
+        ]
+      },
+      {
+        "kind": "imputer",
+        "action": "reuse",
+        "operator_ref": "MissingValueImputer@1",
+        "synth_spec": null,
+        "params": {},
+        "rationale": "填补数据中的残余缺失值以确保训练数据的完整性。",
+        "evidence_ids": [
+          "Operator:MissingValueImputer@1"
+        ]
+      },
+      {
+        "kind": "feature",
+        "action": "synthesize",
+        "operator_ref": null,
+        "synth_spec": {
+          "name": "IdColumnDropper",
+          "kind": "feature",
+          "purpose": "删除高基数 ID 列，防止其被误解析为类别特征导致过拟合",
+          "inputs": "包含 customer_id 的数据集",
+          "outputs": "剔除 customer_id 的数据集",
+          "reference": "IdColumnDropper@1"
+        },
+        "params": {},
+        "rationale": "删除无关的标识列以降低噪声影响。",
+        "evidence_ids": [
+          "Operator:IdColumnDropper@1"
+        ]
+      },
+      {
+        "kind": "encoder",
+        "action": "reuse",
+        "operator_ref": "OneHotCategoricalEncoder@1",
+        "synth_spec": null,
+        "params": {
+          "max_categories": 20
+        },
+        "rationale": "将类别特征进行 one-hot 编码，符合数据画像中低基数的特征。",
+        "evidence_ids": [
+          "Operator:OneHotCategoricalEncoder@1"
+        ]
+      },
+      {
+        "kind": "model",
+        "action": "reuse",
+        "operator_ref": "LightGBMModel@1",
+        "synth_spec": null,
+        "params": {
+          "n_estimators": 400,
+          "learning_rate": 0.05,
+          "num_leaves": 31,
+          "class_weight": "balanced",
+          "random_state": 42
+        },
+        "rationale": "根据 Lesson:f2c1398b，使用具有 balanced 权重的 LightGBM 能够有效处理不平衡数据并满足召回率要求。",
+        "evidence_ids": [
+          "Operator:LightGBMModel@1",
+          "ValidationRun:f6e4284c"
+        ]
+      }
+    ],
+    "calls": 12,
+    "remote_calls": 12,
+    "seconds": 115.44999999999999,
+    "tokens": 84448,
+    "recorded_llm_seconds": 60.35756440460682,
+    "search_rounds": 2,
+    "log": [
+      "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+      "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.8",
+      "[PLAN] 候选方案：['lgbm_imbalanced_pipeline(*TotalChargesCleaner → MissingValueImputer → *IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel)']",
+      "[PLAN] 完成，用时 4.6s → BUILD",
+      "[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将total_charges字段中的空白字符串转换为数值，并处理异常值以符合后续模型计算需求",
+      "[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：删除高基数 ID 列，防止其被误解析为类别特征导致过拟合",
+      "[BUILD] 完成，用时 6.9s → VERIFY",
+      "[VERIFY] lgbm_imbalanced_pipeline：未通过，recall=0.6243；M_THRESHOLD recall = 0.6243 低于阈值 0.8",
+      "[VERIFY] 完成，用时 6.9s → ROUTE",
+      "[ROUTE] 完成，用时 0.0s → REPLAN",
+      "[REPLAN] 第 1 轮 Beam 搜索：父方案 ['lgbm_imbalanced_pipeline']，扩展 4 个，入选 ['lgbm_with_tenure_bucket(*TotalChargesCleaner → *TenureBucketizer → OneHotCategoricalEncoder → LightGBMModel)', 'lgbm_recall_optimized(*TotalChargesCleaner → MissingValueImputer → *ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → LightGBMModel)']，剪枝/去重 ['interpretable_logreg_pipeline(0.7374)', 'rf_recall_focused(0.7362)']",
+      "[REPLAN] 完成，用时 14.4s → BUILD",
+      "[BUILD] 生成算子 TenureBucketizer@2（参考 TenureBucketizer@1）：在网时长分箱，提升模型对不同生命周期用户的识别",
+      "[BUILD] 生成算子 ChargeRatioFeatureGenerator@2（参考 ChargeRatioFeatureGenerator@1）：生成用户消费变动趋势特征，捕捉流失风险",
+      "[BUILD] 完成，用时 6.3s → VERIFY",
+      "[VERIFY] lgbm_with_tenure_bucket：未通过，recall=0.6205；M_THRESHOLD recall = 0.6205 低于阈值 0.8",
+      "[VERIFY] lgbm_recall_optimized：未通过，recall=nan；E_RUNTIME 加载生成算子失败：TypeError: Cannot create a consistent method resolution\norder (MRO) for bases BaseEstimator, TransformerMixin, Operator (at <module>:7)",
+      "[VERIFY] 完成，用时 8.5s → ROUTE",
+      "[ROUTE] 完成，用时 0.0s → REPAIR",
+      "[REPAIR] 修复 ChargeRatioFeatureGenerator@2 第 1 轮：E_RUNTIME 加载生成算子失败：TypeError: Cannot create a consistent method resolution\norder (MRO) for，参考经验：['数值列含空白字符导致类型转换失败', '预测阶段出现未见类别导致编码报错']",
+      "[REPAIR] 完成，用时 7.0s → VERIFY",
+      "[VERIFY] lgbm_recall_optimized：未通过，recall=0.5969；M_THRESHOLD recall = 0.5969 低于阈值 0.8",
+      "[VERIFY] 完成，用时 7.8s → ROUTE",
+      "[ROUTE] 完成，用时 0.0s → REPLAN",
+      "[REPLAN] 第 2 轮 Beam 搜索：父方案 ['lgbm_imbalanced_pipeline', 'lgbm_with_tenure_bucket']，扩展 4 个，入选 ['logistic_interpretable_weighted(*TotalChargesCleaner → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)', 'rf_feature_ensemble_recall(*TotalChargesCleaner → *ServiceCountFeature → OneHotCategoricalEncoder → RandomForestModel)']，剪枝/去重 ['lgbm_feature_rich_weighted(0.6904)', 'lgbm_tenure_bucket_optimized(0.6917)']",
+      "[REPLAN] 完成，用时 15.4s → BUILD",
+      "[BUILD] 生成算子 ServiceCountFeature@2（参考 ServiceCountFeature@1）：统计订购服务总数，捕捉粘性特征",
+      "[BUILD] 完成，用时 3.9s → VERIFY",
+      "[VERIFY] logistic_interpretable_weighted：未通过，recall=nan；E_RUNTIME ValueError: Input X contains NaN.\nLogisticRegression does not accept missing values encoded as NaN natively. For supervised learning, you might want to consider sklearn.ensemble.HistGradientBoostingClassifier and Regressor which accept missing values encoded as NaNs natively. Alternatively, it is possible to pr (at _assert_all_finite_element_wise:186)",
+      "[VERIFY] rf_feature_ensemble_recall：未通过，recall=0.5957；M_THRESHOLD recall = 0.5957 低于阈值 0.8",
+      "[VERIFY] 完成，用时 31.6s → ROUTE",
+      "[ROUTE] 没有方案通过验证",
+      "[ROUTE] 完成，用时 0.0s → CURATE",
+      "[CURATE] 写入 KG：5 条 ValidationRun；注册新算子 []；新增经验 1 条",
+      "[CURATE] 完成，用时 2.1s → FAILED"
+    ],
+    "returncode": 0
+  }
+]

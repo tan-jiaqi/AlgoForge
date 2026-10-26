@@ -57,7 +57,7 @@ class Synthesizer:
             "task": {"description": task.description, "target": task.target_column, "constraints": task.constraints},
             "data_profile": profile.summary(),
             "reference_code": self._reference_code(spec),
-            "lessons": [{k: les[k] for k in ("title", "trigger", "fix")} for les in lessons],
+            "lessons": [{k: les[k] for k in ("id", "title", "trigger", "fix")} for les in lessons],
         }
         system = (
             "你是算法能力工厂的 Synthesizer，负责按规格编写可复用的算法算子。"
@@ -77,7 +77,7 @@ class Synthesizer:
                 **diag.model_dump(mode="json"),
                 "meaning": DIAGNOSTIC_DESCRIPTIONS.get(diag.code, ""),
             },
-            "lessons": [{k: les[k] for k in ("title", "trigger", "fix")} for les in lessons],
+            "lessons": [{k: les[k] for k in ("id", "title", "trigger", "fix")} for les in lessons],
         }
         system = (
             "你是算法能力工厂的 Synthesizer。previous_code 未通过验证，diagnostic 是验证器给出的结构化诊断，"

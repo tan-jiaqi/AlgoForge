@@ -173,13 +173,15 @@ def test_synthesize_repair_register_then_reuse(kg_path, churn_csv, fast_verify, 
 
 
 def test_synth_name_aligned_with_existing_lineage(kg_path):
-    """生成算子与图谱中的算子仅大小写不同：沿用原名，并以最新版本为 reference 接入版本谱系。"""
+    """规范名字，但不隐式插入未经本轮引用检查的历史实现。"""
     from factory.schemas import SynthSpec
 
     planner = Planner(rule_based_mock(), CapabilityKG.load(kg_path))
     spec = SynthSpec(name="TOTALChargesCleaner", kind=OperatorKind.IMPUTER, purpose="p", inputs="i", outputs="o")
     aligned = planner._align_synth_spec(spec)
-    assert (aligned.name, aligned.reference) == ("TotalChargesCleaner", "TotalChargesCleaner@1")
+    assert (aligned.name, aligned.reference) == ("TotalChargesCleaner", None)
+    explicit = spec.model_copy(update={"reference": "TotalChargesCleaner@1"})
+    assert planner._align_synth_spec(explicit).reference == "TotalChargesCleaner@1"
     exec_operator_source(FEATURE_SRC)  # 已注册 TenureX2@2
     step = Step(kind=OperatorKind.FEATURE, action="synthesize", synth_spec=SynthSpec(
         name="TENUREX2", kind=OperatorKind.FEATURE, purpose="p", inputs="i", outputs="o"))

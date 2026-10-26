@@ -139,6 +139,13 @@ def _retrieval_blocks(state: RunState) -> list[Block]:
         out += [H(3, "参考的历史经验"),
                 UL([f"**{les['title']}**" + (f"（{les['error_code']}）" if les.get("error_code") else "") + f"：{les['fix']}"
                     for les in lessons])]
+    if state.evidence_checks:
+        out += [H(3, "知识引用检查"),
+                P("检索并传入上下文不等于采纳。以下引用由模型声明，程序仅核对可见范围与结构化适用对象；不证明语义落实或指标收益。"),
+                T(["方案", "步骤", "模型引用", "范围检查", "语义落实"],
+                  [[e["plan"], str(e["step"] or "-"), "、".join(e["evidence_ids"]) or "无",
+                    "通过" if e["scope_valid"] else "未通过：" + "；".join(e.get("errors", []))[:300], "未验证"]
+                   for e in state.evidence_checks])]
     return out
 
 
@@ -189,6 +196,10 @@ def _search_blocks(state: RunState) -> list[Block]:
                  _fmt(actual.get(c.plan)) if c.selected else "-", c.reason] for c in rnd.candidates]
         out += [P(f"第 {rnd.round} 轮：父方案 {', '.join(f'`{n}`' for n in rnd.parents) or '-'}，beam 宽度 {rnd.width}。"),
                 T(["子方案", "结构", f"先验 {metric}", f"实际 {metric}", "结果"], rows)]
+        provenance = [[c.plan, step, o.get("id", "本次运行观测"), str(o["value"])]
+                      for c in rnd.candidates for step, obs in c.observations.items() for o in obs]
+        if provenance:
+            out.append(T(["子方案", "步骤", "先验证据来源", "数值"], provenance))
     return out
 
 
@@ -254,13 +265,18 @@ def _knowledge_blocks(state: RunState, kg: CapabilityKG | None) -> list[Block]:
         f"回写验证记录 ValidationRun：{len(state.kg_writes)} 条",
         f"注册到能力库的新算子：{'、'.join(state.registered) or '无'}",
         f"新提炼的经验：{'；'.join(title(x) for x in state.lessons_learned) or '无'}",
-        f"本次使用的经验：{len(state.lessons_used)} 条（命中次数已累计）",
+        f"本次提供的经验：{len(state.lessons_used)} 条（累计检索命中，不代表采纳）",
     ])]
 
 
 def _log_blocks(state: RunState) -> list[Block]:
     timing = "，".join(f"{k} {v:.1f}s" for k, v in state.timings.items())
-    return [H(2, "附录 B. 运行记录"), P(f"各阶段耗时：{timing or '-'}"), CODE("\n".join(state.log))]
+    blocks = [H(2, "附录 B. 运行记录"), P(f"各阶段耗时：{timing or '-'}"), CODE("\n".join(state.log))]
+    if state.llm_calls:
+        blocks += [H(3, "LLM 调用来源"), T(["阶段", "请求哈希", "来源", "本次耗时(s)", "录制耗时(s)", "tokens"], [
+            [c["tag"], c["request_hash"], c["source"], _fmt(c.get("seconds")), _fmt(c.get("recorded_seconds")),
+             str((c.get("usage") or {}).get("total_tokens", "未提供"))] for c in state.llm_calls])]
+    return blocks
 
 
 # ---------------------------------------------------------------------------

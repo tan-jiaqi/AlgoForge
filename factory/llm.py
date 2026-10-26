@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Literal, TypeVar
@@ -169,6 +170,7 @@ class OpenAILLM(LLM):
                 resp = self._client.chat.completions.create(**kwargs)
         except Exception as exc:  # noqa: BLE001 - 统一 SDK/网络错误，且绝不泄露密钥
             raise LLMError(f"LLM call failed ({type(exc).__name__}): {_redact(str(exc), self.settings)}") from None
+        self.last_usage = resp.usage.model_dump() if resp.usage else None
         return resp.choices[0].message.content or ""
 
     def list_models(self) -> list[str]:
@@ -185,23 +187,68 @@ class CassetteLLM(LLM):
     遇到未录制的请求直接报错。
     """
 
-    def __init__(self, directory: Path, inner: LLM | None, model: str):
+    def __init__(self, directory: Path, inner: LLM | None, model: str, *, agent_namespace: bool = False):
         self.directory = Path(directory)
         self.inner = inner
         self.model = model
+        self.calls: list[dict] = []
+        self.agent_namespace = agent_namespace
 
     def chat(self, messages: list[Message], *, tag: str = "", json_mode: bool = False) -> str:
         key = request_hash(self.model, messages, json_mode)
-        path = self.directory / f"{tag or 'chat'}-{key}.json"
+        directory = self.directory / "agent-v2" if self.agent_namespace and tag in {"plan_spec", "plan", "synthesize", "repair", "lesson"} else self.directory
+        path = directory / f"{tag or 'chat'}-{key}.json"
+        start = time.perf_counter()
         if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))["response"]
+            record = json.loads(path.read_text(encoding="utf-8"))
+            self.calls.append({"tag": tag, "request_hash": key, "model": self.model,
+                               "source": "replay", "seconds": time.perf_counter() - start,
+                               "recorded_seconds": record.get("seconds"), "usage": record.get("usage")})
+            return record["response"]
         if self.inner is None:
+            self.calls.append({"tag": tag, "request_hash": key, "model": self.model, "source": "missing_recording"})
             raise LLMError(f"no recorded response for {path.name}; run once with --llm record")
-        response = self.inner.chat(messages, tag=tag, json_mode=json_mode)
-        self.directory.mkdir(parents=True, exist_ok=True)
-        record = {"tag": tag, "model": self.model, "messages": messages, "response": response}
+        try:
+            response = self.inner.chat(messages, tag=tag, json_mode=json_mode)
+        except LLMError:
+            self.calls.append({"tag": tag, "request_hash": key, "model": self.model,
+                               "source": "remote_error", "seconds": time.perf_counter() - start})
+            raise
+        seconds = time.perf_counter() - start
+        usage = getattr(self.inner, "last_usage", None)
+        origin = "remote" if isinstance(self.inner, OpenAILLM) else "provided"
+        self.calls.append({"tag": tag, "request_hash": key, "model": self.model,
+                           "source": origin, "seconds": seconds, "usage": usage})
+        directory.mkdir(parents=True, exist_ok=True)
+        record = {"tag": tag, "model": self.model, "messages": messages, "response": response,
+                  "json_mode": json_mode, "seconds": seconds, "usage": usage, "source": origin}
         path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
         return response
+
+
+class TrialLLM(LLM):
+    """在每次请求前加一条试验编号，用于独立重复实验。
+
+    部分 OpenAI 兼容网关对内容相同的请求返回缓存回复，即使 temperature 较高也一样，
+    重复运行因此不是独立样本。编号在录制层之前加入，回放时按同一编号重建请求即可命中录制。
+    """
+
+    def __init__(self, inner: LLM, trial: str):
+        self.inner = inner
+        self.trial = trial
+        self.model = inner.model
+
+    @property
+    def calls(self):
+        return getattr(self.inner, "calls", [])
+
+    @property
+    def directory(self):
+        return self.inner.directory
+
+    def chat(self, messages: list[Message], *, tag: str = "", json_mode: bool = False) -> str:
+        note = {"role": "system", "content": f"trial={self.trial}（独立重复实验编号，与任务无关）"}
+        return self.inner.chat([note, *messages], tag=tag, json_mode=json_mode)
 
 
 Handler = Callable[[list[Message]], str]
@@ -261,10 +308,10 @@ def make_llm(mode: Mode = "live", *, settings: LLMSettings | None = None, casset
     settings = settings or LLMSettings.load()
     cassettes = cassette_dir or DEFAULT_CASSETTE_DIR
     if mode == "replay":
-        return CassetteLLM(cassettes, inner=None, model=settings.model)
+        return CassetteLLM(cassettes, inner=None, model=settings.model, agent_namespace=cassette_dir is None)
     live = OpenAILLM(settings)
     if mode == "record":
-        return CassetteLLM(cassettes, inner=live, model=settings.model)
+        return CassetteLLM(cassettes, inner=live, model=settings.model, agent_namespace=cassette_dir is None)
     return CassetteLLM(ROOT / settings.cache_dir, inner=live, model=settings.model)
 
 

@@ -1,0 +1,47 @@
+{
+  "tag": "lesson",
+  "model": "gemini-3.5-flash",
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是算法能力工厂的 Curator。下面是一次被验证器发现、随后修复成功的代码问题。把它提炼为一条可复用的经验（LessonRecord）：title 一句话概括，trigger 写现象/报错，fix 写通用的修复方法（不要只描述这一处改动），applies_to 填相关的条件标签（从 condition_tags 中选）。error_code 与诊断码一致。"
+    },
+    {
+      "role": "user",
+      "content": "<<CONTEXT>>\n{\n \"operator_purpose\": \"删除无关的客户标识列，并将字符串形式的数值列转换为浮点数以供模型处理。\",\n \"diagnostic\": {\n  \"code\": \"E_RUNTIME\",\n  \"stage\": \"sandbox\",\n  \"message\": \"TypeError: Cannot interpret '<StringDtype(na_value=nan)>' as a data type (at issubdtype:534)\",\n  \"operator\": \"DataPreprocessor@1\",\n  \"hint\": \"\"\n },\n \"code_diff\": \"--- \\n+++ \\n@@ -26,5 +26,5 @@\\n         for col in self.numeric_cols:\\n-            # 强制转换为数值，非数值变为NaN\\n-            series = pd.to_numeric(X[col], errors='coerce')\\n-            self.medians_[col] = series.median()\\n+            if col in X.columns:\\n+                series = pd.to_numeric(X[col], errors='coerce')\\n+                self.medians_[col] = series.median() if not series.isna().all() else 0.0\\n         return self\\n@@ -37,18 +37,17 @@\\n         \\n-        # 2. 转换字符串数值列\\n+        # 2. 转换指定数值列\\n         for col in self.numeric_cols:\\n             if col in X.columns:\\n-                # 转换类型\\n                 X[col] = pd.to_numeric(X[col], errors='coerce')\\n-                # 处理产生的缺失值和无穷值\\n                 X[col] = X[col].replace([np.inf, -np.inf], np.nan)\\n-                X[col] = X[col].fillna(self.medians_.get(col, 0))\\n+                X[col] = X[col].fillna(self.medians_.get(col, 0.0))\\n         \\n-        # 3. 对整体DataFrame存在的其他缺失值进行处理（兜底）\\n-        # 数值列填中位数，非数值列填\\\"Missing\\\"\\n+        # 3. 对整体DataFrame其他列处理（规避复杂dtype导致issubdtype报错）\\n         for col in X.columns:\\n             if X[col].isnull().any():\\n-                if np.issubdtype(X[col].dtype, np.number):\\n-                    X[col] = X[col].fillna(X[col].median())\\n+                # 使用类型检查而非复杂的issubdtype，优先处理数值列\\n+                if pd.api.types.is_numeric_dtype(X[col]):\\n+                    X[col] = X[col].fillna(X[col].median() if not X[col].dropna().empty else 0.0)\\n                 else:\\n+                    # 显式转换为对象类型以处理复杂类型缺失\\n                     X[col] = X[col].fillna(\\\"Missing\\\").astype(str)\",\n \"condition_tags\": [\n  \"has_missing_values\",\n  \"has_categorical_features\",\n  \"low_cardinality\",\n  \"high_cardinality\",\n  \"numeric_features\",\n  \"string_typed_numeric\",\n  \"id_columns\",\n  \"linear_model\",\n  \"scaled_features\",\n  \"nonlinear\",\n  \"mixed_features\",\n  \"large_tabular\",\n  \"imbalanced\",\n  \"recall_first\",\n  \"interpretable\",\n  \"feature_importance\",\n  \"sparse_features\",\n  \"text_input\",\n  \"time_tenure\"\n ]\n}\n<</CONTEXT>>"
+    },
+    {
+      "role": "system",
+      "content": "Respond with a single JSON object only, no prose, conforming to this JSON schema:\n{\"$defs\": {\"DiagnosticCode\": {\"enum\": [\"E_SYNTAX\", \"E_UNSAFE\", \"E_INTERFACE\", \"E_RUNTIME\", \"E_TIMEOUT\", \"E_SHAPE\", \"E_PROBA\", \"E_MUTATION\", \"E_NAN\", \"M_THRESHOLD\", \"M_UNSTABLE\"], \"title\": \"DiagnosticCode\", \"type\": \"string\"}}, \"properties\": {\"title\": {\"title\": \"Title\", \"type\": \"string\"}, \"trigger\": {\"description\": \"什么情况下会出现这个问题（现象/报错）\", \"title\": \"Trigger\", \"type\": \"string\"}, \"fix\": {\"description\": \"如何修复或规避\", \"title\": \"Fix\", \"type\": \"string\"}, \"error_code\": {\"anyOf\": [{\"$ref\": \"#/$defs/DiagnosticCode\"}, {\"type\": \"null\"}], \"default\": null}, \"applies_to\": {\"description\": \"相关的算子名、条件标签或场景名\", \"items\": {\"type\": \"string\"}, \"title\": \"Applies To\", \"type\": \"array\"}}, \"required\": [\"title\", \"trigger\", \"fix\"], \"title\": \"LessonRecord\", \"type\": \"object\"}"
+    }
+  ],
+  "response": "{\n  \"title\": \"避免在 Pandas 扩展类型上使用 np.issubdtype 以防类型检查报错\",\n  \"trigger\": \"在使用 Pandas DataFrame 处理数据时，若列类型为 StringDtype 或其他扩展类型，调用 np.issubdtype(X[col].dtype, np.number) 会抛出 TypeError: Cannot interpret ... as a data type。\",\n  \"fix\": \"使用 pd.api.types.is_numeric_dtype(series) 替代 np.issubdtype 进行数值列判断，该方法对 Pandas 的各类扩展数据类型具有更好的兼容性和鲁棒性。\",\n  \"error_code\": \"E_RUNTIME\",\n  \"applies_to\": [\n    \"mixed_features\",\n    \"numeric_features\",\n    \"string_typed_numeric\"\n  ]\n}",
+  "json_mode": true,
+  "seconds": 5.454705648124218,
+  "usage": {
+    "completion_tokens": 702,
+    "prompt_tokens": 1616,
+    "total_tokens": 2318,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "reasoning_tokens": 504,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 198,
+      "image_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": null,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 1616
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "input_tokens": 0,
+    "input_tokens_details": null,
+    "output_tokens": 0
+  },
+  "source": "remote"
+}

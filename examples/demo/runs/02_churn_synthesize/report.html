@@ -17,40 +17,178 @@ p code, li code, td code { background: var(--code); padding: 1px 4px; border-rad
 </style></head>
 <body>
 <h1>AlgoForge 验证报告</h1>
-<table><thead><tr><th>项目</th><th>内容</th></tr></thead><tbody><tr><td>需求</td><td>预测30天内可能流失的客户，需可解释，召回优先</td></tr><tr><td>数据</td><td>data/churn.csv</td></tr><tr><td>运行 ID</td><td>02_churn_synthesize</td></tr><tr><td>LLM</td><td>gemini-3.5-flash</td></tr><tr><td>状态</td><td>✅ 成功</td></tr><tr><td>最优方案</td><td>interpretable_logistic_regression</td></tr><tr><td>总耗时</td><td>63.1 s</td></tr></tbody></table>
-<p>共验证 3 个候选方案，1 个通过；重新规划 0 次，修复 0 轮。最优方案 <code>interpretable_logistic_regression</code> 的 recall = 0.778（要求 ≥ 0.75）。</p>
+<table><thead><tr><th>项目</th><th>内容</th></tr></thead><tbody><tr><td>需求</td><td>预测30天内可能流失的客户，需可解释，召回优先。比较三个方案，至少一个方案使用清洗、通用缺失值填补、类别编码、标准化和平衡类权重的逻辑回归；可增加在网时长分桶，引用检索到的历史实现。</td></tr><tr><td>数据</td><td>data/churn.csv</td></tr><tr><td>运行 ID</td><td>02_churn_synthesize</td></tr><tr><td>LLM</td><td>gemini-3.5-flash</td></tr><tr><td>状态</td><td>✅ 成功</td></tr><tr><td>最优方案</td><td>logistic_regression_pipeline</td></tr><tr><td>总耗时</td><td>23.2 s</td></tr></tbody></table>
+<p>共验证 3 个候选方案，1 个通过；重新规划 0 次，修复 3 轮。最优方案 <code>logistic_regression_pipeline</code> 的 recall = 0.778（要求 ≥ 0.75）。</p>
 <h2>1. 需求理解（TaskSpec）</h2>
 <table><thead><tr><th>字段</th><th>值</th></tr></thead><tbody><tr><td>任务类型</td><td>binary_classification</td></tr><tr><td>数据模态</td><td>tabular</td></tr><tr><td>目标列</td><td>churn</td></tr><tr><td>评价指标</td><td>recall ≥ 0.75（主）；roc_auc ≥ 0.8</td></tr><tr><td>业务约束</td><td>interpretable、recall_first</td></tr><tr><td>数据画像标签</td><td>has_missing_values、numeric_features、has_categorical_features、low_cardinality、string_typed_numeric、id_columns、imbalanced、time_tenure、mixed_features</td></tr></tbody></table>
 <h2>2. 知识检索（设计依据）</h2>
 <p>匹配场景：telecom_churn。每类步骤从知识图谱检索候选算子，得分 = 0.4 × 文本相关度 + 0.3 × 条件匹配 + 0.3 × 历史验证分。</p>
-<table><thead><tr><th>步骤</th><th>候选算子</th><th>可直接复用</th><th>得分</th><th>文本/条件/历史</th><th>证据</th></tr></thead><tbody><tr><td>imputer</td><td>MissingValueImputer@1</td><td>是</td><td>0.492</td><td>0.62 / 0.09 / 0.72</td><td>匹配条件：has_missing_values；历史验证 3 次，平均 recall 0.717</td></tr><tr><td>imputer</td><td>TotalChargesCleaner@1</td><td>否（历史实现，可参考生成）</td><td>0.482</td><td>1.00 / 0.27 / 0.00</td><td>匹配条件：has_missing_values、numeric_features、string_typed_numeric</td></tr><tr><td>feature</td><td>TenureBucketizer@1</td><td>否（历史实现，可参考生成）</td><td>0.707</td><td>0.96 / 0.27 / 0.80</td><td>匹配条件：interpretable、numeric_features、time_tenure；历史验证 1 次，平均 recall 0.800</td></tr><tr><td>feature</td><td>ChargeRatioFeatureGenerator@1</td><td>否（历史实现，可参考生成）</td><td>0.606</td><td>0.78 / 0.18 / 0.80</td><td>匹配条件：numeric_features、time_tenure；历史验证 1 次，平均 recall 0.800</td></tr><tr><td>feature</td><td>ServiceCountFeature@1</td><td>否（历史实现，可参考生成）</td><td>0.427</td><td>1.00 / 0.09 / 0.00</td><td>匹配条件：has_categorical_features</td></tr><tr><td>encoder</td><td>OneHotCategoricalEncoder@1</td><td>是</td><td>0.669</td><td>1.00 / 0.18 / 0.72</td><td>匹配条件：has_categorical_features、low_cardinality；历史验证 3 次，平均 recall 0.717</td></tr><tr><td>encoder</td><td>KFoldTargetEncoder@1</td><td>否（历史实现，可参考生成）</td><td>0.402</td><td>0.94 / 0.09 / 0.00</td><td>匹配条件：has_categorical_features</td></tr><tr><td>scaler</td><td>StandardFeatureScaler@1</td><td>是</td><td>0.640</td><td>1.00 / 0.09 / 0.71</td><td>匹配条件：numeric_features；历史验证 1 次，平均 recall 0.710</td></tr><tr><td>model</td><td>LogisticRegressionModel@1</td><td>是</td><td>0.640</td><td>1.00 / 0.09 / 0.71</td><td>匹配条件：interpretable；历史验证 1 次，平均 recall 0.710</td></tr><tr><td>model</td><td>BalancedLightGBMClassifier@1</td><td>否（历史实现，可参考生成）</td><td>0.593</td><td>0.83 / 0.09 / 0.78</td><td>匹配条件：imbalanced；历史验证 1 次，平均 recall 0.780</td></tr><tr><td>model</td><td>RandomForestModel@1</td><td>是</td><td>0.546</td><td>0.80 / 0.09 / 0.66</td><td>匹配条件：mixed_features；历史验证 1 次，平均 recall 0.660</td></tr></tbody></table>
+<table><thead><tr><th>步骤</th><th>候选算子</th><th>可直接复用</th><th>得分</th><th>文本/条件/历史</th><th>证据</th></tr></thead><tbody><tr><td>imputer</td><td>MissingValueImputer@1</td><td>是</td><td>0.642</td><td>1.00 / 0.09 / 0.72</td><td>匹配条件：has_missing_values；历史验证 3 次，平均 recall 0.717</td></tr><tr><td>imputer</td><td>TotalChargesCleaner@1</td><td>否（历史实现，可参考生成）</td><td>0.450</td><td>0.92 / 0.27 / 0.00</td><td>匹配条件：has_missing_values、numeric_features、string_typed_numeric</td></tr><tr><td>feature</td><td>TenureBucketizer@1</td><td>否（历史实现，可参考生成）</td><td>0.722</td><td>1.00 / 0.27 / 0.80</td><td>匹配条件：interpretable、numeric_features、time_tenure；历史验证 1 次，平均 recall 0.800</td></tr><tr><td>feature</td><td>ChargeRatioFeatureGenerator@1</td><td>否（历史实现，可参考生成）</td><td>0.658</td><td>0.91 / 0.18 / 0.80</td><td>匹配条件：numeric_features、time_tenure；历史验证 1 次，平均 recall 0.800</td></tr><tr><td>feature</td><td>ServiceCountFeature@1</td><td>否（历史实现，可参考生成）</td><td>0.388</td><td>0.90 / 0.09 / 0.00</td><td>匹配条件：has_categorical_features</td></tr><tr><td>encoder</td><td>OneHotCategoricalEncoder@1</td><td>是</td><td>0.607</td><td>0.84 / 0.18 / 0.72</td><td>匹配条件：has_categorical_features、low_cardinality；历史验证 3 次，平均 recall 0.717</td></tr><tr><td>encoder</td><td>KFoldTargetEncoder@1</td><td>否（历史实现，可参考生成）</td><td>0.427</td><td>1.00 / 0.09 / 0.00</td><td>匹配条件：has_categorical_features</td></tr><tr><td>scaler</td><td>StandardFeatureScaler@1</td><td>是</td><td>0.640</td><td>1.00 / 0.09 / 0.71</td><td>匹配条件：numeric_features；历史验证 1 次，平均 recall 0.710</td></tr><tr><td>model</td><td>BalancedLightGBMClassifier@1</td><td>否（历史实现，可参考生成）</td><td>0.661</td><td>1.00 / 0.09 / 0.78</td><td>匹配条件：imbalanced；历史验证 1 次，平均 recall 0.780</td></tr><tr><td>model</td><td>LogisticRegressionModel@1</td><td>是</td><td>0.613</td><td>0.93 / 0.09 / 0.71</td><td>匹配条件：interpretable；历史验证 1 次，平均 recall 0.710</td></tr><tr><td>model</td><td>LightGBMModel@1</td><td>是</td><td>0.539</td><td>0.68 / 0.09 / 0.80</td><td>匹配条件：imbalanced；历史验证 1 次，平均 recall 0.800</td></tr></tbody></table>
 <h3>参考的历史经验</h3>
-<ul><li><strong>逻辑回归标准化与可解释性</strong>：必须先进行特征标准化（如 StandardFeatureScaler），在 0.1~10 之间搜索正则化强度 C，可直接输出系数给业务方。</li><li><strong>随机森林防过拟合与召回优化</strong>：设置 n_estimators 300 左右，限制 max_depth 在 8~16 防止过拟合；召回优先时需配合调整分类阈值。</li><li><strong>数值列含空白字符导致类型转换失败</strong>（E_RUNTIME）：先 str.strip()，再 pd.to_numeric(errors=&#x27;coerce&#x27;)，缺失值填补为 0</li><li><strong>样本不平衡导致默认模型召回率偏低</strong>（M_THRESHOLD）：启用平衡类权重（如 class_weight=&#x27;balanced&#x27; 或 BalancedLightGBMClassifier）以提升召回率</li><li><strong>未剔除客户 ID 导致 One-Hot 编码后维度暴涨与内存溢出</strong>（E_TIMEOUT）：建模前剔除 ID 等标识列，并在编码器中设置最大类别数</li></ul>
+<ul><li><strong>逻辑回归标准化与可解释性</strong>：必须先进行特征标准化（如 StandardFeatureScaler），在 0.1~10 之间搜索正则化强度 C，可直接输出系数给业务方。</li><li><strong>样本不平衡导致默认模型召回率偏低</strong>（M_THRESHOLD）：启用平衡类权重（如 class_weight=&#x27;balanced&#x27; 或 BalancedLightGBMClassifier）以提升召回率</li><li><strong>数值列含空白字符导致类型转换失败</strong>（E_RUNTIME）：先 str.strip()，再 pd.to_numeric(errors=&#x27;coerce&#x27;)，缺失值填补为 0</li><li><strong>随机森林防过拟合与召回优化</strong>：设置 n_estimators 300 左右，限制 max_depth 在 8~16 防止过拟合；召回优先时需配合调整分类阈值。</li><li><strong>预测阶段出现未见类别导致编码报错</strong>（E_RUNTIME）：编码器配置 handle_unknown=&#x27;ignore&#x27; 或 infrequent_if_exist 忽略未知类别</li></ul>
+<h3>知识引用检查</h3>
+<p>检索并传入上下文不等于采纳。以下引用由模型声明，程序仅核对可见范围与结构化适用对象；不证明语义落实或指标收益。</p>
+<table><thead><tr><th>方案</th><th>步骤</th><th>模型引用</th><th>范围检查</th><th>语义落实</th></tr></thead><tbody><tr><td>（被拒绝的规划）</td><td>-</td><td>无</td><td>未通过：target_encoded_lgbm_pipeline: 第 3 步：未知算子 BalancedLightGBMClassifier@1；target_encoded_lgbm_pipeline: 第 3 步：BalancedLightGBMClassifier@1 不在本轮检索候选中</td><td>未验证</td></tr><tr><td>logistic_regression_pipeline</td><td>1</td><td>Operator:TotalChargesCleaner@1</td><td>通过</td><td>未验证</td></tr><tr><td>logistic_regression_pipeline</td><td>2</td><td>Operator:MissingValueImputer@1</td><td>通过</td><td>未验证</td></tr><tr><td>logistic_regression_pipeline</td><td>3</td><td>Operator:TenureBucketizer@1</td><td>通过</td><td>未验证</td></tr><tr><td>logistic_regression_pipeline</td><td>4</td><td>Operator:OneHotCategoricalEncoder@1</td><td>通过</td><td>未验证</td></tr><tr><td>logistic_regression_pipeline</td><td>5</td><td>Operator:StandardFeatureScaler@1</td><td>通过</td><td>未验证</td></tr><tr><td>logistic_regression_pipeline</td><td>6</td><td>Operator:LogisticRegressionModel@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_feature_eng_pipeline</td><td>1</td><td>Operator:MissingValueImputer@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_feature_eng_pipeline</td><td>2</td><td>Operator:ChargeRatioFeatureGenerator@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_feature_eng_pipeline</td><td>3</td><td>Operator:OneHotCategoricalEncoder@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_feature_eng_pipeline</td><td>4</td><td>Operator:LightGBMModel@1</td><td>通过</td><td>未验证</td></tr><tr><td>target_encoded_lgbm_pipeline</td><td>1</td><td>Operator:MissingValueImputer@1</td><td>通过</td><td>未验证</td></tr><tr><td>target_encoded_lgbm_pipeline</td><td>2</td><td>Operator:KFoldTargetEncoder@1</td><td>通过</td><td>未验证</td></tr><tr><td>target_encoded_lgbm_pipeline</td><td>3</td><td>Operator:LightGBMModel@1</td><td>通过</td><td>未验证</td></tr></tbody></table>
 <h2>3. 候选方案比较</h2>
 <p>排序规则：先看是否通过全部检查，再比主指标，再比次要指标之和，最后训练耗时短者优先。指标为多随机种子 × 分层 K 折交叉验证的均值 ± 种子间标准差。</p>
-<table><thead><tr><th>排名</th><th>方案</th><th>结果</th><th>recall</th><th>roc_auc</th><th>precision</th><th>f1</th><th>recall_at_20</th><th>单次训练 (s)</th><th>峰值内存 (MB)</th></tr></thead><tbody><tr><td>1</td><td>★ interpretable_logistic_regression</td><td>通过</td><td>0.778 ± 0.001</td><td>0.814 ± 0.001</td><td>0.482 ± 0.001</td><td>0.595 ± 0.001</td><td>0.455 ± 0.001</td><td>0.088</td><td>261</td></tr><tr><td>2</td><td>cost_ratio_random_forest</td><td>未通过</td><td>0.714 ± 0.003</td><td>0.804 ± 0.001</td><td>0.493 ± 0.002</td><td>0.583 ± 0.002</td><td>0.455 ± 0.001</td><td>0.612</td><td>269</td></tr><tr><td>3</td><td>balanced_lightgbm_boosting</td><td>未通过</td><td>0.630 ± 0.003</td><td>0.783 ± 0.004</td><td>0.490 ± 0.001</td><td>0.551 ± 0.002</td><td>0.420 ± 0.008</td><td>0.259</td><td>265</td></tr></tbody></table>
+<table><thead><tr><th>排名</th><th>方案</th><th>结果</th><th>recall</th><th>roc_auc</th><th>precision</th><th>f1</th><th>recall_at_20</th><th>单次训练 (s)</th><th>峰值内存 (MB)</th></tr></thead><tbody><tr><td>1</td><td>★ logistic_regression_pipeline</td><td>通过</td><td>0.778 ± 0.001</td><td>0.814 ± 0.001</td><td>0.482 ± 0.001</td><td>0.595 ± 0.001</td><td>0.455 ± 0.001</td><td>0.097</td><td>261</td></tr><tr><td>2</td><td>target_encoded_lgbm_pipeline</td><td>未通过</td><td>0.652 ± 0.001</td><td>0.787 ± 0.002</td><td>0.495 ± 0.007</td><td>0.562 ± 0.003</td><td>0.420 ± 0.008</td><td>0.372</td><td>250</td></tr><tr><td>3</td><td>lgbm_feature_eng_pipeline</td><td>未通过</td><td>0.645 ± 0.004</td><td>0.787 ± 0.001</td><td>0.497 ± 0.002</td><td>0.561 ± 0.002</td><td>0.422 ± 0.001</td><td>0.270</td><td>260</td></tr></tbody></table>
 <pre><code>recall（| 为阈值 0.75）
-interpretable_logistic_regression    ■■■■■■■■■■■■■■■|···· 0.778
-cost_ratio_random_forest             ■■■■■■■■■■■■■■·|···· 0.714
-balanced_lightgbm_boosting           ■■■■■■■■■■■■■··|···· 0.630</code></pre>
+logistic_regression_pipeline         ■■■■■■■■■■■■■■■|···· 0.778
+target_encoded_lgbm_pipeline         ■■■■■■■■■■■■■··|···· 0.652
+lgbm_feature_eng_pipeline            ■■■■■■■■■■■■■··|···· 0.645</code></pre>
 <h3>各方案的结构与诊断</h3>
-<ul><li><code>interpretable_logistic_regression</code>：生成:TotalChargesCleaner → MissingValueImputer → 生成:TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel。诊断：无</li><li><code>cost_ratio_random_forest</code>：生成:TotalChargesCleaner → MissingValueImputer → 生成:ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → RandomForestModel。诊断：<code>M_THRESHOLD</code> recall = 0.7143 低于阈值 0.75</li><li><code>balanced_lightgbm_boosting</code>：生成:TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → 生成:BalancedLightGBMClassifier。诊断：<code>M_THRESHOLD</code> recall = 0.6298 低于阈值 0.75；<code>M_THRESHOLD</code> roc_auc = 0.7830 低于阈值 0.8</li></ul>
-<h2>4. 最优方案：interpretable_logistic_regression</h2>
-<p>针对高可解释性需求与召回优先目标，结合在网时长分箱特征与标准化的线性模型，配合平衡类别权重实现高召回率与透明的特征权重解释。</p>
-<table><thead><tr><th>#</th><th>步骤</th><th>算子</th><th>参数</th><th>选择理由</th></tr></thead><tbody><tr><td>1</td><td>imputer</td><td>生成 TotalChargesCleaner</td><td>-</td><td>根据 lesson 经验，必须先清洗 total_charges 中的空白字符并转为浮点数，防止后续处理类型转换失败。</td></tr><tr><td>2</td><td>imputer</td><td>MissingValueImputer@1</td><td>-</td><td>依据匹配条件 has_missing_values，对其余数值和类别缺失列进行中位数和众数填补。</td></tr><tr><td>3</td><td>feature</td><td>生成 TenureBucketizer</td><td>-</td><td>历史验证召回率达 0.800，分箱在网时长有助于线性模型捕捉非线性流失拐点并提升可解释性。</td></tr><tr><td>4</td><td>encoder</td><td>OneHotCategoricalEncoder@1</td><td>max_categories=20</td><td>对低基数类别特征进行独热编码，并限制类别数避免维度过高。</td></tr><tr><td>5</td><td>scaler</td><td>StandardFeatureScaler@1</td><td>-</td><td>根据 lesson 经验，逻辑回归模型必须在拟合前对特征进行标准化。</td></tr><tr><td>6</td><td>model</td><td>LogisticRegressionModel@1</td><td>C=1.0, class_weight=balanced, max_iter=1000, random_state=42</td><td>满足 interpretable 约束，且设置 class_weight=&#x27;balanced&#x27; 解决不平衡导致的召回率不足问题。</td></tr></tbody></table>
+<ul><li><code>logistic_regression_pipeline</code>：生成:TotalChargesCleaner → MissingValueImputer → 生成:TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel。诊断：无</li><li><code>target_encoded_lgbm_pipeline</code>：MissingValueImputer → 生成:KFoldTargetEncoder → LightGBMModel。诊断：<code>M_THRESHOLD</code> recall = 0.6516 低于阈值 0.75；<code>M_THRESHOLD</code> roc_auc = 0.7871 低于阈值 0.8</li><li><code>lgbm_feature_eng_pipeline</code>：MissingValueImputer → 生成:ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → LightGBMModel。诊断：<code>M_THRESHOLD</code> recall = 0.6446 低于阈值 0.75；<code>M_THRESHOLD</code> roc_auc = 0.7866 低于阈值 0.8</li></ul>
+<h2>4. 最优方案：logistic_regression_pipeline</h2>
+<p>这是满足任务要求的基准方案，使用逻辑回归，包含必要的预处理和样本权重配置。</p>
+<table><thead><tr><th>#</th><th>步骤</th><th>算子</th><th>参数</th><th>选择理由</th></tr></thead><tbody><tr><td>1</td><td>imputer</td><td>生成 TotalChargesCleaner</td><td>-</td><td>解决数值列被读取为字符串且包含空格导致的问题，引用 Lesson:69d51358。</td></tr><tr><td>2</td><td>imputer</td><td>MissingValueImputer@1</td><td>-</td><td>处理其他列中的缺失值。</td></tr><tr><td>3</td><td>feature</td><td>生成 TenureBucketizer</td><td>-</td><td>对在网时长进行分桶处理，提高可解释性并提升线性模型表现。</td></tr><tr><td>4</td><td>encoder</td><td>OneHotCategoricalEncoder@1</td><td>-</td><td>类别特征 One-Hot 编码。</td></tr><tr><td>5</td><td>scaler</td><td>StandardFeatureScaler@1</td><td>-</td><td>逻辑回归必须进行标准化，引用 Lesson:74e2da10。</td></tr><tr><td>6</td><td>model</td><td>LogisticRegressionModel@1</td><td>class_weight=balanced</td><td>逻辑回归模型，通过 balanced 权重应对样本不平衡，提升召回率。</td></tr></tbody></table>
 <h2>5. 能力生成与修复</h2>
-<table><thead><tr><th>生成算子</th><th>类型</th><th>用途</th><th>参考的历史实现</th><th>修复轮数</th><th>注册到能力库</th></tr></thead><tbody><tr><td>TotalChargesCleaner@2</td><td>imputer</td><td>将包含空白字符串的数值列安全转换为浮点型，避免数值转换异常并将空缺值填充为0.0</td><td>TotalChargesCleaner@1</td><td>0</td><td>是</td></tr><tr><td>TenureBucketizer@2</td><td>feature</td><td>将连续的在网时长字段分箱为离散区间，增强线性模型的表达能力与业务可解释性</td><td>TenureBucketizer@1</td><td>0</td><td>是</td></tr><tr><td>BalancedLightGBMClassifier@2</td><td>model</td><td>使用带平衡权重的 LightGBM 训练流失分类模型，提供特征重要性分析并优化召回</td><td>BalancedLightGBMClassifier@1</td><td>0</td><td>否</td></tr><tr><td>ChargeRatioFeatureGenerator@2</td><td>feature</td><td>计算月度资费与历史平均费用的比率，刻画用户近期资费变动敏感度</td><td>ChargeRatioFeatureGenerator@1</td><td>0</td><td>否</td></tr></tbody></table>
+<table><thead><tr><th>生成算子</th><th>类型</th><th>用途</th><th>参考的历史实现</th><th>修复轮数</th><th>注册到能力库</th></tr></thead><tbody><tr><td>TotalChargesCleaner@2</td><td>imputer</td><td>清理包含空白符的total_charges列并转换为浮点型</td><td>TotalChargesCleaner@1</td><td>0</td><td>是</td></tr><tr><td>TenureBucketizer@2</td><td>feature</td><td>在网时长分桶以增强线性模型解释性</td><td>TenureBucketizer@1</td><td>0</td><td>是</td></tr><tr><td>ChargeRatioFeatureGenerator@2</td><td>feature</td><td>生成消费比率特征</td><td>ChargeRatioFeatureGenerator@1</td><td>3</td><td>否</td></tr><tr><td>KFoldTargetEncoder@2</td><td>encoder</td><td>高基数类别目标编码</td><td>KFoldTargetEncoder@1</td><td>0</td><td>否</td></tr></tbody></table>
+<h3>修复 ChargeRatioFeatureGenerator@2 第 1 轮：❌ 未修复</h3>
+<ul><li>诊断：<code>E_RUNTIME</code>（sandbox）TypeError: operation &#x27;truediv&#x27; not supported for dtype &#x27;str&#x27; with dtype &#x27;float64&#x27; (at _evaluate_op_method:1099)</li><li>提示：-</li><li>参考经验：2 条</li></ul>
+<pre><code>--- 修复前
++++ 修复后
+@@ -2,5 +2,5 @@
+ import pandas as pd
+-from sklearn.base import TransformerMixin, ClassifierMixin
++from sklearn.base import TransformerMixin
+ from factory.operators.base import Operator, OperatorMeta
+-from factory.schemas import OperatorKind
++from factory.schemas import OperatorKind, Modality
+ 
+@@ -38,24 +38,28 @@
+         X = X.copy()
++
++        def clean_numeric(series):
++            # 确保列被转换为数值型，非数值字符转为 NaN，然后填充 0
++            if series.dtype == &#x27;object&#x27;:
++                series = pd.to_numeric(series.astype(str).str.strip(), errors=&#x27;coerce&#x27;)
++            return series.fillna(0.0)
++
++        # 获取并清洗数据，确保所有列均为 float 类型
++        monthly_series = clean_numeric(X[self.monthly])
++        total_series = clean_numeric(X[self.total])
++        tenure_series = clean_numeric(X[self.tenure])
++
++        # 计算 avg = total / tenure。处理 tenure=0 的情况（置为 NaN）
++        # 使用 replace 避免除以 0
++        tenure_safe = tenure_series.replace(0, np.nan)
++        avg_series = total_series / tenure_safe
++
++        # 计算 ratio = avg / monthly。处理 monthly=0 的情况
++        monthly_safe = monthly_series.replace(0, np.nan)
++        ratio = avg_series / monthly_safe
++
++        # 处理无穷值和缺失值，保证算子鲁棒性
++        ratio = ratio.replace([np.inf, -np.inf], np.nan).fillna(1.0)
+         
+-        # 处理字符串类型的数值列
+-        def clean_numeric(col):
+-            if X[col].dtype == &#x27;object&#x27;:
+-                return pd.to_numeric(X[col].astype(str).str.strip(), errors=&#x27;coerce&#x27;).fillna(0.0)
+-            return X[col].fillna(0.0)
+-
+-        total_series = clean_numeric(self.total)
+-        tenure_series = clean_numeric(self.tenure)
+-        monthly_series = clean_numeric(self.monthly)
+-
+-        # 计算 avg = total / tenure (处理 tenure=0)
+-        # 将tenure为0或无效值的情况置为nan，后续作为比值1.0处理
+-        avg_series = total_series / tenure_series.replace(0, np.nan)
+-        
+-        # 计算 ratio = avg / monthly
+-        # 处理无穷值和无效值
+-        ratio = (avg_series / monthly_series.replace(0, np.nan))
+-        X[&quot;charge_ratio&quot;] = ratio.replace([np.inf, -np.inf], np.nan).fillna(1.0)
+-        
+-        # 兜底填充：如果产生缺失值（由于除以0或其他计算问题）
+-        X[&quot;charge_ratio&quot;] = X[&quot;charge_ratio&quot;].fillna(1.0)
++        # 将结果赋值回数据框
++        X[&quot;charge_ratio&quot;] = ratio
+         </code></pre>
+<h3>修复 ChargeRatioFeatureGenerator@2 第 2 轮：❌ 未修复</h3>
+<ul><li>诊断：<code>E_RUNTIME</code>（sandbox）TypeError: operation &#x27;truediv&#x27; not supported for dtype &#x27;str&#x27; with dtype &#x27;float64&#x27; (at _evaluate_op_method:1099)</li><li>提示：-</li><li>参考经验：2 条</li></ul>
+<pre><code>--- 修复前
++++ 修复后
+@@ -40,6 +40,7 @@
+         def clean_numeric(series):
+-            # 确保列被转换为数值型，非数值字符转为 NaN，然后填充 0
++            # 确保列被转换为数值型，包含空格或特殊字符会被强制转为 NaN
+             if series.dtype == &#x27;object&#x27;:
+-                series = pd.to_numeric(series.astype(str).str.strip(), errors=&#x27;coerce&#x27;)
+-            return series.fillna(0.0)
++                series = series.astype(str).str.strip()
++                series = pd.to_numeric(series, errors=&#x27;coerce&#x27;)
++            return series.fillna(0.0).astype(float)
+ 
+@@ -54,3 +55,3 @@
+         avg_series = total_series / tenure_safe
+-
++        
+         # 计算 ratio = avg / monthly。处理 monthly=0 的情况
+@@ -59,3 +60,4 @@
+ 
+-        # 处理无穷值和缺失值，保证算子鲁棒性
++        # 处理计算产生的无穷值和缺失值，保证算子鲁棒性
++        # 如果无法计算（例如 tenure 和 monthly 均为 0），默认填充 1.0
+         ratio = ratio.replace([np.inf, -np.inf], np.nan).fillna(1.0)</code></pre>
+<h3>修复 ChargeRatioFeatureGenerator@2 第 3 轮：✅ 已修复</h3>
+<ul><li>诊断：<code>E_RUNTIME</code>（sandbox）ValueError: could not convert string to float: &#x27; &#x27; (at to_numpy:1803)</li><li>提示：-</li><li>参考经验：2 条</li></ul>
+<pre><code>--- 修复前
++++ 修复后
+@@ -40,9 +40,13 @@
+         def clean_numeric(series):
+-            # 确保列被转换为数值型，包含空格或特殊字符会被强制转为 NaN
++            # 严格处理：先转字符串，去除空格，再转数值，强制coerce无法转换的为NaN
+             if series.dtype == &#x27;object&#x27;:
+                 series = series.astype(str).str.strip()
++                # 排除可能存在的空字符串，将其视为 NaN
++                series = series.replace(r&#x27;^\s*$&#x27;, np.nan, regex=True)
+                 series = pd.to_numeric(series, errors=&#x27;coerce&#x27;)
+-            return series.fillna(0.0).astype(float)
++            else:
++                series = pd.to_numeric(series, errors=&#x27;coerce&#x27;)
++            return series.fillna(0.0)
+ 
+-        # 获取并清洗数据，确保所有列均为 float 类型
++        # 获取并清洗数据
+         monthly_series = clean_numeric(X[self.monthly])
+@@ -51,14 +55,13 @@
+ 
+-        # 计算 avg = total / tenure。处理 tenure=0 的情况（置为 NaN）
+-        # 使用 replace 避免除以 0
+-        tenure_safe = tenure_series.replace(0, np.nan)
+-        avg_series = total_series / tenure_safe
+-        
+-        # 计算 ratio = avg / monthly。处理 monthly=0 的情况
+-        monthly_safe = monthly_series.replace(0, np.nan)
+-        ratio = avg_series / monthly_safe
++        # 计算 avg = total / tenure。
++        # tenure 为 0 时结果为 inf，后续统一处理
++        with np.errstate(divide=&#x27;ignore&#x27;, invalid=&#x27;ignore&#x27;):
++            avg_series = total_series / tenure_series
++            # 计算 ratio = avg / monthly
++            ratio = avg_series / monthly_series
+ 
+-        # 处理计算产生的无穷值和缺失值，保证算子鲁棒性
+-        # 如果无法计算（例如 tenure 和 monthly 均为 0），默认填充 1.0
+-        ratio = ratio.replace([np.inf, -np.inf], np.nan).fillna(1.0)
++        # 处理 inf, -inf 和 NaN，保证鲁棒性
++        # 如果无法计算（例如 tenure 或 monthly 均为 0），默认填充 1.0 代表比率持平
++        ratio = ratio.replace([np.inf, -np.inf], np.nan)
++        ratio = ratio.fillna(1.0)
+         </code></pre>
 <h2>6. 验证机制</h2>
 <table><thead><tr><th>级别</th><th>检查内容</th><th>本次配置</th></tr></thead><tbody><tr><td>1 静态检查</td><td>语法、import 白名单、禁止危险调用、接口与 meta 一致性</td><td>仅针对生成的算子</td></tr><tr><td>2 沙箱执行</td><td>独立子进程，限制超时与内存，清除含 KEY/TOKEN 的环境变量</td><td>超时 180 s，内存 8192 MB</td></tr><tr><td>3 契约检查</td><td>不修改输入、行数一致、不引入 NaN/Inf、概率合法、能处理未见类别与缺失值</td><td>冒烟样本 300 行</td></tr><tr><td>4 指标检查</td><td>阈值、种子间稳定性、疑似泄漏、耗时与内存</td><td>5 折 × 种子 [42, 7, 2024]；std 上限 0.03</td></tr></tbody></table>
-<p>最优方案资源消耗：单次训练 0.088 s，预测 42.8 ms / 千行，峰值内存 261 MB。</p>
+<p>最优方案资源消耗：单次训练 0.097 s，预测 47.2 ms / 千行，峰值内存 261 MB。</p>
+<p>修复前的 3 次验证结果保留在 state.json 的 history 中。</p>
 <h2>7. 知识沉淀</h2>
-<ul><li>回写验证记录 ValidationRun：3 条</li><li>注册到能力库的新算子：TotalChargesCleaner@2、TenureBucketizer@2</li><li>新提炼的经验：无</li><li>本次使用的经验：7 条（命中次数已累计）</li></ul>
+<ul><li>回写验证记录 ValidationRun：3 条</li><li>注册到能力库的新算子：TotalChargesCleaner@2、TenureBucketizer@2</li><li>新提炼的经验：数值特征清洗需显式处理空白字符与零除异常（E_RUNTIME）</li><li>本次提供的经验：7 条（累计检索命中，不代表采纳）</li></ul>
 <h2>附录 A. 生成的算法代码（pipeline.py）</h2>
-<pre><code>&quot;&quot;&quot;预测30天内可能流失的客户，需可解释，召回优先 —— 自动生成的算法流水线
+<pre><code>&quot;&quot;&quot;预测30天内可能流失的客户，需可解释，召回优先。比较三个方案，至少一个方案使用清 —— 自动生成的算法流水线
 
-需求：预测30天内可能流失的客户，需可解释，召回优先
-方案：interpretable_logistic_regression
-设计依据：针对高可解释性需求与召回优先目标，结合在网时长分箱特征与标准化的线性模型，配合平衡类别权重实现高召回率与透明的特征权重解释。
+需求：预测30天内可能流失的客户，需可解释，召回优先。比较三个方案，至少一个方案使用清洗、通用缺失值填补、类别编码、标准化和平衡类权重的逻辑回归；可增加在网时长分桶，引用检索到的历史实现。
+方案：logistic_regression_pipeline
+设计依据：这是满足任务要求的基准方案，使用逻辑回归，包含必要的预处理和样本权重配置。
 主指标：recall &gt;= 0.75
 
 由 AlgoForge 自动生成。用法：
@@ -68,54 +206,53 @@ from factory.operators.models import LogisticRegressionModel
 from factory.operators.tabular import MissingValueImputer, OneHotCategoricalEncoder, StandardFeatureScaler
 
 
-import numpy as np
 import pandas as pd
+import numpy as np
 from sklearn.base import TransformerMixin
-
 from factory.operators.base import Operator, OperatorMeta
-from factory.schemas import OperatorKind
-
+from factory.schemas import OperatorKind, Modality
 
 class TotalChargesCleaner(TransformerMixin, Operator):
+    &quot;&quot;&quot;
+    清理包含空白符或脏字符的total_charges列并转换为浮点型，缺失值默认为0。
+    &quot;&quot;&quot;
     meta = OperatorMeta(
         name=&quot;TotalChargesCleaner&quot;,
         kind=OperatorKind.IMPUTER,
         version=2,
         origin=&quot;synthesized&quot;,
-        description=&quot;安全清洗并转换含空白字符串的累计消费等数值列为浮点型，并填充缺失值为指定默认值&quot;,
-        conditions=[&quot;string_typed_numeric&quot;, &quot;has_missing_values&quot;],
-        dependencies=[],
-        params={&quot;col&quot;: &quot;total_charges&quot;, &quot;fill_value&quot;: 0.0},
-        parent=&quot;TotalChargesCleaner@1&quot;,
+        description=&quot;清理包含空白符的total_charges列并转换为浮点型&quot;,
+        conditions=[&quot;数据存在字符串格式的数值列&quot;, &quot;存在包含空白字符的缺失值&quot;],
+        dependencies=[&quot;pandas&quot;, &quot;numpy&quot;, &quot;sklearn&quot;],
+        params={&quot;col&quot;: &quot;total_charges&quot;},
+        parent=&quot;TotalChargesCleaner@1&quot;
     )
 
-    def __init__(self, col: str = &quot;total_charges&quot;, fill_value: float = 0.0):
+    def __init__(self, col=&quot;total_charges&quot;):
         self.col = col
-        self.fill_value = fill_value
 
-    def fit(self, X: pd.DataFrame, y=None):
-        self.is_fitted_ = True
+    def fit(self, X, y=None):
         return self
 
-    def transform(self, X: pd.DataFrame) -&gt; pd.DataFrame:
+    def transform(self, X):
         X = X.copy()
         if self.col in X.columns:
-            cleaned_series = (
-                pd.to_numeric(X[self.col].astype(str).str.strip(), errors=&quot;coerce&quot;)
-                .replace([np.inf, -np.inf], np.nan)
-                .fillna(self.fill_value)
-                .astype(float)
-            )
-            X[self.col] = cleaned_series
+            # 根据Lesson:69d51358经验：先strip，再转数值（强制转换空值），最后填充缺失值
+            X[self.col] = pd.to_numeric(
+                X[self.col].astype(str).str.strip(), 
+                errors=&quot;coerce&quot;
+            ).fillna(0.0)
+
+            # 确保转换后没有无穷值，保持特征稳定性
+            X[self.col] = X[self.col].replace([np.inf, -np.inf], 0.0)
+
         return X
 
 import numpy as np
 import pandas as pd
 from sklearn.base import TransformerMixin
-
 from factory.operators.base import Operator, OperatorMeta
 from factory.schemas import OperatorKind
-
 
 class TenureBucketizer(TransformerMixin, Operator):
     meta = OperatorMeta(
@@ -123,56 +260,43 @@ class TenureBucketizer(TransformerMixin, Operator):
         kind=OperatorKind.FEATURE,
         version=2,
         origin=&quot;synthesized&quot;,
-        description=&quot;将在网时长字段分箱为离散区间特征以增强线性模型的表达能力与业务可解释性&quot;,
-        conditions=[&quot;time_tenure&quot;, &quot;numeric_features&quot;],
-        dependencies=[&quot;pandas&quot;, &quot;numpy&quot;],
-        params={
-            &quot;col&quot;: &quot;tenure&quot;,
-            &quot;bins&quot;: (-float(&quot;inf&quot;), 6.0, 12.0, 24.0, 48.0, float(&quot;inf&quot;)),
-            &quot;labels&quot;: (&quot;0-6&quot;, &quot;6-12&quot;, &quot;12-24&quot;, &quot;24-48&quot;, &quot;48+&quot;),
-            &quot;drop_original&quot;: False,
-        },
-        parent=&quot;TenureBucketizer@1&quot;,
+        description=&quot;将数值型在网时长特征划分为业务导向的区间，增强线性模型的解释性。&quot;,
+        conditions=[&quot;输入必须包含数值型tenure列&quot;],
+        dependencies=[&quot;numpy&quot;, &quot;pandas&quot;, &quot;sklearn&quot;],
+        params={&quot;col&quot;: &quot;tenure&quot;},
+        parent=&quot;TenureBucketizer@1&quot;
     )
 
-    def __init__(
-        self,
-        col: str = &quot;tenure&quot;,
-        bins: tuple = (-float(&quot;inf&quot;), 6.0, 12.0, 24.0, 48.0, float(&quot;inf&quot;)),
-        labels: tuple = (&quot;0-6&quot;, &quot;6-12&quot;, &quot;12-24&quot;, &quot;24-48&quot;, &quot;48+&quot;),
-        drop_original: bool = False,
-    ):
+    def __init__(self, col=&quot;tenure&quot;):
         self.col = col
-        self.bins = bins
-        self.labels = labels
-        self.drop_original = drop_original
 
-    def fit(self, X: pd.DataFrame, y=None):
-        self.feature_name_ = f&quot;{self.col}_bucket&quot;
-        self.bins_ = list(self.bins) if self.bins is not None else [-float(&quot;inf&quot;), 6.0, 12.0, 24.0, 48.0, float(&quot;inf&quot;)]
-        self.labels_ = list(self.labels) if self.labels is not None else [&quot;0-6&quot;, &quot;6-12&quot;, &quot;12-24&quot;, &quot;24-48&quot;, &quot;48+&quot;]
+    def fit(self, X, y=None):
+        &quot;&quot;&quot;记录算子状态，本算子为无状态转换，仅返回self。&quot;&quot;&quot;
+        self.bins_ = [-1, 6, 12, 24, 48, np.inf]
+        self.labels_ = [&quot;0-6&quot;, &quot;6-12&quot;, &quot;12-24&quot;, &quot;24-48&quot;, &quot;48+&quot;]
         return self
 
-    def transform(self, X: pd.DataFrame) -&gt; pd.DataFrame:
+    def transform(self, X):
+        &quot;&quot;&quot;
+        将tenure列分桶，处理缺失值及非数值情况。
+        遵循数据清洗规范：先处理潜在脏数据，确保输出类型一致。
+        &quot;&quot;&quot;
         X = X.copy()
-        if self.col not in X.columns:
-            return X
 
-        # 安全数值转换，兼顾脏数据、空白字符串与缺失值
-        tenure_series = X[self.col]
-        if tenure_series.dtype == object:
-            tenure_series = tenure_series.astype(str).str.strip()
-        numeric_tenure = pd.to_numeric(tenure_series, errors=&quot;coerce&quot;)
+        # 处理脏数据：先确保转为数值，无法转换的(含空值)处理为-1（即处于0-6区间内）
+        raw_tenure = pd.to_numeric(X[self.col].astype(str).str.strip(), errors=&#x27;coerce&#x27;)
+        raw_tenure = raw_tenure.fillna(-1)
 
-        # 分箱并处理缺失区间
-        bucketed = pd.cut(numeric_tenure, bins=self.bins_, labels=self.labels_)
-        bucketed_str = bucketed.astype(str)
-        bucketed_str = bucketed_str.replace(&quot;nan&quot;, &quot;unknown&quot;).fillna(&quot;unknown&quot;)
+        # 分桶操作
+        bucket_col = f&quot;{self.col}_bucket&quot;
+        X[bucket_col] = pd.cut(
+            raw_tenure, 
+            bins=self.bins_, 
+            labels=self.labels_
+        ).astype(str)
 
-        X[self.feature_name_] = bucketed_str
-
-        if self.drop_original:
-            X = X.drop(columns=[self.col])
+        # 确保分桶后的缺失值被处理（pd.cut可能在NaN输入下产生nan字符串）
+        X[bucket_col] = X[bucket_col].replace(&quot;nan&quot;, &quot;0-6&quot;)
 
         return X
 
@@ -182,12 +306,12 @@ TARGET = &#x27;churn&#x27;
 
 def build_pipeline() -&gt; Pipeline:
     return Pipeline([
-        (&quot;0_imputer&quot;, TotalChargesCleaner()),  # 根据 lesson 经验，必须先清洗 total_charges 中的空白字符并转为浮点数，防止后续处理类型转换失败。
-        (&quot;1_imputer&quot;, MissingValueImputer()),  # 依据匹配条件 has_missing_values，对其余数值和类别缺失列进行中位数和众数填补。
-        (&quot;2_feature&quot;, TenureBucketizer()),  # 历史验证召回率达 0.800，分箱在网时长有助于线性模型捕捉非线性流失拐点并提升可解释性。
-        (&quot;3_encoder&quot;, OneHotCategoricalEncoder(max_categories=20)),  # 对低基数类别特征进行独热编码，并限制类别数避免维度过高。
-        (&quot;4_scaler&quot;, StandardFeatureScaler()),  # 根据 lesson 经验，逻辑回归模型必须在拟合前对特征进行标准化。
-        (&quot;5_model&quot;, LogisticRegressionModel(C=1.0, class_weight=&#x27;balanced&#x27;, max_iter=1000, random_state=42)),  # 满足 interpretable 约束，且设置 class_weight=&#x27;balanced&#x27; 解决不平衡导致的召回率不足问题。
+        (&quot;0_imputer&quot;, TotalChargesCleaner()),  # 解决数值列被读取为字符串且包含空格导致的问题，引用 Lesson:69d51358。
+        (&quot;1_imputer&quot;, MissingValueImputer()),  # 处理其他列中的缺失值。
+        (&quot;2_feature&quot;, TenureBucketizer()),  # 对在网时长进行分桶处理，提高可解释性并提升线性模型表现。
+        (&quot;3_encoder&quot;, OneHotCategoricalEncoder(max_categories=20)),  # 类别特征 One-Hot 编码。
+        (&quot;4_scaler&quot;, StandardFeatureScaler()),  # 逻辑回归必须进行标准化，引用 Lesson:74e2da10。
+        (&quot;5_model&quot;, LogisticRegressionModel(C=1.0, class_weight=&#x27;balanced&#x27;, max_iter=1000, random_state=42)),  # 逻辑回归模型，通过 balanced 权重应对样本不平衡，提升召回率。
     ])
 
 
@@ -215,21 +339,38 @@ if __name__ == &quot;__main__&quot;:
     main()
 </code></pre>
 <h2>附录 B. 运行记录</h2>
-<p>各阶段耗时：PLAN 14.2s，BUILD 24.2s，VERIFY 24.7s，ROUTE 0.0s，CURATE 0.0s</p>
+<p>各阶段耗时：PLAN 0.2s，BUILD 0.0s，VERIFY 22.9s，ROUTE 0.0s，REPAIR 0.0s，CURATE 0.0s</p>
 <pre><code>[PLAN] 场景 telecom_churn；画像标签 [&#x27;has_missing_values&#x27;, &#x27;numeric_features&#x27;, &#x27;has_categorical_features&#x27;, &#x27;low_cardinality&#x27;, &#x27;string_typed_numeric&#x27;, &#x27;id_columns&#x27;, &#x27;imbalanced&#x27;, &#x27;time_tenure&#x27;, &#x27;mixed_features&#x27;]
 [PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall &gt;= 0.75
-[PLAN] 候选方案：[&#x27;interpretable_logistic_regression(*TotalChargesCleaner → MissingValueImputer → *TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)&#x27;, &#x27;balanced_lightgbm_boosting(*TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → *BalancedLightGBMClassifier)&#x27;, &#x27;cost_ratio_random_forest(*TotalChargesCleaner → MissingValueImputer → *ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → RandomForestModel)&#x27;]
-[PLAN] 完成，用时 14.2s → BUILD
-[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将包含空白字符串的数值列安全转换为浮点型，避免数值转换异常并将空缺值填充为0.0
-[BUILD] 生成算子 TenureBucketizer@2（参考 TenureBucketizer@1）：将连续的在网时长字段分箱为离散区间，增强线性模型的表达能力与业务可解释性
-[BUILD] 生成算子 BalancedLightGBMClassifier@2（参考 BalancedLightGBMClassifier@1）：使用带平衡权重的 LightGBM 训练流失分类模型，提供特征重要性分析并优化召回
-[BUILD] 生成算子 ChargeRatioFeatureGenerator@2（参考 ChargeRatioFeatureGenerator@1）：计算月度资费与历史平均费用的比率，刻画用户近期资费变动敏感度
-[BUILD] 完成，用时 24.2s → VERIFY
-[VERIFY] interpretable_logistic_regression：通过，recall=0.7778
-[VERIFY] balanced_lightgbm_boosting：未通过，recall=0.6298；M_THRESHOLD recall = 0.6298 低于阈值 0.75；M_THRESHOLD roc_auc = 0.7830 低于阈值 0.8
-[VERIFY] cost_ratio_random_forest：未通过，recall=0.7143；M_THRESHOLD recall = 0.7143 低于阈值 0.75
-[VERIFY] 完成，用时 24.7s → ROUTE
+[PLAN] 候选方案：[&#x27;logistic_regression_pipeline(*TotalChargesCleaner → MissingValueImputer → *TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)&#x27;, &#x27;lgbm_feature_eng_pipeline(MissingValueImputer → *ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → LightGBMModel)&#x27;, &#x27;target_encoded_lgbm_pipeline(MissingValueImputer → *KFoldTargetEncoder → LightGBMModel)&#x27;]
+[PLAN] 完成，用时 0.2s → BUILD
+[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：清理包含空白符的total_charges列并转换为浮点型
+[BUILD] 生成算子 TenureBucketizer@2（参考 TenureBucketizer@1）：在网时长分桶以增强线性模型解释性
+[BUILD] 生成算子 ChargeRatioFeatureGenerator@2（参考 ChargeRatioFeatureGenerator@1）：生成消费比率特征
+[BUILD] 生成算子 KFoldTargetEncoder@2（参考 KFoldTargetEncoder@1）：高基数类别目标编码
+[BUILD] 完成，用时 0.0s → VERIFY
+[VERIFY] logistic_regression_pipeline：通过，recall=0.7778
+[VERIFY] lgbm_feature_eng_pipeline：未通过，recall=nan；E_RUNTIME TypeError: operation &#x27;truediv&#x27; not supported for dtype &#x27;str&#x27; with dtype &#x27;float64&#x27; (at _evaluate_op_method:1099)
+[VERIFY] target_encoded_lgbm_pipeline：未通过，recall=0.6516；M_THRESHOLD recall = 0.6516 低于阈值 0.75；M_THRESHOLD roc_auc = 0.7871 低于阈值 0.8
+[VERIFY] 完成，用时 13.3s → ROUTE
+[ROUTE] 完成，用时 0.0s → REPAIR
+[REPAIR] 修复 ChargeRatioFeatureGenerator@2 第 1 轮：E_RUNTIME TypeError: operation &#x27;truediv&#x27; not supported for dtype &#x27;str&#x27; with dtype &#x27;float64，参考经验：[&#x27;数值列含空白字符导致类型转换失败&#x27;, &#x27;预测阶段出现未见类别导致编码报错&#x27;]
+[REPAIR] 完成，用时 0.0s → VERIFY
+[VERIFY] lgbm_feature_eng_pipeline：未通过，recall=nan；E_RUNTIME TypeError: operation &#x27;truediv&#x27; not supported for dtype &#x27;str&#x27; with dtype &#x27;float64&#x27; (at _evaluate_op_method:1099)
+[VERIFY] 完成，用时 1.4s → ROUTE
+[ROUTE] 完成，用时 0.0s → REPAIR
+[REPAIR] 修复 ChargeRatioFeatureGenerator@2 第 2 轮：E_RUNTIME TypeError: operation &#x27;truediv&#x27; not supported for dtype &#x27;str&#x27; with dtype &#x27;float64，参考经验：[&#x27;数值列含空白字符导致类型转换失败&#x27;, &#x27;预测阶段出现未见类别导致编码报错&#x27;]
+[REPAIR] 完成，用时 0.0s → VERIFY
+[VERIFY] lgbm_feature_eng_pipeline：未通过，recall=nan；E_RUNTIME ValueError: could not convert string to float: &#x27; &#x27; (at to_numpy:1803)
+[VERIFY] 完成，用时 1.5s → ROUTE
+[ROUTE] 完成，用时 0.0s → REPAIR
+[REPAIR] 修复 ChargeRatioFeatureGenerator@2 第 3 轮：E_RUNTIME ValueError: could not convert string to float: &#x27; &#x27; (at to_numpy:1803)，参考经验：[&#x27;数值列含空白字符导致类型转换失败&#x27;, &#x27;预测阶段出现未见类别导致编码报错&#x27;]
+[REPAIR] 完成，用时 0.0s → VERIFY
+[VERIFY] lgbm_feature_eng_pipeline：未通过，recall=0.6446；M_THRESHOLD recall = 0.6446 低于阈值 0.75；M_THRESHOLD roc_auc = 0.7866 低于阈值 0.8
+[VERIFY] 完成，用时 6.7s → ROUTE
 [ROUTE] 完成，用时 0.0s → CURATE
-[CURATE] 写入 KG：3 条 ValidationRun；注册新算子 [&#x27;TotalChargesCleaner@2&#x27;, &#x27;TenureBucketizer@2&#x27;]；新增经验 0 条
+[CURATE] 写入 KG：3 条 ValidationRun；注册新算子 [&#x27;TotalChargesCleaner@2&#x27;, &#x27;TenureBucketizer@2&#x27;]；新增经验 1 条
 [CURATE] 完成，用时 0.0s → DONE</code></pre>
+<h3>LLM 调用来源</h3>
+<table><thead><tr><th>阶段</th><th>请求哈希</th><th>来源</th><th>本次耗时(s)</th><th>录制耗时(s)</th><th>tokens</th></tr></thead><tbody><tr><td>plan_spec</td><td>912f4bae786b0895</td><td>replay</td><td>0.000</td><td>2.223</td><td>2047</td></tr><tr><td>plan</td><td>75f8c42598221c16</td><td>replay</td><td>0.000</td><td>4.408</td><td>10584</td></tr><tr><td>plan</td><td>5278bb5dea3a9768</td><td>replay</td><td>0.000</td><td>6.964</td><td>12374</td></tr><tr><td>synthesize</td><td>cf3848ed55768030</td><td>replay</td><td>0.000</td><td>2.337</td><td>2519</td></tr><tr><td>synthesize</td><td>9f697fa8e20dc4ce</td><td>replay</td><td>0.000</td><td>3.632</td><td>2717</td></tr><tr><td>synthesize</td><td>23409b4b115cd5ba</td><td>replay</td><td>0.000</td><td>2.978</td><td>2766</td></tr><tr><td>synthesize</td><td>f523e2062d16bb57</td><td>replay</td><td>0.000</td><td>2.896</td><td>3176</td></tr><tr><td>repair</td><td>c0090a2c28f26c6e</td><td>replay</td><td>0.000</td><td>5.585</td><td>2666</td></tr><tr><td>repair</td><td>e686ae5364ad0a14</td><td>replay</td><td>0.001</td><td>3.263</td><td>2734</td></tr><tr><td>repair</td><td>bafbd585da4216df</td><td>replay</td><td>0.001</td><td>2.703</td><td>2777</td></tr><tr><td>lesson</td><td>ca8c449f1d6cb4d4</td><td>replay</td><td>0.000</td><td>2.282</td><td>1919</td></tr></tbody></table>
 </body></html>

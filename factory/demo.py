@@ -1,6 +1,6 @@
 """端到端演示：在知识图谱副本上依次运行三个任务，展示能力的生成、修复、沉淀与复用。
 
-1. 工单文本分类（跨场景迁移）：新场景，没有场景知识，靠通用经验规划；生成的算子出现代码错误并被修复；
+1. 工单文本分类（跨场景迁移）：新场景，没有场景知识，靠通用经验规划；是否修复取决于实际生成结果；
 2. 客户流失（3 个候选）：参考历史代码生成清洗与特征算子，最优方案通过后注册到能力库；
 3. 客户流失（换一种说法的相似需求）：直接复用上一步注册的算子。
 
@@ -14,20 +14,27 @@ from pathlib import Path
 
 from factory.kg import DEFAULT_KG_PATH, CapabilityKG
 from factory.kg_viz import render_views
-from factory.llm import LLM
+from factory.llm import LLM, TrialLLM
 from factory.schemas import RunState
 from factory.workflow import Workflow, WorkflowConfig, best_report
 
 STEPS = [
     ("01_tickets_transfer", "把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低于 0.8",
      "data/tickets.csv", 2),
-    ("02_churn_synthesize", "预测30天内可能流失的客户，需可解释，召回优先", "data/churn.csv", 3),
-    ("03_churn_reuse", "预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户", "data/churn.csv", 2),
+    ("02_churn_synthesize", "预测30天内可能流失的客户，需可解释，召回优先。比较三个方案，至少一个方案使用清洗、通用缺失值填补、类别编码、标准化和平衡类权重的逻辑回归；可增加在网时长分桶，引用检索到的历史实现。", "data/churn.csv", 3),
+    ("03_churn_reuse", "预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户。优先复用已沉淀的清洗算子，至少一个方案采用通用缺失值填补、类别编码、标准化和平衡类权重逻辑回归。", "data/churn.csv", 2),
 ]
 
 
-def run_demo(llm: LLM, out: Path, base_kg: Path = DEFAULT_KG_PATH) -> list[RunState]:
+# 录制编号：网关对相同请求返回缓存回复，换编号才能得到新的独立样本；回放按同一编号重建请求。
+# 录制时依次尝试 demo-1、demo-2、demo-3，前两次未触发修复，保留第一个出现自然修复的 demo-3。
+DEMO_TRIAL = "demo-3"
+
+
+def run_demo(llm: LLM, out: Path, base_kg: Path = DEFAULT_KG_PATH, trial: str | None = DEMO_TRIAL) -> list[RunState]:
     out = Path(out)
+    if trial:
+        llm = TrialLLM(llm, trial)
     for sub in ("kg", "runs"):  # 只清理本函数生成的子目录
         shutil.rmtree(out / sub, ignore_errors=True)
     (out / "kg").mkdir(parents=True)

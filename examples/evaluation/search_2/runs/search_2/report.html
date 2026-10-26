@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>AlgoForge 验证报告</title><style>
+:root { --fg:#1f2328; --muted:#59636e; --bg:#ffffff; --line:#d1d9e0; --code:#f6f8fa; --accent:#0969da; }
+@media (prefers-color-scheme: dark) {
+  :root { --fg:#e6edf3; --muted:#9198a1; --bg:#0d1117; --line:#3d444d; --code:#151b23; --accent:#4493f8; }
+}
+body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color:var(--fg);
+       background:var(--bg); max-width: 1100px; margin: 0 auto; padding: 24px 16px; line-height: 1.6; }
+h1 { border-bottom: 2px solid var(--line); padding-bottom: 8px; }
+h2 { border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-top: 32px; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+th { background: var(--code); }
+pre { background: var(--code); padding: 12px; overflow-x: auto; border-radius: 6px; font-size: 13px; }
+code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; }
+p code, li code, td code { background: var(--code); padding: 1px 4px; border-radius: 4px; }
+</style></head>
+<body>
+<h1>AlgoForge 验证报告</h1>
+<table><thead><tr><th>项目</th><th>内容</th></tr></thead><tbody><tr><td>需求</td><td>预测客户流失，召回率不低于0.8；优先尝试可解释模型，未达标时探索不同模型或参数。</td></tr><tr><td>数据</td><td>data/churn.csv</td></tr><tr><td>运行 ID</td><td>search_2</td></tr><tr><td>LLM</td><td>gemini-3.5-flash</td></tr><tr><td>状态</td><td>✅ 成功</td></tr><tr><td>最优方案</td><td>interpretable_logreg_pipeline</td></tr><tr><td>总耗时</td><td>45.2 s</td></tr></tbody></table>
+<p>共验证 3 个候选方案，1 个通过；重新规划 1 次，修复 0 轮。最优方案 <code>interpretable_logreg_pipeline</code> 的 recall = 0.848（要求 ≥ 0.8）。</p>
+<h2>1. 需求理解（TaskSpec）</h2>
+<table><thead><tr><th>字段</th><th>值</th></tr></thead><tbody><tr><td>任务类型</td><td>binary_classification</td></tr><tr><td>数据模态</td><td>tabular</td></tr><tr><td>目标列</td><td>churn</td></tr><tr><td>评价指标</td><td>recall ≥ 0.8（主）</td></tr><tr><td>业务约束</td><td>interpretable、recall_first</td></tr><tr><td>数据画像标签</td><td>has_missing_values、numeric_features、has_categorical_features、low_cardinality、string_typed_numeric、id_columns、imbalanced、time_tenure、mixed_features</td></tr></tbody></table>
+<h2>2. 知识检索（设计依据）</h2>
+<p>匹配场景：telecom_churn。每类步骤从知识图谱检索候选算子，得分 = 0.4 × 文本相关度 + 0.3 × 条件匹配 + 0.3 × 历史验证分。</p>
+<table><thead><tr><th>步骤</th><th>候选算子</th><th>可直接复用</th><th>得分</th><th>文本/条件/历史</th><th>证据</th></tr></thead><tbody><tr><td>imputer</td><td>MissingValueImputer@1</td><td>是</td><td>0.492</td><td>0.62 / 0.09 / 0.72</td><td>匹配条件：has_missing_values；历史验证 3 次，平均 recall 0.717</td></tr><tr><td>imputer</td><td>TotalChargesCleaner@1</td><td>否（历史实现，可参考生成）</td><td>0.482</td><td>1.00 / 0.27 / 0.00</td><td>匹配条件：has_missing_values、numeric_features、string_typed_numeric</td></tr><tr><td>feature</td><td>TenureBucketizer@1</td><td>否（历史实现，可参考生成）</td><td>0.722</td><td>1.00 / 0.27 / 0.80</td><td>匹配条件：interpretable、numeric_features、time_tenure；历史验证 1 次，平均 recall 0.800</td></tr><tr><td>feature</td><td>ChargeRatioFeatureGenerator@1</td><td>否（历史实现，可参考生成）</td><td>0.616</td><td>0.80 / 0.18 / 0.80</td><td>匹配条件：numeric_features、time_tenure；历史验证 1 次，平均 recall 0.800</td></tr><tr><td>feature</td><td>IdColumnDropper@1</td><td>否（历史实现，可参考生成）</td><td>0.419</td><td>0.98 / 0.09 / 0.00</td><td>匹配条件：id_columns</td></tr><tr><td>feature</td><td>ServiceCountFeature@1</td><td>否（历史实现，可参考生成）</td><td>0.415</td><td>0.97 / 0.09 / 0.00</td><td>匹配条件：has_categorical_features</td></tr><tr><td>encoder</td><td>OneHotCategoricalEncoder@1</td><td>是</td><td>0.669</td><td>1.00 / 0.18 / 0.72</td><td>匹配条件：has_categorical_features、low_cardinality；历史验证 3 次，平均 recall 0.717</td></tr><tr><td>encoder</td><td>KFoldTargetEncoder@1</td><td>否（历史实现，可参考生成）</td><td>0.366</td><td>0.85 / 0.09 / 0.00</td><td>匹配条件：has_categorical_features</td></tr><tr><td>scaler</td><td>StandardFeatureScaler@1</td><td>是</td><td>0.640</td><td>1.00 / 0.09 / 0.71</td><td>匹配条件：numeric_features；历史验证 1 次，平均 recall 0.710</td></tr><tr><td>model</td><td>BalancedLightGBMClassifier@1</td><td>否（历史实现，可参考生成）</td><td>0.661</td><td>1.00 / 0.09 / 0.78</td><td>匹配条件：imbalanced；历史验证 1 次，平均 recall 0.780</td></tr><tr><td>model</td><td>LogisticRegressionModel@1</td><td>是</td><td>0.618</td><td>0.94 / 0.09 / 0.71</td><td>匹配条件：interpretable；历史验证 1 次，平均 recall 0.710</td></tr><tr><td>model</td><td>LightGBMModel@1</td><td>是</td><td>0.549</td><td>0.70 / 0.09 / 0.80</td><td>匹配条件：imbalanced；历史验证 1 次，平均 recall 0.800</td></tr><tr><td>model</td><td>RandomForestModel@1</td><td>是</td><td>0.541</td><td>0.79 / 0.09 / 0.66</td><td>匹配条件：mixed_features；历史验证 1 次，平均 recall 0.660</td></tr></tbody></table>
+<h3>参考的历史经验</h3>
+<ul><li><strong>样本不平衡导致默认模型召回率偏低</strong>（M_THRESHOLD）：启用平衡类权重（如 class_weight=&#x27;balanced&#x27; 或 BalancedLightGBMClassifier）以提升召回率</li><li><strong>逻辑回归标准化与可解释性</strong>：必须先进行特征标准化（如 StandardFeatureScaler），在 0.1~10 之间搜索正则化强度 C，可直接输出系数给业务方。</li><li><strong>随机森林防过拟合与召回优化</strong>：设置 n_estimators 300 左右，限制 max_depth 在 8~16 防止过拟合；召回优先时需配合调整分类阈值。</li><li><strong>数值列含空白字符导致类型转换失败</strong>（E_RUNTIME）：先 str.strip()，再 pd.to_numeric(errors=&#x27;coerce&#x27;)，缺失值填补为 0</li><li><strong>LightGBM 调参及不平衡处理</strong>：设置 num_leaves 15~63, learning_rate 0.03~0.1, n_estimators 200~600；不平衡时设置 class_weight=&#x27;balanced&#x27;；树模型无需标准化。</li></ul>
+<h3>知识引用检查</h3>
+<p>检索并传入上下文不等于采纳。以下引用由模型声明，程序仅核对可见范围与结构化适用对象；不证明语义落实或指标收益。</p>
+<table><thead><tr><th>方案</th><th>步骤</th><th>模型引用</th><th>范围检查</th><th>语义落实</th></tr></thead><tbody><tr><td>lgbm_imbalanced_pipeline</td><td>1</td><td>Operator:TotalChargesCleaner@1、Lesson:69d51358</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_imbalanced_pipeline</td><td>2</td><td>Operator:MissingValueImputer@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_imbalanced_pipeline</td><td>3</td><td>Operator:IdColumnDropper@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_imbalanced_pipeline</td><td>4</td><td>Operator:OneHotCategoricalEncoder@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_imbalanced_pipeline</td><td>5</td><td>Operator:LightGBMModel@1、Lesson:f2c1398b、Lesson:9e9e77d6</td><td>通过</td><td>未验证</td></tr><tr><td>（被拒绝的规划）</td><td>-</td><td>无</td><td>未通过：lgbm_recall_optimized: 第 2 步：缺少 Operator:MissingValueImputer@1 证据引用；lgbm_recall_optimized: 第 4 步：缺少 Operator:OneHotCategoricalEncoder@1 证据引用；lgbm_recall_optimized: 第 5 步：缺少 Operator:LightGBMModel@1 证据引用；balanced_lgbm_with_features: 第 5 步：未知算子 BalancedLightGBMClassifier@1；balanced_lgbm_with_features:</td><td>未验证</td></tr><tr><td>lgbm_recall_optimized</td><td>1</td><td>Operator:TotalChargesCleaner@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_recall_optimized</td><td>2</td><td>Operator:MissingValueImputer@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_recall_optimized</td><td>3</td><td>Operator:ChargeRatioFeatureGenerator@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_recall_optimized</td><td>4</td><td>Operator:OneHotCategoricalEncoder@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_recall_optimized</td><td>5</td><td>Operator:LightGBMModel@1</td><td>通过</td><td>未验证</td></tr><tr><td>rf_recall_optimized</td><td>1</td><td>Operator:MissingValueImputer@1</td><td>通过</td><td>未验证</td></tr><tr><td>rf_recall_optimized</td><td>2</td><td>Operator:ServiceCountFeature@1</td><td>通过</td><td>未验证</td></tr><tr><td>rf_recall_optimized</td><td>3</td><td>Operator:OneHotCategoricalEncoder@1</td><td>通过</td><td>未验证</td></tr><tr><td>rf_recall_optimized</td><td>4</td><td>Operator:RandomForestModel@1</td><td>通过</td><td>未验证</td></tr><tr><td>interpretable_logreg_pipeline</td><td>1</td><td>Operator:MissingValueImputer@1</td><td>通过</td><td>未验证</td></tr><tr><td>interpretable_logreg_pipeline</td><td>2</td><td>Operator:OneHotCategoricalEncoder@1</td><td>通过</td><td>未验证</td></tr><tr><td>interpretable_logreg_pipeline</td><td>3</td><td>Operator:StandardFeatureScaler@1</td><td>通过</td><td>未验证</td></tr><tr><td>interpretable_logreg_pipeline</td><td>4</td><td>Operator:LogisticRegressionModel@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_basic_balanced</td><td>1</td><td>Operator:MissingValueImputer@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_basic_balanced</td><td>2</td><td>Operator:TenureBucketizer@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_basic_balanced</td><td>3</td><td>Operator:OneHotCategoricalEncoder@1</td><td>通过</td><td>未验证</td></tr><tr><td>lgbm_basic_balanced</td><td>4</td><td>Operator:LightGBMModel@1</td><td>通过</td><td>未验证</td></tr></tbody></table>
+<h2>3. 候选方案比较</h2>
+<p>排序规则：先看是否通过全部检查，再比主指标，再比次要指标之和，最后训练耗时短者优先。指标为多随机种子 × 分层 K 折交叉验证的均值 ± 种子间标准差。</p>
+<table><thead><tr><th>排名</th><th>方案</th><th>结果</th><th>recall</th><th>roc_auc</th><th>precision</th><th>f1</th><th>recall_at_20</th><th>单次训练 (s)</th><th>峰值内存 (MB)</th></tr></thead><tbody><tr><td>1</td><td>★ interpretable_logreg_pipeline</td><td>通过</td><td>0.848 ± 0.003</td><td>0.814 ± 0.001</td><td>0.443 ± 0.001</td><td>0.582 ± 0.001</td><td>0.457 ± 0.002</td><td>0.097</td><td>257</td></tr><tr><td>2</td><td>lgbm_basic_balanced</td><td>未通过</td><td>0.639 ± 0.010</td><td>0.785 ± 0.002</td><td>0.493 ± 0.002</td><td>0.556 ± 0.005</td><td>0.420 ± 0.000</td><td>0.368</td><td>266</td></tr><tr><td>3</td><td>lgbm_imbalanced_pipeline</td><td>未通过</td><td>0.624 ± 0.007</td><td>0.783 ± 0.003</td><td>0.492 ± 0.002</td><td>0.550 ± 0.003</td><td>0.420 ± 0.006</td><td>0.333</td><td>261</td></tr></tbody></table>
+<pre><code>recall（| 为阈值 0.8）
+interpretable_logreg_pipeline        ■■■■■■■■■■■■■■■■|··· 0.848
+lgbm_basic_balanced                  ■■■■■■■■■■■■■···|··· 0.639
+lgbm_imbalanced_pipeline             ■■■■■■■■■■■■····|··· 0.624</code></pre>
+<h3>各方案的结构与诊断</h3>
+<ul><li><code>interpretable_logreg_pipeline</code>：MissingValueImputer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel。诊断：无</li><li><code>lgbm_basic_balanced</code>：MissingValueImputer → 生成:TenureBucketizer → OneHotCategoricalEncoder → LightGBMModel。诊断：<code>M_THRESHOLD</code> recall = 0.6391 低于阈值 0.8</li><li><code>lgbm_imbalanced_pipeline</code>：生成:TotalChargesCleaner → MissingValueImputer → 生成:IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel。诊断：<code>M_THRESHOLD</code> recall = 0.6243 低于阈值 0.8</li></ul>
+<h3>方案搜索（Beam Search）</h3>
+<p>指标不达标时，以已验证结果排名前 k 的方案为父方案，由 Planner 扩展 k × m 个子方案；与已验证方案结构相同的直接去重，其余按先验（知识图谱中该场景的历史验证记录 + 本次运行的观测，平滑后按步骤加权，模型步骤权重更高）估计 recall，只保留前 k 个进入验证。</p>
+<p>第 1 轮：父方案 <code>lgbm_imbalanced_pipeline</code>，beam 宽度 2。</p>
+<table><thead><tr><th>子方案</th><th>结构</th><th>先验 recall</th><th>实际 recall</th><th>结果</th></tr></thead><tbody><tr><td>lgbm_recall_optimized</td><td>生成:TotalChargesCleaner → MissingValueImputer → 生成:ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → LightGBMModel</td><td>0.738</td><td>-</td><td>先验第 3，超出 beam 宽度 2，剪枝</td></tr><tr><td>rf_recall_optimized</td><td>MissingValueImputer → 生成:ServiceCountFeature → OneHotCategoricalEncoder → RandomForestModel</td><td>0.737</td><td>-</td><td>先验第 4，超出 beam 宽度 2，剪枝</td></tr><tr><td>✔ interpretable_logreg_pipeline</td><td>MissingValueImputer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel</td><td>0.742</td><td>0.848</td><td>先验第 2，进入验证</td></tr><tr><td>✔ lgbm_basic_balanced</td><td>MissingValueImputer → 生成:TenureBucketizer → OneHotCategoricalEncoder → LightGBMModel</td><td>0.742</td><td>0.639</td><td>先验第 1，进入验证</td></tr></tbody></table>
+<table><thead><tr><th>子方案</th><th>步骤</th><th>先验证据来源</th><th>数值</th></tr></thead><tbody><tr><td>lgbm_recall_optimized</td><td>*TotalChargesCleaner</td><td>本次运行观测</td><td>0.6243</td></tr><tr><td>lgbm_recall_optimized</td><td>MissingValueImputer@1</td><td>ValidationRun:e11ba947</td><td>0.71</td></tr><tr><td>lgbm_recall_optimized</td><td>MissingValueImputer@1</td><td>ValidationRun:e0d43fa3</td><td>0.66</td></tr><tr><td>lgbm_recall_optimized</td><td>MissingValueImputer@1</td><td>ValidationRun:a7f163bc</td><td>0.78</td></tr><tr><td>lgbm_recall_optimized</td><td>MissingValueImputer@1</td><td>本次运行观测</td><td>0.6243</td></tr><tr><td>lgbm_recall_optimized</td><td>*ChargeRatioFeatureGenerator</td><td>ValidationRun:f6e4284c</td><td>0.8</td></tr><tr><td>lgbm_recall_optimized</td><td>OneHotCategoricalEncoder@1</td><td>ValidationRun:e11ba947</td><td>0.71</td></tr><tr><td>lgbm_recall_optimized</td><td>OneHotCategoricalEncoder@1</td><td>ValidationRun:e0d43fa3</td><td>0.66</td></tr><tr><td>lgbm_recall_optimized</td><td>OneHotCategoricalEncoder@1</td><td>ValidationRun:a7f163bc</td><td>0.78</td></tr><tr><td>lgbm_recall_optimized</td><td>OneHotCategoricalEncoder@1</td><td>本次运行观测</td><td>0.6243</td></tr><tr><td>lgbm_recall_optimized</td><td>LightGBMModel@1</td><td>ValidationRun:f6e4284c</td><td>0.8</td></tr><tr><td>lgbm_recall_optimized</td><td>LightGBMModel@1</td><td>本次运行观测</td><td>0.6243</td></tr><tr><td>rf_recall_optimized</td><td>MissingValueImputer@1</td><td>ValidationRun:e11ba947</td><td>0.71</td></tr><tr><td>rf_recall_optimized</td><td>MissingValueImputer@1</td><td>ValidationRun:e0d43fa3</td><td>0.66</td></tr><tr><td>rf_recall_optimized</td><td>MissingValueImputer@1</td><td>ValidationRun:a7f163bc</td><td>0.78</td></tr><tr><td>rf_recall_optimized</td><td>MissingValueImputer@1</td><td>本次运行观测</td><td>0.6243</td></tr><tr><td>rf_recall_optimized</td><td>OneHotCategoricalEncoder@1</td><td>ValidationRun:e11ba947</td><td>0.71</td></tr><tr><td>rf_recall_optimized</td><td>OneHotCategoricalEncoder@1</td><td>ValidationRun:e0d43fa3</td><td>0.66</td></tr><tr><td>rf_recall_optimized</td><td>OneHotCategoricalEncoder@1</td><td>ValidationRun:a7f163bc</td><td>0.78</td></tr><tr><td>rf_recall_optimized</td><td>OneHotCategoricalEncoder@1</td><td>本次运行观测</td><td>0.6243</td></tr><tr><td>rf_recall_optimized</td><td>RandomForestModel@1</td><td>ValidationRun:e0d43fa3</td><td>0.66</td></tr><tr><td>interpretable_logreg_pipeline</td><td>MissingValueImputer@1</td><td>ValidationRun:e11ba947</td><td>0.71</td></tr><tr><td>interpretable_logreg_pipeline</td><td>MissingValueImputer@1</td><td>ValidationRun:e0d43fa3</td><td>0.66</td></tr><tr><td>interpretable_logreg_pipeline</td><td>MissingValueImputer@1</td><td>ValidationRun:a7f163bc</td><td>0.78</td></tr><tr><td>interpretable_logreg_pipeline</td><td>MissingValueImputer@1</td><td>本次运行观测</td><td>0.6243</td></tr><tr><td>interpretable_logreg_pipeline</td><td>OneHotCategoricalEncoder@1</td><td>ValidationRun:e11ba947</td><td>0.71</td></tr><tr><td>interpretable_logreg_pipeline</td><td>OneHotCategoricalEncoder@1</td><td>ValidationRun:e0d43fa3</td><td>0.66</td></tr><tr><td>interpretable_logreg_pipeline</td><td>OneHotCategoricalEncoder@1</td><td>ValidationRun:a7f163bc</td><td>0.78</td></tr><tr><td>interpretable_logreg_pipeline</td><td>OneHotCategoricalEncoder@1</td><td>本次运行观测</td><td>0.6243</td></tr><tr><td>interpretable_logreg_pipeline</td><td>StandardFeatureScaler@1</td><td>ValidationRun:e11ba947</td><td>0.71</td></tr><tr><td>interpretable_logreg_pipeline</td><td>LogisticRegressionModel@1</td><td>ValidationRun:e11ba947</td><td>0.71</td></tr><tr><td>lgbm_basic_balanced</td><td>MissingValueImputer@1</td><td>ValidationRun:e11ba947</td><td>0.71</td></tr><tr><td>lgbm_basic_balanced</td><td>MissingValueImputer@1</td><td>ValidationRun:e0d43fa3</td><td>0.66</td></tr><tr><td>lgbm_basic_balanced</td><td>MissingValueImputer@1</td><td>ValidationRun:a7f163bc</td><td>0.78</td></tr><tr><td>lgbm_basic_balanced</td><td>MissingValueImputer@1</td><td>本次运行观测</td><td>0.6243</td></tr><tr><td>lgbm_basic_balanced</td><td>*TenureBucketizer</td><td>ValidationRun:f6e4284c</td><td>0.8</td></tr><tr><td>lgbm_basic_balanced</td><td>OneHotCategoricalEncoder@1</td><td>ValidationRun:e11ba947</td><td>0.71</td></tr><tr><td>lgbm_basic_balanced</td><td>OneHotCategoricalEncoder@1</td><td>ValidationRun:e0d43fa3</td><td>0.66</td></tr><tr><td>lgbm_basic_balanced</td><td>OneHotCategoricalEncoder@1</td><td>ValidationRun:a7f163bc</td><td>0.78</td></tr><tr><td>lgbm_basic_balanced</td><td>OneHotCategoricalEncoder@1</td><td>本次运行观测</td><td>0.6243</td></tr><tr><td>lgbm_basic_balanced</td><td>LightGBMModel@1</td><td>ValidationRun:f6e4284c</td><td>0.8</td></tr><tr><td>lgbm_basic_balanced</td><td>LightGBMModel@1</td><td>本次运行观测</td><td>0.6243</td></tr></tbody></table>
+<h2>4. 最优方案：interpretable_logreg_pipeline</h2>
+<p>针对可解释性约束，使用逻辑回归，并通过加大正类权重系数（class_weight）强行拉升召回率。</p>
+<table><thead><tr><th>#</th><th>步骤</th><th>算子</th><th>参数</th><th>选择理由</th></tr></thead><tbody><tr><td>1</td><td>imputer</td><td>MissingValueImputer@1</td><td>-</td><td>-</td></tr><tr><td>2</td><td>encoder</td><td>OneHotCategoricalEncoder@1</td><td>-</td><td>-</td></tr><tr><td>3</td><td>scaler</td><td>StandardFeatureScaler@1</td><td>-</td><td>-</td></tr><tr><td>4</td><td>model</td><td>LogisticRegressionModel@1</td><td>C=0.5, class_weight={&#x27;0&#x27;: 1, &#x27;1&#x27;: 4}, max_iter=1000, random_state=42</td><td>-</td></tr></tbody></table>
+<h2>5. 能力生成与修复</h2>
+<table><thead><tr><th>生成算子</th><th>类型</th><th>用途</th><th>参考的历史实现</th><th>修复轮数</th><th>注册到能力库</th></tr></thead><tbody><tr><td>TotalChargesCleaner@2</td><td>imputer</td><td>将total_charges字段中的空白字符处理为0.0并转为数值类型</td><td>TotalChargesCleaner@1</td><td>0</td><td>否</td></tr><tr><td>IdColumnDropper@2</td><td>feature</td><td>删除客户ID等无预测价值的特征</td><td>IdColumnDropper@1</td><td>0</td><td>否</td></tr><tr><td>TenureBucketizer@2</td><td>feature</td><td>对tenure进行分箱以辅助模型识别流失周期</td><td>TenureBucketizer@1</td><td>0</td><td>否</td></tr></tbody></table>
+<h2>6. 验证机制</h2>
+<table><thead><tr><th>级别</th><th>检查内容</th><th>本次配置</th></tr></thead><tbody><tr><td>1 静态检查</td><td>语法、import 白名单、禁止危险调用、接口与 meta 一致性</td><td>仅针对生成的算子</td></tr><tr><td>2 沙箱执行</td><td>独立子进程，限制超时与内存，清除含 KEY/TOKEN 的环境变量</td><td>超时 180 s，内存 8192 MB</td></tr><tr><td>3 契约检查</td><td>不修改输入、行数一致、不引入 NaN/Inf、概率合法、能处理未见类别与缺失值</td><td>冒烟样本 300 行</td></tr><tr><td>4 指标检查</td><td>阈值、种子间稳定性、疑似泄漏、耗时与内存</td><td>5 折 × 种子 [42, 7, 2024]；std 上限 0.03</td></tr></tbody></table>
+<p>最优方案资源消耗：单次训练 0.097 s，预测 51.7 ms / 千行，峰值内存 257 MB。</p>
+<h2>7. 知识沉淀</h2>
+<ul><li>回写验证记录 ValidationRun：3 条</li><li>注册到能力库的新算子：无</li><li>新提炼的经验：无</li><li>本次提供的经验：7 条（累计检索命中，不代表采纳）</li></ul>
+<h2>附录 A. 生成的算法代码（pipeline.py）</h2>
+<pre><code>&quot;&quot;&quot;预测客户流失，召回率不低于0.8；优先尝试可解释模型，未达标时探索不同模型或参数 —— 自动生成的算法流水线
+
+需求：预测客户流失，召回率不低于0.8；优先尝试可解释模型，未达标时探索不同模型或参数。
+方案：interpretable_logreg_pipeline
+设计依据：针对可解释性约束，使用逻辑回归，并通过加大正类权重系数（class_weight）强行拉升召回率。
+主指标：recall &gt;= 0.8
+
+由 AlgoForge 自动生成。用法：
+    python pipeline.py --data &lt;train.csv&gt;                      # 训练并保存 model.joblib
+    python pipeline.py --predict &lt;new.csv&gt; --model model.joblib  # 预测
+&quot;&quot;&quot;
+
+import argparse
+
+import joblib
+import pandas as pd
+from sklearn.pipeline import Pipeline
+
+from factory.operators.models import LogisticRegressionModel
+from factory.operators.tabular import MissingValueImputer, OneHotCategoricalEncoder, StandardFeatureScaler
+
+
+TARGET = &#x27;churn&#x27;
+
+
+def build_pipeline() -&gt; Pipeline:
+    return Pipeline([
+        (&quot;0_imputer&quot;, MissingValueImputer()),
+        (&quot;1_encoder&quot;, OneHotCategoricalEncoder(max_categories=20)),
+        (&quot;2_scaler&quot;, StandardFeatureScaler()),
+        (&quot;3_model&quot;, LogisticRegressionModel(C=0.5, class_weight={&#x27;0&#x27;: 1, &#x27;1&#x27;: 4}, max_iter=1000, random_state=42)),
+    ])
+
+
+def main() -&gt; None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(&quot;--data&quot;, help=&quot;训练数据 CSV&quot;)
+    parser.add_argument(&quot;--predict&quot;, help=&quot;待预测数据 CSV&quot;)
+    parser.add_argument(&quot;--model&quot;, default=&quot;model.joblib&quot;)
+    args = parser.parse_args()
+    if args.data:
+        df = pd.read_csv(args.data)
+        pipe = build_pipeline().fit(df.drop(columns=[TARGET]), df[TARGET])
+        joblib.dump(pipe, args.model)
+        print(f&quot;模型已保存到 {args.model}&quot;)
+    if args.predict:
+        pipe = joblib.load(args.model)
+        df = pd.read_csv(args.predict)
+        X = df.drop(columns=[TARGET], errors=&quot;ignore&quot;)
+        out = pd.DataFrame(pipe.predict_proba(X), columns=[f&quot;proba_{c}&quot; for c in pipe.classes_])
+        out[&quot;prediction&quot;] = pipe.predict(X)
+        print(out.head().to_string())
+
+
+if __name__ == &quot;__main__&quot;:
+    main()
+</code></pre>
+<h2>附录 B. 运行记录</h2>
+<p>各阶段耗时：PLAN 3.9s，BUILD 10.1s，VERIFY 19.9s，ROUTE 0.0s，REPLAN 11.3s，CURATE 0.0s</p>
+<pre><code>[PLAN] 场景 telecom_churn；画像标签 [&#x27;has_missing_values&#x27;, &#x27;numeric_features&#x27;, &#x27;has_categorical_features&#x27;, &#x27;low_cardinality&#x27;, &#x27;string_typed_numeric&#x27;, &#x27;id_columns&#x27;, &#x27;imbalanced&#x27;, &#x27;time_tenure&#x27;, &#x27;mixed_features&#x27;]
+[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall &gt;= 0.8
+[PLAN] 候选方案：[&#x27;lgbm_imbalanced_pipeline(*TotalChargesCleaner → MissingValueImputer → *IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel)&#x27;]
+[PLAN] 完成，用时 3.9s → BUILD
+[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：将total_charges字段中的空白字符处理为0.0并转为数值类型
+[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：删除客户ID等无预测价值的特征
+[BUILD] 完成，用时 7.2s → VERIFY
+[VERIFY] lgbm_imbalanced_pipeline：未通过，recall=0.6243；M_THRESHOLD recall = 0.6243 低于阈值 0.8
+[VERIFY] 完成，用时 7.5s → ROUTE
+[ROUTE] 完成，用时 0.0s → REPLAN
+[REPLAN] 第 1 轮 Beam 搜索：父方案 [&#x27;lgbm_imbalanced_pipeline&#x27;]，扩展 4 个，入选 [&#x27;lgbm_basic_balanced(MissingValueImputer → *TenureBucketizer → OneHotCategoricalEncoder → LightGBMModel)&#x27;, &#x27;interpretable_logreg_pipeline(MissingValueImputer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)&#x27;]，剪枝/去重 [&#x27;lgbm_recall_optimized(0.738)&#x27;, &#x27;rf_recall_optimized(0.7366)&#x27;]
+[REPLAN] 完成，用时 11.3s → BUILD
+[BUILD] 生成算子 TenureBucketizer@2（参考 TenureBucketizer@1）：对tenure进行分箱以辅助模型识别流失周期
+[BUILD] 完成，用时 3.0s → VERIFY
+[VERIFY] lgbm_basic_balanced：未通过，recall=0.6391；M_THRESHOLD recall = 0.6391 低于阈值 0.8
+[VERIFY] interpretable_logreg_pipeline：通过，recall=0.8475
+[VERIFY] 完成，用时 12.4s → ROUTE
+[ROUTE] 完成，用时 0.0s → CURATE
+[CURATE] 写入 KG：3 条 ValidationRun；注册新算子 []；新增经验 0 条
+[CURATE] 完成，用时 0.0s → DONE</code></pre>
+<h3>LLM 调用来源</h3>
+<table><thead><tr><th>阶段</th><th>请求哈希</th><th>来源</th><th>本次耗时(s)</th><th>录制耗时(s)</th><th>tokens</th></tr></thead><tbody><tr><td>plan</td><td>5939545d51d8b000</td><td>remote</td><td>3.692</td><td>-</td><td>10431</td></tr><tr><td>synthesize</td><td>35e6fe47eda1fdb9</td><td>remote</td><td>4.341</td><td>-</td><td>2433</td></tr><tr><td>synthesize</td><td>741e2165ea59e3f5</td><td>remote</td><td>2.815</td><td>-</td><td>2322</td></tr><tr><td>plan</td><td>1af8e95985d1d74a</td><td>remote</td><td>6.775</td><td>-</td><td>12281</td></tr><tr><td>plan</td><td>c0751cf5c8508b39</td><td>remote</td><td>4.463</td><td>-</td><td>14737</td></tr><tr><td>synthesize</td><td>9b9b349c410be80c</td><td>remote</td><td>2.960</td><td>-</td><td>2607</td></tr></tbody></table>
+</body></html>

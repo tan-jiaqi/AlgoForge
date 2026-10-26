@@ -1,11 +1,11 @@
 {
   "run_id": "03_churn_reuse",
-  "request": "预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户",
+  "request": "预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户。优先复用已沉淀的清洗算子，至少一个方案采用通用缺失值填补、类别编码、标准化和平衡类权重逻辑回归。",
   "data_path": "data/churn.csv",
   "target": null,
   "status": "succeeded",
   "spec": {
-    "description": "预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户",
+    "description": "预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户。优先复用已沉淀的清洗算子，至少一个方案采用通用缺失值填补、类别编码、标准化和平衡类权重逻辑回归。",
     "task_type": "binary_classification",
     "modality": "tabular",
     "target_column": "churn",
@@ -40,7 +40,7 @@
   ],
   "candidates": [
     {
-      "name": "linear_interpretable_lr",
+      "name": "logistic_regression_pipeline",
       "steps": [
         {
           "kind": "feature",
@@ -49,13 +49,16 @@
           "synth_spec": {
             "name": "IdColumnDropper",
             "kind": "feature",
-            "purpose": "移除无业务预测意义的客户ID标识列，防止维度暴涨及过拟合",
-            "inputs": "含 customer_id 等标识列的原始 DataFrame",
-            "outputs": "剔除标识列后的 DataFrame",
-            "reference": "IdColumnDropper@1"
+            "purpose": "移除ID类特征，避免One-Hot编码导致维度灾难",
+            "inputs": "含customer_id列的DataFrame",
+            "outputs": "剔除customer_id列后的DataFrame",
+            "reference": null
           },
           "params": {},
-          "rationale": "根据经验必须在编码前剔除 customer_id 等标识列，避免 One-Hot 导致特征维度爆炸与内存溢出。"
+          "rationale": "根据Lesson:88299a38，建模前需剔除标识列。",
+          "evidence_ids": [
+            "Lesson:88299a38"
+          ]
         },
         {
           "kind": "imputer",
@@ -65,7 +68,11 @@
           "params": {
             "col": "total_charges"
           },
-          "rationale": "解决数值列含空白字符导致类型转换失败的问题，安全转换 total_charges 为浮点型并填补缺省值。"
+          "rationale": "根据Lesson:69d51358，需要对string_numeric列进行清洗以避免类型转换失败。",
+          "evidence_ids": [
+            "Operator:TotalChargesCleaner@2",
+            "Lesson:69d51358"
+          ]
         },
         {
           "kind": "imputer",
@@ -73,15 +80,10 @@
           "operator_ref": "MissingValueImputer@1",
           "synth_spec": null,
           "params": {},
-          "rationale": "对 monthly_charges 与 payment_method 的缺失值分别采用中位数与众数进行填补，确保数据完整性。"
-        },
-        {
-          "kind": "feature",
-          "action": "reuse",
-          "operator_ref": "TenureBucketizer@2",
-          "synth_spec": null,
-          "params": {},
-          "rationale": "将在网时长离散化分箱，提升线性模型的非线性拟合能力并增强业务分群解释性。"
+          "rationale": "处理剩余列的缺失值。",
+          "evidence_ids": [
+            "Operator:MissingValueImputer@1"
+          ]
         },
         {
           "kind": "encoder",
@@ -91,7 +93,10 @@
           "params": {
             "max_categories": 20
           },
-          "rationale": "对低基数类别特征进行 One-Hot 编码，转换成适合线性模型计算的稀疏特征。"
+          "rationale": "对低基数类别特征进行One-Hot编码。",
+          "evidence_ids": [
+            "Operator:OneHotCategoricalEncoder@1"
+          ]
         },
         {
           "kind": "scaler",
@@ -99,7 +104,11 @@
           "operator_ref": "StandardFeatureScaler@1",
           "synth_spec": null,
           "params": {},
-          "rationale": "根据经验使用逻辑回归前必须先对数值特征进行 Z-score 标准化，保证收敛与权重可比。"
+          "rationale": "线性模型需要标准化输入以确保收敛与解释性。",
+          "evidence_ids": [
+            "Operator:StandardFeatureScaler@1",
+            "Lesson:74e2da10"
+          ]
         },
         {
           "kind": "model",
@@ -107,15 +116,20 @@
           "operator_ref": "LogisticRegressionModel@1",
           "synth_spec": null,
           "params": {
-            "class_weight": "balanced"
+            "class_weight": "balanced",
+            "C": 1.0
           },
-          "rationale": "配置 class_weight='balanced' 解决流失样本不平衡以达成高召回率要求，且回归系数直观可解释。"
+          "rationale": "逻辑回归具备良好的可解释性，且通过class_weight解决样本不平衡问题。",
+          "evidence_ids": [
+            "Operator:LogisticRegressionModel@1",
+            "Lesson:9e9e77d6"
+          ]
         }
       ],
-      "rationale": "针对流失预测的高召回与高解释性要求，先清洗数据与分箱增强特征表达，再通过类别均衡的逻辑回归直观输出各特征权重系数。"
+      "rationale": "该方案基于逻辑回归，强调模型的可解释性与稳健的特征预处理，通过剔除ID、清洗数值字符串以及标准化，符合业务场景要求。"
     },
     {
-      "name": "balanced_lgbm_tree",
+      "name": "lightgbm_pipeline",
       "steps": [
         {
           "kind": "feature",
@@ -124,13 +138,16 @@
           "synth_spec": {
             "name": "IdColumnDropper",
             "kind": "feature",
-            "purpose": "剔除 customer_id 等标识列，避免污染特征空间和产生过拟合",
-            "inputs": "含 customer_id 标识列的 DataFrame",
-            "outputs": "剔除标识列后的 DataFrame",
-            "reference": "IdColumnDropper@1"
+            "purpose": "移除ID类特征，避免特征冗余",
+            "inputs": "含customer_id列的DataFrame",
+            "outputs": "剔除customer_id列后的DataFrame",
+            "reference": null
           },
           "params": {},
-          "rationale": "防止高唯一值的客户标识列参与后续特征编码造成维度发散与训练超时。"
+          "rationale": "建模前必须剔除ID列，以防潜在的信息泄露和维度问题。",
+          "evidence_ids": [
+            "Lesson:88299a38"
+          ]
         },
         {
           "kind": "imputer",
@@ -140,15 +157,23 @@
           "params": {
             "col": "total_charges"
           },
-          "rationale": "针对 string_typed_numeric 标签清洗累计消费中的空白字符串并转为浮点型，防止类型转换异常。"
+          "rationale": "使用经历史验证的TotalChargesCleaner处理脏数据。",
+          "evidence_ids": [
+            "Operator:TotalChargesCleaner@2"
+          ]
         },
         {
-          "kind": "imputer",
+          "kind": "feature",
           "action": "reuse",
-          "operator_ref": "MissingValueImputer@1",
+          "operator_ref": "TenureBucketizer@2",
           "synth_spec": null,
-          "params": {},
-          "rationale": "使用中位数和众数统一补全月消费及支付方式等列的缺失值。"
+          "params": {
+            "col": "tenure"
+          },
+          "rationale": "对在网时长进行分箱，提升模型对不同时段客户流失行为的捕获能力。",
+          "evidence_ids": [
+            "Operator:TenureBucketizer@2"
+          ]
         },
         {
           "kind": "encoder",
@@ -156,27 +181,31 @@
           "operator_ref": "OneHotCategoricalEncoder@1",
           "synth_spec": null,
           "params": {
-            "max_categories": 20
+            "max_categories": 10
           },
-          "rationale": "类别特征基数较低，通过 One-Hot 编码转换为树模型易于切分的离散特征。"
+          "rationale": "对类别特征进行One-Hot编码。",
+          "evidence_ids": [
+            "Operator:OneHotCategoricalEncoder@1"
+          ]
         },
         {
           "kind": "model",
-          "action": "synthesize",
-          "operator_ref": null,
-          "synth_spec": {
-            "name": "BalancedLightGBMClassifier",
-            "kind": "model",
-            "purpose": "基于 LightGBM 训练二分类模型并自动平衡正负样本权重，用于高召回流失预测场景并提供特征重要性",
-            "inputs": "预处理后的特征矩阵及标签",
-            "outputs": "训练好的分类模型及预测结果",
-            "reference": "BalancedLightGBMClassifier@1"
+          "action": "reuse",
+          "operator_ref": "LightGBMModel@1",
+          "synth_spec": null,
+          "params": {
+            "class_weight": "balanced",
+            "n_estimators": 500,
+            "learning_rate": 0.03
           },
-          "params": {},
-          "rationale": "根据历史验证该算子平均召回率达到 0.780，高于 0.75 阈值，且原生支持样本平衡权重与特征重要性解释。"
+          "rationale": "使用LightGBM以捕捉更复杂的非线性关系，并设置平衡类权重以保证召回率。",
+          "evidence_ids": [
+            "Operator:LightGBMModel@1",
+            "Lesson:9e9e77d6"
+          ]
         }
       ],
-      "rationale": "采用带样本平衡权重的非线性梯度提升树，历史验证召回率达 0.780，具备强特征交互拟合能力且可输出特征重要性归因。"
+      "rationale": "该方案利用树模型LightGBM处理复杂数据结构，通过分箱和平衡类权重优化，旨在最大化 recall 性能。"
     }
   ],
   "generated": {
@@ -184,119 +213,104 @@
       "spec": {
         "name": "IdColumnDropper",
         "kind": "feature",
-        "purpose": "移除无业务预测意义的客户ID标识列，防止维度暴涨及过拟合",
-        "inputs": "含 customer_id 等标识列的原始 DataFrame",
-        "outputs": "剔除标识列后的 DataFrame",
-        "reference": "IdColumnDropper@1"
+        "purpose": "移除ID类特征，避免One-Hot编码导致维度灾难",
+        "inputs": "含customer_id列的DataFrame",
+        "outputs": "剔除customer_id列后的DataFrame",
+        "reference": null
       },
-      "source": "from typing import Sequence\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\n\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\n\nclass IdColumnDropper(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"IdColumnDropper\",\n        kind=OperatorKind.FEATURE,\n        version=2,\n        origin=\"synthesized\",\n        description=\"移除客户ID等无业务预测意义的标识列，防止编码维度暴涨和过拟合\",\n        conditions=[\"id_columns\"],\n        dependencies=[],\n        params={\"id_cols\": (\"customer_id\",)},\n        parent=\"IdColumnDropper@1\",\n    )\n\n    def __init__(self, id_cols: Sequence[str] = (\"customer_id\",)):\n        self.id_cols = id_cols\n\n    def fit(self, X: pd.DataFrame, y=None):\n        cols_to_check = set(self.id_cols) if self.id_cols is not None else set()\n        self.drop_cols_ = [col for col in X.columns if col in cols_to_check]\n        return self\n\n    def transform(self, X: pd.DataFrame) -> pd.DataFrame:\n        X = X.copy()\n        cols_to_drop = [c for c in self.drop_cols_ if c in X.columns]\n        if cols_to_drop:\n            X = X.drop(columns=cols_to_drop)\n        return X\n",
-      "version": 2,
-      "revision": 0
-    },
-    "BalancedLightGBMClassifier": {
-      "spec": {
-        "name": "BalancedLightGBMClassifier",
-        "kind": "model",
-        "purpose": "基于 LightGBM 训练二分类模型并自动平衡正负样本权重，用于高召回流失预测场景并提供特征重要性",
-        "inputs": "预处理后的特征矩阵及标签",
-        "outputs": "训练好的分类模型及预测结果",
-        "reference": "BalancedLightGBMClassifier@1"
-      },
-      "source": "import numpy as np\nimport pandas as pd\nimport lightgbm as lgb\nfrom sklearn.base import ClassifierMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind, Modality\n\n\nclass BalancedLightGBMClassifier(ClassifierMixin, Operator):\n    meta = OperatorMeta(\n        name=\"BalancedLightGBMClassifier\",\n        kind=OperatorKind.MODEL,\n        version=2,\n        origin=\"synthesized\",\n        description=\"基于LightGBM的平衡分类器，支持正负样本权重自动平衡与特征重要性输出\",\n        conditions=[\"imbalanced\", \"classification\", \"tabular\"],\n        dependencies=[\"lightgbm\", \"scikit-learn\"],\n        params={\n            \"n_estimators\": 400,\n            \"learning_rate\": 0.05,\n            \"num_leaves\": 31,\n            \"max_depth\": -1,\n            \"class_weight\": \"balanced\",\n            \"subsample\": 0.8,\n            \"colsample_bytree\": 0.8,\n            \"random_state\": 42,\n            \"verbose\": -1,\n        },\n        parent=\"BalancedLightGBMClassifier@1\",\n    )\n\n    def __init__(\n        self,\n        n_estimators=400,\n        learning_rate=0.05,\n        num_leaves=31,\n        max_depth=-1,\n        class_weight=\"balanced\",\n        subsample=0.8,\n        colsample_bytree=0.8,\n        random_state=42,\n        verbose=-1,\n    ):\n        self.n_estimators = n_estimators\n        self.learning_rate = learning_rate\n        self.num_leaves = num_leaves\n        self.max_depth = max_depth\n        self.class_weight = class_weight\n        self.subsample = subsample\n        self.colsample_bytree = colsample_bytree\n        self.random_state = random_state\n        self.verbose = verbose\n\n    def fit(self, X, y):\n        X_df = pd.DataFrame(X).copy()\n        y_arr = np.asarray(y)\n\n        self.classes_ = np.unique(y_arr)\n        self.feature_names_in_ = np.array(X_df.columns, dtype=str)\n        self.n_features_in_ = X_df.shape[1]\n\n        # 确保列名无特殊 JSON 字符干扰 LightGBM\n        clean_cols = [str(c).replace(\":\", \"_\").replace(\" \", \"_\") for c in X_df.columns]\n        X_df.columns = clean_cols\n        self.cleaned_feature_names_ = clean_cols\n\n        self.model_ = lgb.LGBMClassifier(\n            n_estimators=self.n_estimators,\n            learning_rate=self.learning_rate,\n            num_leaves=self.num_leaves,\n            max_depth=self.max_depth,\n            class_weight=self.class_weight,\n            subsample=self.subsample,\n            colsample_bytree=self.colsample_bytree,\n            random_state=self.random_state,\n            verbose=self.verbose,\n        )\n\n        self.model_.fit(X_df, y_arr)\n        self.feature_importances_ = self.model_.feature_importances_\n        return self\n\n    def _prepare_input(self, X):\n        X_df = pd.DataFrame(X).copy()\n        if hasattr(self, \"cleaned_feature_names_\"):\n            X_df.columns = self.cleaned_feature_names_\n        return X_df\n\n    def predict_proba(self, X):\n        X_df = self._prepare_input(X)\n        proba = self.model_.predict_proba(X_df)\n        return np.asarray(proba, dtype=np.float64)\n\n    def predict(self, X):\n        X_df = self._prepare_input(X)\n        pred = self.model_.predict(X_df)\n        return np.asarray(pred)\n",
+      "source": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass IdColumnDropper(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"IdColumnDropper\",\n        kind=OperatorKind.FEATURE,\n        version=2,\n        origin=\"synthesized\",\n        description=\"自动识别并剔除数据中的标识类(ID)特征，防止后续编码导致维度灾难。\",\n        conditions=[\"数据包含标识列\"],\n        dependencies=[],\n        params={\"id_columns\": None}\n    )\n\n    def __init__(self, id_columns=None):\n        self.id_columns = id_columns\n\n    def fit(self, X, y=None):\n        # 如果未指定id_columns，通过启发式规则自动识别：\n        # 若某列唯一值数量等于行数，或列名包含id且唯一值极高，则视为ID列\n        if self.id_columns is None:\n            n_rows = len(X)\n            self.id_columns_ = [\n                col for col in X.columns \n                if X[col].nunique() == n_rows or ('id' in col.lower() and X[col].nunique() > n_rows * 0.9)\n            ]\n        else:\n            self.id_columns_ = self.id_columns\n        return self\n\n    def transform(self, X):\n        X = X.copy()\n        # 移除标识列，过滤掉不存在于X中的列名以防报错\n        cols_to_drop = [c for c in self.id_columns_ if c in X.columns]\n        X = X.drop(columns=cols_to_drop)\n        \n        # 确保算子输出无无穷值(虽通常不产生，但按规范清理)\n        # 注意：此处仅处理数值列，类别列不受影响\n        numeric_cols = X.select_dtypes(include=[np.number]).columns\n        X[numeric_cols] = X[numeric_cols].replace([np.inf, -np.inf], np.nan)\n        \n        return X\n",
       "version": 2,
       "revision": 0
     }
   },
   "reports": [
     {
-      "plan_name": "linear_interpretable_lr",
+      "plan_name": "logistic_regression_pipeline",
       "passed": true,
       "diagnostics": [],
       "metrics": {
-        "recall": 0.7785,
-        "roc_auc": 0.8135,
-        "precision": 0.4818,
-        "f1": 0.5952,
-        "recall_at_20": 0.4565
+        "recall": 0.7768,
+        "roc_auc": 0.8143,
+        "precision": 0.4832,
+        "f1": 0.5957,
+        "recall_at_20": 0.457
       },
       "metric_std": {
-        "recall": 0.0004,
-        "roc_auc": 0.0007,
-        "precision": 0.0013,
-        "f1": 0.001,
-        "recall_at_20": 0.0013
+        "recall": 0.0019,
+        "roc_auc": 0.0004,
+        "precision": 0.0025,
+        "f1": 0.0025,
+        "recall_at_20": 0.0015
       },
       "resources": {
-        "fit_seconds": 0.073,
-        "predict_ms_per_1k": 33.06,
-        "peak_rss_mb": 252.4
+        "fit_seconds": 0.064,
+        "predict_ms_per_1k": 29.5,
+        "peak_rss_mb": 253.7
       },
       "notes": []
     },
     {
-      "plan_name": "balanced_lgbm_tree",
+      "plan_name": "lightgbm_pipeline",
       "passed": false,
       "diagnostics": [
         {
           "code": "M_THRESHOLD",
           "stage": "metric",
-          "message": "recall = 0.6298 低于阈值 0.75",
-          "operator": "BalancedLightGBMClassifier@2",
+          "message": "recall = 0.6476 低于阈值 0.75",
+          "operator": "LightGBMModel@1",
           "hint": "考虑 class_weight、换模型、调参或调整决策阈值"
         },
         {
           "code": "M_THRESHOLD",
           "stage": "metric",
-          "message": "roc_auc = 0.7830 低于阈值 0.8",
-          "operator": "BalancedLightGBMClassifier@2",
+          "message": "roc_auc = 0.7847 低于阈值 0.8",
+          "operator": "LightGBMModel@1",
           "hint": "考虑 class_weight、换模型、调参或调整决策阈值"
         }
       ],
       "metrics": {
-        "recall": 0.6298,
-        "roc_auc": 0.783,
-        "precision": 0.4901,
-        "f1": 0.5511,
-        "recall_at_20": 0.4199
+        "recall": 0.6476,
+        "roc_auc": 0.7847,
+        "precision": 0.4914,
+        "f1": 0.5585,
+        "recall_at_20": 0.4271
       },
       "metric_std": {
-        "recall": 0.0031,
-        "roc_auc": 0.0036,
-        "precision": 0.0011,
-        "f1": 0.0016,
-        "recall_at_20": 0.008
+        "recall": 0.0115,
+        "roc_auc": 0.0018,
+        "precision": 0.0035,
+        "f1": 0.006,
+        "recall_at_20": 0.002
       },
       "resources": {
-        "fit_seconds": 0.229,
-        "predict_ms_per_1k": 43.74,
-        "peak_rss_mb": 260.2
+        "fit_seconds": 0.391,
+        "predict_ms_per_1k": 59.18,
+        "peak_rss_mb": 270.9
       },
       "notes": []
     }
   ],
-  "best_plan": "linear_interpretable_lr",
+  "best_plan": "logistic_regression_pipeline",
   "repair_rounds": 0,
   "replans": 0,
   "history": [],
   "repairs": [],
+  "search": [],
   "registered": [
     "IdColumnDropper@2"
   ],
   "lessons_learned": [],
   "lessons_used": [
+    "Lesson:74e2da10",
     "Lesson:69d51358",
     "Lesson:9e9e77d6",
-    "Lesson:74e2da10",
+    "Lesson:a3a47067",
     "Lesson:88299a38",
-    "Lesson:0d5e3eb1",
-    "Lesson:57718714",
-    "Lesson:6a946c79",
-    "Lesson:f2c1398b",
-    "Lesson:828ad675"
+    "Lesson:0d5e3eb1"
   ],
   "kg_writes": [
-    "ValidationRun:03_churn_reuse-linear_interpretable_lr",
-    "ValidationRun:03_churn_reuse-balanced_lgbm_tree"
+    "ValidationRun:03_churn_reuse-logistic_regression_pipeline",
+    "ValidationRun:03_churn_reuse-lightgbm_pipeline"
   ],
   "artifacts": {
     "pipeline": "examples/demo/runs/03_churn_reuse/pipeline.py",
@@ -327,34 +341,6 @@
     "operator_options": {
       "imputer": [
         {
-          "ref": "TotalChargesCleaner@2",
-          "executable": true,
-          "origin": "synthesized",
-          "description": "安全清洗并转换含空白字符串的累计消费等数值列为浮点型，并填充缺失值为指定默认值",
-          "conditions": [
-            "has_missing_values",
-            "string_typed_numeric"
-          ],
-          "params": [
-            "col",
-            "fill_value"
-          ],
-          "defaults": {
-            "col": "total_charges",
-            "fill_value": 0.0
-          },
-          "score": 0.5849,
-          "breakdown": {
-            "text": 0.743,
-            "condition": 0.182,
-            "history": 0.778
-          },
-          "evidence": [
-            "匹配条件：has_missing_values、string_typed_numeric",
-            "历史验证 1 次，平均 recall 0.778"
-          ]
-        },
-        {
           "ref": "MissingValueImputer@1",
           "executable": true,
           "origin": "builtin",
@@ -367,15 +353,99 @@
             "kwargs"
           ],
           "defaults": {},
-          "score": 0.4926,
+          "score": 0.6469,
           "breakdown": {
-            "text": 0.614,
+            "text": 1.0,
             "condition": 0.091,
             "history": 0.732
           },
           "evidence": [
             "匹配条件：has_missing_values",
             "历史验证 4 次，平均 recall 0.732"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:e11ba947",
+              "metric": "recall",
+              "value": 0.71,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:e0d43fa3",
+              "metric": "recall",
+              "value": 0.66,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:a7f163bc",
+              "metric": "recall",
+              "value": 0.78,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
+              "metric": "recall",
+              "value": 0.7778,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:02_churn_synthesize-target_encoded_lgbm_pipeline",
+              "metric": "recall",
+              "value": 0.6516,
+              "passed": false
+            },
+            {
+              "id": "ValidationRun:02_churn_synthesize-lgbm_feature_eng_pipeline",
+              "metric": "recall",
+              "value": 0.6446,
+              "passed": false
+            }
+          ],
+          "evidence_ids": [
+            "Operator:MissingValueImputer@1",
+            "ValidationRun:e11ba947",
+            "ValidationRun:e0d43fa3",
+            "ValidationRun:a7f163bc",
+            "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
+            "ValidationRun:02_churn_synthesize-target_encoded_lgbm_pipeline",
+            "ValidationRun:02_churn_synthesize-lgbm_feature_eng_pipeline"
+          ]
+        },
+        {
+          "ref": "TotalChargesCleaner@2",
+          "executable": true,
+          "origin": "synthesized",
+          "description": "清理包含空白符的total_charges列并转换为浮点型",
+          "conditions": [
+            "存在包含空白字符的缺失值",
+            "数据存在字符串格式的数值列"
+          ],
+          "params": [
+            "col"
+          ],
+          "defaults": {
+            "col": "total_charges"
+          },
+          "score": 0.5011,
+          "breakdown": {
+            "text": 0.669,
+            "condition": 0.0,
+            "history": 0.778
+          },
+          "evidence": [
+            "历史验证 1 次，平均 recall 0.778"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
+              "metric": "recall",
+              "value": 0.7778,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:TotalChargesCleaner@2",
+            "ValidationRun:02_churn_synthesize-logistic_regression_pipeline"
           ]
         },
         {
@@ -392,89 +462,22 @@
           "defaults": {
             "col": "total_charges"
           },
-          "score": 0.4818,
+          "score": 0.4372,
           "breakdown": {
-            "text": 1.0,
+            "text": 0.888,
             "condition": 0.273,
             "history": 0.0
           },
           "evidence": [
             "匹配条件：has_missing_values、numeric_features、string_typed_numeric"
+          ],
+          "history_records": [],
+          "evidence_ids": [
+            "Operator:TotalChargesCleaner@1"
           ]
         }
       ],
       "feature": [
-        {
-          "ref": "TenureBucketizer@1",
-          "executable": false,
-          "origin": "extracted",
-          "description": "将连续的在网时长字段（tenure）按照业务经验分箱为离散的区间段，以提升线性模型的表现并增强可解释性。",
-          "conditions": [
-            "interpretable",
-            "linear_model",
-            "numeric_features",
-            "time_tenure"
-          ],
-          "params": [],
-          "defaults": {
-            "col": "tenure"
-          },
-          "score": 0.619,
-          "breakdown": {
-            "text": 0.743,
-            "condition": 0.273,
-            "history": 0.8
-          },
-          "evidence": [
-            "匹配条件：interpretable、numeric_features、time_tenure",
-            "历史验证 1 次，平均 recall 0.800"
-          ]
-        },
-        {
-          "ref": "TenureBucketizer@2",
-          "executable": true,
-          "origin": "synthesized",
-          "description": "将在网时长字段分箱为离散区间特征以增强线性模型的表达能力与业务可解释性",
-          "conditions": [
-            "numeric_features",
-            "time_tenure"
-          ],
-          "params": [
-            "col",
-            "bins",
-            "labels",
-            "drop_original"
-          ],
-          "defaults": {
-            "col": "tenure",
-            "bins": [
-              null,
-              6.0,
-              12.0,
-              24.0,
-              48.0,
-              null
-            ],
-            "labels": [
-              "0-6",
-              "6-12",
-              "12-24",
-              "24-48",
-              "48+"
-            ],
-            "drop_original": false
-          },
-          "score": 0.5975,
-          "breakdown": {
-            "text": 0.774,
-            "condition": 0.182,
-            "history": 0.778
-          },
-          "evidence": [
-            "匹配条件：numeric_features、time_tenure",
-            "历史验证 1 次，平均 recall 0.778"
-          ]
-        },
         {
           "ref": "ChargeRatioFeatureGenerator@1",
           "executable": false,
@@ -490,15 +493,101 @@
             "total": "total_charges",
             "tenure": "tenure"
           },
-          "score": 0.5923,
+          "score": 0.6509,
           "breakdown": {
-            "text": 0.744,
+            "text": 0.891,
             "condition": 0.182,
             "history": 0.8
           },
           "evidence": [
             "匹配条件：numeric_features、time_tenure",
             "历史验证 1 次，平均 recall 0.800"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:f6e4284c",
+              "metric": "recall",
+              "value": 0.8,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:ChargeRatioFeatureGenerator@1",
+            "ValidationRun:f6e4284c"
+          ]
+        },
+        {
+          "ref": "TenureBucketizer@1",
+          "executable": false,
+          "origin": "extracted",
+          "description": "将连续的在网时长字段（tenure）按照业务经验分箱为离散的区间段，以提升线性模型的表现并增强可解释性。",
+          "conditions": [
+            "interpretable",
+            "linear_model",
+            "numeric_features",
+            "time_tenure"
+          ],
+          "params": [],
+          "defaults": {
+            "col": "tenure"
+          },
+          "score": 0.6384,
+          "breakdown": {
+            "text": 0.792,
+            "condition": 0.273,
+            "history": 0.8
+          },
+          "evidence": [
+            "匹配条件：interpretable、numeric_features、time_tenure",
+            "历史验证 1 次，平均 recall 0.800"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:f6e4284c",
+              "metric": "recall",
+              "value": 0.8,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:TenureBucketizer@1",
+            "ValidationRun:f6e4284c"
+          ]
+        },
+        {
+          "ref": "TenureBucketizer@2",
+          "executable": true,
+          "origin": "synthesized",
+          "description": "将数值型在网时长特征划分为业务导向的区间，增强线性模型的解释性。",
+          "conditions": [
+            "输入必须包含数值型tenure列"
+          ],
+          "params": [
+            "col"
+          ],
+          "defaults": {
+            "col": "tenure"
+          },
+          "score": 0.5187,
+          "breakdown": {
+            "text": 0.713,
+            "condition": 0.0,
+            "history": 0.778
+          },
+          "evidence": [
+            "历史验证 1 次，平均 recall 0.778"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
+              "metric": "recall",
+              "value": 0.7778,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:TenureBucketizer@2",
+            "ValidationRun:02_churn_synthesize-logistic_regression_pipeline"
           ]
         }
       ],
@@ -518,15 +607,55 @@
           "defaults": {
             "max_categories": 20
           },
-          "score": 0.6449,
+          "score": 0.617,
           "breakdown": {
-            "text": 0.927,
+            "text": 0.857,
             "condition": 0.182,
             "history": 0.732
           },
           "evidence": [
             "匹配条件：has_categorical_features、low_cardinality",
             "历史验证 4 次，平均 recall 0.732"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:e11ba947",
+              "metric": "recall",
+              "value": 0.71,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:e0d43fa3",
+              "metric": "recall",
+              "value": 0.66,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:a7f163bc",
+              "metric": "recall",
+              "value": 0.78,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
+              "metric": "recall",
+              "value": 0.7778,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:02_churn_synthesize-lgbm_feature_eng_pipeline",
+              "metric": "recall",
+              "value": 0.6446,
+              "passed": false
+            }
+          ],
+          "evidence_ids": [
+            "Operator:OneHotCategoricalEncoder@1",
+            "ValidationRun:e11ba947",
+            "ValidationRun:e0d43fa3",
+            "ValidationRun:a7f163bc",
+            "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
+            "ValidationRun:02_churn_synthesize-lgbm_feature_eng_pipeline"
           ]
         },
         {
@@ -552,6 +681,10 @@
           },
           "evidence": [
             "匹配条件：has_categorical_features"
+          ],
+          "history_records": [],
+          "evidence_ids": [
+            "Operator:KFoldTargetEncoder@1"
           ]
         }
       ],
@@ -579,6 +712,25 @@
           "evidence": [
             "匹配条件：numeric_features",
             "历史验证 2 次，平均 recall 0.744"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:e11ba947",
+              "metric": "recall",
+              "value": 0.71,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
+              "metric": "recall",
+              "value": 0.7778,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:StandardFeatureScaler@1",
+            "ValidationRun:e11ba947",
+            "ValidationRun:02_churn_synthesize-logistic_regression_pipeline"
           ]
         }
       ],
@@ -607,6 +759,18 @@
           "evidence": [
             "匹配条件：imbalanced",
             "历史验证 1 次，平均 recall 0.780"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:a7f163bc",
+              "metric": "recall",
+              "value": 0.78,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:BalancedLightGBMClassifier@1",
+            "ValidationRun:a7f163bc"
           ]
         },
         {
@@ -631,92 +795,589 @@
             "max_iter": 1000,
             "random_state": 42
           },
-          "score": 0.6383,
+          "score": 0.5998,
           "breakdown": {
-            "text": 0.97,
+            "text": 0.873,
             "condition": 0.091,
             "history": 0.744
           },
           "evidence": [
             "匹配条件：interpretable",
             "历史验证 2 次，平均 recall 0.744"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:e11ba947",
+              "metric": "recall",
+              "value": 0.71,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
+              "metric": "recall",
+              "value": 0.7778,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:LogisticRegressionModel@1",
+            "ValidationRun:e11ba947",
+            "ValidationRun:02_churn_synthesize-logistic_regression_pipeline"
           ]
         },
         {
-          "ref": "RandomForestModel@1",
+          "ref": "LightGBMModel@1",
           "executable": true,
           "origin": "builtin",
-          "description": "随机森林：不受特征尺度影响，能拟合非线性，可输出特征重要性。",
+          "description": "梯度提升树（LightGBM）：通常是表格数据上最强的选择。",
           "conditions": [
-            "feature_importance",
-            "mixed_features",
+            "imbalanced",
+            "large_tabular",
             "nonlinear"
           ],
           "params": [
             "n_estimators",
-            "max_depth",
+            "learning_rate",
+            "num_leaves",
             "class_weight",
             "random_state"
           ],
           "defaults": {
             "n_estimators": 300,
-            "max_depth": null,
+            "learning_rate": 0.05,
+            "num_leaves": 31,
             "class_weight": "balanced",
             "random_state": 42
           },
-          "score": 0.6022,
+          "score": 0.5346,
           "breakdown": {
-            "text": 0.942,
+            "text": 0.668,
             "condition": 0.091,
-            "history": 0.66
+            "history": 0.8
           },
           "evidence": [
-            "匹配条件：mixed_features",
-            "历史验证 1 次，平均 recall 0.660"
+            "匹配条件：imbalanced",
+            "历史验证 1 次，平均 recall 0.800"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:f6e4284c",
+              "metric": "recall",
+              "value": 0.8,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:02_churn_synthesize-target_encoded_lgbm_pipeline",
+              "metric": "recall",
+              "value": 0.6516,
+              "passed": false
+            },
+            {
+              "id": "ValidationRun:02_churn_synthesize-lgbm_feature_eng_pipeline",
+              "metric": "recall",
+              "value": 0.6446,
+              "passed": false
+            }
+          ],
+          "evidence_ids": [
+            "Operator:LightGBMModel@1",
+            "ValidationRun:f6e4284c",
+            "ValidationRun:02_churn_synthesize-target_encoded_lgbm_pipeline",
+            "ValidationRun:02_churn_synthesize-lgbm_feature_eng_pipeline"
           ]
         }
       ]
     },
     "lessons": [
       {
-        "title": "数值列含空白字符导致类型转换失败",
-        "trigger": "新入网客户累计消费为空白字符串，读取为 object 类型，转 float 时抛出 ValueError: could not convert string to float: ' '",
-        "fix": "先 str.strip()，再 pd.to_numeric(errors='coerce')，缺失值填补为 0",
-        "error_code": "E_RUNTIME"
-      },
-      {
-        "title": "样本不平衡导致默认模型召回率偏低",
-        "trigger": "流失场景存在正负样本不平衡，模型默认阈值或未配置样本权重时召回率达不到业务要求",
-        "fix": "启用平衡类权重（如 class_weight='balanced' 或 BalancedLightGBMClassifier）以提升召回率",
-        "error_code": "M_THRESHOLD"
-      },
-      {
+        "id": "Lesson:74e2da10",
         "title": "逻辑回归标准化与可解释性",
         "trigger": "使用逻辑回归模型，或者需要模型具有高可解释性时",
         "fix": "必须先进行特征标准化（如 StandardFeatureScaler），在 0.1~10 之间搜索正则化强度 C，可直接输出系数给业务方。",
         "error_code": null
       },
       {
+        "id": "Lesson:69d51358",
+        "title": "数值列含空白字符导致类型转换失败",
+        "trigger": "新入网客户累计消费为空白字符串，读取为 object 类型，转 float 时抛出 ValueError: could not convert string to float: ' '",
+        "fix": "先 str.strip()，再 pd.to_numeric(errors='coerce')，缺失值填补为 0",
+        "error_code": "E_RUNTIME"
+      },
+      {
+        "id": "Lesson:9e9e77d6",
+        "title": "样本不平衡导致默认模型召回率偏低",
+        "trigger": "流失场景存在正负样本不平衡，模型默认阈值或未配置样本权重时召回率达不到业务要求",
+        "fix": "启用平衡类权重（如 class_weight='balanced' 或 BalancedLightGBMClassifier）以提升召回率",
+        "error_code": "M_THRESHOLD"
+      },
+      {
+        "id": "Lesson:a3a47067",
+        "title": "数值特征清洗需显式处理空白字符与零除异常",
+        "trigger": "在对包含字符串类型的数值列进行清洗时，若存在空字符串或仅由空格构成的字符串，直接调用 pd.to_numeric 会抛出 ValueError；同时在后续算术运算中若未处理除以零的情况，会导致 inf/NaN 产生。",
+        "fix": "在数据清洗阶段，应显式将空/空白字符串替换为 np.nan，并使用 pd.to_numeric(errors='coerce') 转换；在数值运算阶段，应使用 np.errstate 上下文管理器捕获溢出/除零异常，并统一使用 replace/fillna 对 inf 和 NaN 进行健壮性填充。",
+        "error_code": "E_RUNTIME"
+      },
+      {
+        "id": "Lesson:88299a38",
         "title": "未剔除客户 ID 导致 One-Hot 编码后维度暴涨与内存溢出",
         "trigger": "customer_id 等标识列未剔除，直接进行 One-Hot 编码导致特征维度暴涨并引发内存溢出",
         "fix": "建模前剔除 ID 等标识列，并在编码器中设置最大类别数",
         "error_code": "E_TIMEOUT"
-      },
-      {
-        "title": "预测阶段出现未见类别导致编码报错",
-        "trigger": "线上/测试集出现未见类别，OneHotEncoder 抛出 ValueError: Found unknown categories",
-        "fix": "编码器配置 handle_unknown='ignore' 或 infrequent_if_exist 忽略未知类别",
-        "error_code": "E_RUNTIME"
       }
     ],
+    "evidence_catalog": {
+      "Operator:MissingValueImputer@1": {
+        "type": "operator",
+        "operator_refs": [
+          "MissingValueImputer@1"
+        ]
+      },
+      "ValidationRun:e11ba947": {
+        "type": "validation",
+        "operator_refs": [
+          "MissingValueImputer@1",
+          "OneHotCategoricalEncoder@1",
+          "StandardFeatureScaler@1",
+          "LogisticRegressionModel@1"
+        ],
+        "id": "ValidationRun:e11ba947",
+        "metric": "recall",
+        "value": 0.71,
+        "passed": true
+      },
+      "ValidationRun:e0d43fa3": {
+        "type": "validation",
+        "operator_refs": [
+          "MissingValueImputer@1",
+          "OneHotCategoricalEncoder@1"
+        ],
+        "id": "ValidationRun:e0d43fa3",
+        "metric": "recall",
+        "value": 0.66,
+        "passed": true
+      },
+      "ValidationRun:a7f163bc": {
+        "type": "validation",
+        "operator_refs": [
+          "MissingValueImputer@1",
+          "OneHotCategoricalEncoder@1",
+          "BalancedLightGBMClassifier@1"
+        ],
+        "id": "ValidationRun:a7f163bc",
+        "metric": "recall",
+        "value": 0.78,
+        "passed": true
+      },
+      "ValidationRun:02_churn_synthesize-logistic_regression_pipeline": {
+        "type": "validation",
+        "operator_refs": [
+          "MissingValueImputer@1",
+          "TotalChargesCleaner@2",
+          "TenureBucketizer@2",
+          "OneHotCategoricalEncoder@1",
+          "StandardFeatureScaler@1",
+          "LogisticRegressionModel@1"
+        ],
+        "id": "ValidationRun:02_churn_synthesize-logistic_regression_pipeline",
+        "metric": "recall",
+        "value": 0.7778,
+        "passed": true
+      },
+      "ValidationRun:02_churn_synthesize-target_encoded_lgbm_pipeline": {
+        "type": "validation",
+        "operator_refs": [
+          "MissingValueImputer@1",
+          "LightGBMModel@1"
+        ],
+        "id": "ValidationRun:02_churn_synthesize-target_encoded_lgbm_pipeline",
+        "metric": "recall",
+        "value": 0.6516,
+        "passed": false
+      },
+      "ValidationRun:02_churn_synthesize-lgbm_feature_eng_pipeline": {
+        "type": "validation",
+        "operator_refs": [
+          "MissingValueImputer@1",
+          "OneHotCategoricalEncoder@1",
+          "LightGBMModel@1"
+        ],
+        "id": "ValidationRun:02_churn_synthesize-lgbm_feature_eng_pipeline",
+        "metric": "recall",
+        "value": 0.6446,
+        "passed": false
+      },
+      "Operator:TotalChargesCleaner@2": {
+        "type": "operator",
+        "operator_refs": [
+          "TotalChargesCleaner@2"
+        ]
+      },
+      "Operator:TotalChargesCleaner@1": {
+        "type": "operator",
+        "operator_refs": [
+          "TotalChargesCleaner@1"
+        ]
+      },
+      "Operator:ChargeRatioFeatureGenerator@1": {
+        "type": "operator",
+        "operator_refs": [
+          "ChargeRatioFeatureGenerator@1"
+        ]
+      },
+      "ValidationRun:f6e4284c": {
+        "type": "validation",
+        "operator_refs": [
+          "ChargeRatioFeatureGenerator@1",
+          "TenureBucketizer@1",
+          "LightGBMModel@1"
+        ],
+        "id": "ValidationRun:f6e4284c",
+        "metric": "recall",
+        "value": 0.8,
+        "passed": true
+      },
+      "Operator:TenureBucketizer@1": {
+        "type": "operator",
+        "operator_refs": [
+          "TenureBucketizer@1"
+        ]
+      },
+      "Operator:TenureBucketizer@2": {
+        "type": "operator",
+        "operator_refs": [
+          "TenureBucketizer@2"
+        ]
+      },
+      "Operator:OneHotCategoricalEncoder@1": {
+        "type": "operator",
+        "operator_refs": [
+          "OneHotCategoricalEncoder@1"
+        ]
+      },
+      "Operator:KFoldTargetEncoder@1": {
+        "type": "operator",
+        "operator_refs": [
+          "KFoldTargetEncoder@1"
+        ]
+      },
+      "Operator:StandardFeatureScaler@1": {
+        "type": "operator",
+        "operator_refs": [
+          "StandardFeatureScaler@1"
+        ]
+      },
+      "Operator:BalancedLightGBMClassifier@1": {
+        "type": "operator",
+        "operator_refs": [
+          "BalancedLightGBMClassifier@1"
+        ]
+      },
+      "Operator:LogisticRegressionModel@1": {
+        "type": "operator",
+        "operator_refs": [
+          "LogisticRegressionModel@1"
+        ]
+      },
+      "Operator:LightGBMModel@1": {
+        "type": "operator",
+        "operator_refs": [
+          "LightGBMModel@1"
+        ]
+      },
+      "Lesson:74e2da10": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:LogisticRegressionModel@1",
+          "Operator:StandardFeatureScaler@1",
+          "Condition:scaled_features",
+          "Condition:interpretable",
+          "Condition:linear_model"
+        ],
+        "matching_conditions": [
+          "Condition:interpretable"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:69d51358": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:TotalChargesCleaner@1",
+          "Condition:string_typed_numeric"
+        ],
+        "matching_conditions": [
+          "Condition:string_typed_numeric"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:9e9e77d6": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:BalancedLightGBMClassifier@1",
+          "Operator:LogisticRegressionModel@1",
+          "Condition:imbalanced",
+          "Condition:recall_first",
+          "Operator:LightGBMModel@1"
+        ],
+        "matching_conditions": [
+          "Condition:imbalanced",
+          "Condition:recall_first"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:a3a47067": {
+        "type": "lesson",
+        "applies_to": [
+          "Condition:string_typed_numeric",
+          "Condition:numeric_features",
+          "Condition:has_missing_values",
+          "Operator:ChargeRatioFeatureGenerator@1"
+        ],
+        "matching_conditions": [
+          "Condition:string_typed_numeric",
+          "Condition:numeric_features",
+          "Condition:has_missing_values"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:88299a38": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:IdColumnDropper@1",
+          "Operator:OneHotCategoricalEncoder@1",
+          "Condition:id_columns"
+        ],
+        "matching_conditions": [
+          "Condition:id_columns"
+        ],
+        "scenario_match": false
+      }
+    },
     "lesson_ids": [
+      "Lesson:74e2da10",
       "Lesson:69d51358",
       "Lesson:9e9e77d6",
-      "Lesson:74e2da10",
-      "Lesson:88299a38",
-      "Lesson:0d5e3eb1"
+      "Lesson:a3a47067",
+      "Lesson:88299a38"
     ]
   },
+  "evidence_checks": [
+    {
+      "plan": "logistic_regression_pipeline",
+      "step": 1,
+      "evidence_ids": [
+        "Lesson:88299a38"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "logistic_regression_pipeline",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:TotalChargesCleaner@2",
+        "Lesson:69d51358"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "logistic_regression_pipeline",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:MissingValueImputer@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "logistic_regression_pipeline",
+      "step": 4,
+      "evidence_ids": [
+        "Operator:OneHotCategoricalEncoder@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "logistic_regression_pipeline",
+      "step": 5,
+      "evidence_ids": [
+        "Operator:StandardFeatureScaler@1",
+        "Lesson:74e2da10"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "logistic_regression_pipeline",
+      "step": 6,
+      "evidence_ids": [
+        "Operator:LogisticRegressionModel@1",
+        "Lesson:9e9e77d6"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lightgbm_pipeline",
+      "step": 1,
+      "evidence_ids": [
+        "Lesson:88299a38"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lightgbm_pipeline",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:TotalChargesCleaner@2"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lightgbm_pipeline",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:TenureBucketizer@2"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lightgbm_pipeline",
+      "step": 4,
+      "evidence_ids": [
+        "Operator:OneHotCategoricalEncoder@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lightgbm_pipeline",
+      "step": 5,
+      "evidence_ids": [
+        "Operator:LightGBMModel@1",
+        "Lesson:9e9e77d6"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    }
+  ],
+  "llm_calls": [
+    {
+      "tag": "plan_spec",
+      "request_hash": "6d6b50b3b2cf16a1",
+      "model": "gemini-3.5-flash",
+      "source": "replay",
+      "seconds": 0.00019240379333496094,
+      "recorded_seconds": 1.8033927232027054,
+      "usage": {
+        "completion_tokens": 207,
+        "prompt_tokens": 1786,
+        "total_tokens": 1993,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 207,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 1786
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "plan",
+      "request_hash": "c0c5913c5ef145c6",
+      "model": "gemini-3.5-flash",
+      "source": "replay",
+      "seconds": 0.00038542598485946655,
+      "recorded_seconds": 4.4912042915821075,
+      "usage": {
+        "completion_tokens": 1553,
+        "prompt_tokens": 10749,
+        "total_tokens": 12302,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 1553,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 10749
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "synthesize",
+      "request_hash": "eb30cbd5a5c451f7",
+      "model": "gemini-3.5-flash",
+      "source": "replay",
+      "seconds": 0.0001467391848564148,
+      "recorded_seconds": 2.7656099647283554,
+      "usage": {
+        "completion_tokens": 554,
+        "prompt_tokens": 1943,
+        "total_tokens": 2497,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 554,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 1943
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    }
+  ],
+  "knowledge_mode": "full",
   "verify_config": {
     "cv_folds": 5,
     "seeds": [
@@ -739,23 +1400,22 @@
     "n_threads": 4
   },
   "timings": {
-    "PLAN": 17.38,
-    "BUILD": 9.74,
-    "VERIFY": 9.18,
+    "PLAN": 0.2,
+    "BUILD": 0.0,
+    "VERIFY": 11.69,
     "ROUTE": 0.0,
-    "CURATE": 0.01
+    "CURATE": 0.02
   },
   "log": [
     "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
     "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
-    "[PLAN] 候选方案：['linear_interpretable_lr(*IdColumnDropper → TotalChargesCleaner → MissingValueImputer → TenureBucketizer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)', 'balanced_lgbm_tree(*IdColumnDropper → TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → *BalancedLightGBMClassifier)']",
-    "[PLAN] 完成，用时 17.4s → BUILD",
-    "[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：移除无业务预测意义的客户ID标识列，防止维度暴涨及过拟合",
-    "[BUILD] 生成算子 BalancedLightGBMClassifier@2（参考 BalancedLightGBMClassifier@1）：基于 LightGBM 训练二分类模型并自动平衡正负样本权重，用于高召回流失预测场景并提供特征重要性",
-    "[BUILD] 完成，用时 9.7s → VERIFY",
-    "[VERIFY] linear_interpretable_lr：通过，recall=0.7785",
-    "[VERIFY] balanced_lgbm_tree：未通过，recall=0.6298；M_THRESHOLD recall = 0.6298 低于阈值 0.75；M_THRESHOLD roc_auc = 0.7830 低于阈值 0.8",
-    "[VERIFY] 完成，用时 9.2s → ROUTE",
+    "[PLAN] 候选方案：['logistic_regression_pipeline(*IdColumnDropper → TotalChargesCleaner → MissingValueImputer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)', 'lightgbm_pipeline(*IdColumnDropper → TotalChargesCleaner → TenureBucketizer → OneHotCategoricalEncoder → LightGBMModel)']",
+    "[PLAN] 完成，用时 0.2s → BUILD",
+    "[BUILD] 生成算子 IdColumnDropper@2：移除ID类特征，避免One-Hot编码导致维度灾难",
+    "[BUILD] 完成，用时 0.0s → VERIFY",
+    "[VERIFY] logistic_regression_pipeline：通过，recall=0.7768",
+    "[VERIFY] lightgbm_pipeline：未通过，recall=0.6476；M_THRESHOLD recall = 0.6476 低于阈值 0.75；M_THRESHOLD roc_auc = 0.7847 低于阈值 0.8",
+    "[VERIFY] 完成，用时 11.7s → ROUTE",
     "[ROUTE] 完成，用时 0.0s → CURATE",
     "[CURATE] 写入 KG：2 条 ValidationRun；注册新算子 ['IdColumnDropper@2']；新增经验 0 条",
     "[CURATE] 完成，用时 0.0s → DONE"

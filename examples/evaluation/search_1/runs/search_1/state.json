@@ -1,0 +1,2005 @@
+{
+  "run_id": "search_1",
+  "request": "预测客户流失，召回率不低于0.8；优先尝试可解释模型，未达标时探索不同模型或参数。",
+  "data_path": "data/churn.csv",
+  "target": "churn",
+  "status": "succeeded",
+  "spec": {
+    "description": "预测客户流失，召回率不低于0.8；优先尝试可解释模型，未达标时探索不同模型或参数。",
+    "task_type": "binary_classification",
+    "modality": "tabular",
+    "target_column": "churn",
+    "text_column": null,
+    "metrics": [
+      {
+        "name": "recall",
+        "threshold": 0.8,
+        "primary": true
+      }
+    ],
+    "constraints": [
+      "interpretable",
+      "recall_first"
+    ]
+  },
+  "profile_tags": [
+    "has_missing_values",
+    "numeric_features",
+    "has_categorical_features",
+    "low_cardinality",
+    "string_typed_numeric",
+    "id_columns",
+    "imbalanced",
+    "time_tenure",
+    "mixed_features"
+  ],
+  "candidates": [
+    {
+      "name": "lgbm_imbalanced_recall_optimization",
+      "steps": [
+        {
+          "kind": "imputer",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "TotalChargesCleaner",
+            "kind": "imputer",
+            "purpose": "处理数值列中包含的空白字符串及异常，确保total_charges能转换为浮点数并填补缺失值",
+            "inputs": "原始数据框",
+            "outputs": "处理后的数据框",
+            "reference": "TotalChargesCleaner@1"
+          },
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:TotalChargesCleaner@1",
+            "Lesson:69d51358"
+          ]
+        },
+        {
+          "kind": "imputer",
+          "action": "reuse",
+          "operator_ref": "MissingValueImputer@1",
+          "synth_spec": null,
+          "params": {},
+          "rationale": "处理剩余数值及类别列的缺失值，提升模型稳定性",
+          "evidence_ids": [
+            "Operator:MissingValueImputer@1"
+          ]
+        },
+        {
+          "kind": "feature",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "IdColumnDropper",
+            "kind": "feature",
+            "purpose": "删除客户ID等标识列，防止维度爆炸并避免过拟合",
+            "inputs": "含标识列的数据框",
+            "outputs": "已剔除标识列的数据框",
+            "reference": "IdColumnDropper@1"
+          },
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:IdColumnDropper@1"
+          ]
+        },
+        {
+          "kind": "encoder",
+          "action": "reuse",
+          "operator_ref": "OneHotCategoricalEncoder@1",
+          "synth_spec": null,
+          "params": {
+            "max_categories": 20
+          },
+          "rationale": "将类别特征转换为模型可理解的数值表示",
+          "evidence_ids": [
+            "Operator:OneHotCategoricalEncoder@1"
+          ]
+        },
+        {
+          "kind": "model",
+          "action": "reuse",
+          "operator_ref": "LightGBMModel@1",
+          "synth_spec": null,
+          "params": {
+            "n_estimators": 400,
+            "learning_rate": 0.05,
+            "num_leaves": 31,
+            "class_weight": "balanced",
+            "random_state": 42
+          },
+          "rationale": "LightGBM在表格数据表现优异，通过class_weight='balanced'处理不平衡，优化召回率",
+          "evidence_ids": [
+            "Operator:LightGBMModel@1",
+            "Lesson:f2c1398b",
+            "Lesson:9e9e77d6"
+          ]
+        }
+      ],
+      "rationale": "该方案针对数据特点设计：使用自定义清洗算子解决非数值型字符问题，结合缺失值补全和特征工程，并选用强拟合力的LightGBM模型，通过平衡权重设置满足召回率要求。"
+    },
+    {
+      "name": "lgbm_with_feature_engineering",
+      "steps": [
+        {
+          "kind": "imputer",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "TotalChargesCleaner",
+            "kind": "imputer",
+            "purpose": "处理数值列中包含的空白字符串",
+            "inputs": "原始数据框",
+            "outputs": "处理后的数据框",
+            "reference": "TotalChargesCleaner@1"
+          },
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:TotalChargesCleaner@1"
+          ]
+        },
+        {
+          "kind": "feature",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "ChargeRatioFeatureGenerator",
+            "kind": "feature",
+            "purpose": "构造资费变动特征",
+            "inputs": "包含tenure, monthly, total的列",
+            "outputs": "新增比值特征的数据框",
+            "reference": "ChargeRatioFeatureGenerator@1"
+          },
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:ChargeRatioFeatureGenerator@1"
+          ]
+        },
+        {
+          "kind": "encoder",
+          "action": "reuse",
+          "operator_ref": "OneHotCategoricalEncoder@1",
+          "synth_spec": null,
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:OneHotCategoricalEncoder@1"
+          ]
+        },
+        {
+          "kind": "model",
+          "action": "reuse",
+          "operator_ref": "LightGBMModel@1",
+          "synth_spec": null,
+          "params": {
+            "n_estimators": 500,
+            "class_weight": "balanced",
+            "random_state": 42
+          },
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:LightGBMModel@1"
+          ]
+        }
+      ],
+      "rationale": "引入领域相关特征来增强模型判别力，从而间接优化召回率。"
+    },
+    {
+      "name": "logreg_interpretable_tuned",
+      "steps": [
+        {
+          "kind": "imputer",
+          "action": "reuse",
+          "operator_ref": "MissingValueImputer@1",
+          "synth_spec": null,
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:MissingValueImputer@1"
+          ]
+        },
+        {
+          "kind": "encoder",
+          "action": "reuse",
+          "operator_ref": "OneHotCategoricalEncoder@1",
+          "synth_spec": null,
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:OneHotCategoricalEncoder@1"
+          ]
+        },
+        {
+          "kind": "scaler",
+          "action": "reuse",
+          "operator_ref": "StandardFeatureScaler@1",
+          "synth_spec": null,
+          "params": {},
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:StandardFeatureScaler@1"
+          ]
+        },
+        {
+          "kind": "model",
+          "action": "reuse",
+          "operator_ref": "LogisticRegressionModel@1",
+          "synth_spec": null,
+          "params": {
+            "C": 0.5,
+            "class_weight": {
+              "0": 1,
+              "1": 4
+            },
+            "random_state": 42
+          },
+          "rationale": "",
+          "evidence_ids": [
+            "Operator:LogisticRegressionModel@1",
+            "Lesson:74e2da10"
+          ]
+        }
+      ],
+      "rationale": "满足可解释性要求，通过手动加大正类权重来实现召回率目标。"
+    }
+  ],
+  "generated": {
+    "TotalChargesCleaner": {
+      "spec": {
+        "name": "TotalChargesCleaner",
+        "kind": "imputer",
+        "purpose": "处理数值列中包含的空白字符串及异常，确保total_charges能转换为浮点数并填补缺失值",
+        "inputs": "原始数据框",
+        "outputs": "处理后的数据框",
+        "reference": "TotalChargesCleaner@1"
+      },
+      "source": "import pandas as pd\nimport numpy as np\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind, Modality\n\nclass TotalChargesCleaner(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"TotalChargesCleaner\",\n        kind=OperatorKind.IMPUTER,\n        version=2,\n        origin=\"synthesized\",\n        description=\"将total_charges列中的空白字符串转换为数值，并将缺失值填充为0.0\",\n        conditions=[\"数据中存在包含空白字符的数值列\"],\n        dependencies=[\"pandas\", \"numpy\"],\n        params={\"col\": \"total_charges\"},\n        parent=\"TotalChargesCleaner@1\"\n    )\n\n    def __init__(self, col=\"total_charges\"):\n        self.col = col\n\n    def fit(self, X, y=None):\n        \"\"\"记录列名以供后续调用\"\"\"\n        self.col_ = self.col\n        return self\n\n    def transform(self, X):\n        \"\"\"\n        对输入数据进行深拷贝，将目标列转为float类型，\n        空白字符串及无法转换的值转为NaN，随后填充为0.0。\n        \"\"\"\n        X = X.copy()\n        if self.col_ in X.columns:\n            # 依据Lesson:69d51358：先去除首尾空白，利用coerce转为数值，最后填充缺失为0\n            X[self.col_] = pd.to_numeric(\n                X[self.col_].astype(str).str.strip(), \n                errors=\"coerce\"\n            ).fillna(0.0)\n            \n            # 确保即使存在inf值也进行清理，防止后续模型报错\n            X[self.col_] = X[self.col_].replace([np.inf, -np.inf], 0.0)\n            \n        return X\n",
+      "version": 2,
+      "revision": 0
+    },
+    "IdColumnDropper": {
+      "spec": {
+        "name": "IdColumnDropper",
+        "kind": "feature",
+        "purpose": "删除客户ID等标识列，防止维度爆炸并避免过拟合",
+        "inputs": "含标识列的数据框",
+        "outputs": "已剔除标识列的数据框",
+        "reference": "IdColumnDropper@1"
+      },
+      "source": "import pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass IdColumnDropper(TransformerMixin, Operator):\n    \"\"\"\n    删除客户ID等标识列，防止维度爆炸并避免过拟合。\n    遵循 Lesson:88299a38，在特征工程初期强制剔除标识列。\n    \"\"\"\n    meta = OperatorMeta(\n        name=\"IdColumnDropper\",\n        kind=OperatorKind.FEATURE,\n        version=2,\n        origin=\"synthesized\",\n        description=\"删除客户ID等标识列，防止维度爆炸并避免过拟合\",\n        conditions=[\"id_columns\"],\n        dependencies=[\"pandas\", \"sklearn\"],\n        params={\"id_cols\": (\"customer_id\",)},\n        parent=\"IdColumnDropper@1\"\n    )\n\n    def __init__(self, id_cols=(\"customer_id\",)):\n        self.id_cols = id_cols\n\n    def fit(self, X, y=None):\n        # 记录已识别的待删除列名\n        self.columns_to_drop_ = [c for c in self.id_cols if c in X.columns]\n        return self\n\n    def transform(self, X):\n        X = X.copy()\n        # 过滤掉不存在的列，防止推理时报错\n        actual_drop = [c for c in self.columns_to_drop_ if c in X.columns]\n        if actual_drop:\n            X = X.drop(columns=actual_drop)\n        return X\n",
+      "version": 2,
+      "revision": 0
+    },
+    "ChargeRatioFeatureGenerator": {
+      "spec": {
+        "name": "ChargeRatioFeatureGenerator",
+        "kind": "feature",
+        "purpose": "构造资费变动特征",
+        "inputs": "包含tenure, monthly, total的列",
+        "outputs": "新增比值特征的数据框",
+        "reference": "ChargeRatioFeatureGenerator@1"
+      },
+      "source": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass ChargeRatioFeatureGenerator(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"ChargeRatioFeatureGenerator\",\n        kind=OperatorKind.FEATURE,\n        version=2,\n        origin=\"synthesized\",\n        description=\"基于月费与累计消费构造资费波动比值特征，处理数值转换异常与除零风险\",\n        conditions=[\"数据包含tenure, monthly_charges, total_charges列\"],\n        dependencies=[\"pandas\", \"numpy\", \"sklearn\"],\n        params={\"monthly\": \"monthly_charges\", \"total\": \"total_charges\", \"tenure\": \"tenure\"},\n        parent=\"ChargeRatioFeatureGenerator@1\"\n    )\n\n    def __init__(self, monthly=\"monthly_charges\", total=\"total_charges\", tenure=\"tenure\"):\n        self.monthly = monthly\n        self.total = total\n        self.tenure = tenure\n\n    def fit(self, X, y=None):\n        self.n_features_in_ = X.shape[1]\n        return self\n\n    def transform(self, X):\n        X = X.copy()\n        \n        # 1. 确保数值列处理：先剔除空格，转数值，缺失值填充为0 (Lesson:69d51358)\n        # 将 total_charges 和 monthly_charges 强制转为 float\n        for col in [self.total, self.monthly, self.tenure]:\n            if col in X.columns:\n                if X[col].dtype == 'object':\n                    X[col] = pd.to_numeric(X[col].astype(str).str.strip(), errors='coerce')\n                X[col] = X[col].fillna(0)\n\n        # 2. 计算平均费用，处理 tenure 为 0 的情况\n        # avg = total / tenure。若 tenure 为 0，视为 0 消费\n        tenure_safe = X[self.tenure].replace(0, np.nan)\n        avg_charge = X[self.total] / tenure_safe\n        \n        # 3. 计算资费比值：avg / current_monthly\n        # 如果当前月费为0，避免除以0产生inf\n        monthly_safe = X[self.monthly].replace(0, np.nan)\n        ratio = avg_charge / monthly_safe\n        \n        # 4. 处理无穷大及空值 (Lesson:69d51358)\n        # 若计算出现inf或NaN，填充为1.0（表示当前月费与历史平均一致）\n        X[\"charge_ratio\"] = ratio.replace([np.inf, -np.inf], np.nan).fillna(1.0)\n        \n        return X\n",
+      "version": 2,
+      "revision": 0
+    }
+  },
+  "reports": [
+    {
+      "plan_name": "lgbm_imbalanced_recall_optimization",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "M_THRESHOLD",
+          "stage": "metric",
+          "message": "recall = 0.6243 低于阈值 0.8",
+          "operator": "LightGBMModel@1",
+          "hint": "考虑 class_weight、换模型、调参或调整决策阈值"
+        }
+      ],
+      "metrics": {
+        "recall": 0.6243,
+        "roc_auc": 0.7835,
+        "precision": 0.4923,
+        "f1": 0.5502,
+        "recall_at_20": 0.4204
+      },
+      "metric_std": {
+        "recall": 0.0073,
+        "roc_auc": 0.0027,
+        "precision": 0.002,
+        "f1": 0.003,
+        "recall_at_20": 0.0057
+      },
+      "resources": {
+        "fit_seconds": 0.331,
+        "predict_ms_per_1k": 47.38,
+        "peak_rss_mb": 263.5
+      },
+      "notes": []
+    },
+    {
+      "plan_name": "lgbm_with_feature_engineering",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "M_THRESHOLD",
+          "stage": "metric",
+          "message": "recall = 0.5939 低于阈值 0.8",
+          "operator": "LightGBMModel@1",
+          "hint": "考虑 class_weight、换模型、调参或调整决策阈值"
+        }
+      ],
+      "metrics": {
+        "recall": 0.5939,
+        "roc_auc": 0.78,
+        "precision": 0.5041,
+        "f1": 0.5451,
+        "recall_at_20": 0.4118
+      },
+      "metric_std": {
+        "recall": 0.0031,
+        "roc_auc": 0.0013,
+        "precision": 0.0032,
+        "f1": 0.0031,
+        "recall_at_20": 0.0039
+      },
+      "resources": {
+        "fit_seconds": 0.364,
+        "predict_ms_per_1k": 68.87,
+        "peak_rss_mb": 266.2
+      },
+      "notes": []
+    },
+    {
+      "plan_name": "logreg_interpretable_tuned",
+      "passed": true,
+      "diagnostics": [],
+      "metrics": {
+        "recall": 0.8475,
+        "roc_auc": 0.814,
+        "precision": 0.443,
+        "f1": 0.5818,
+        "recall_at_20": 0.4567
+      },
+      "metric_std": {
+        "recall": 0.0031,
+        "roc_auc": 0.0005,
+        "precision": 0.001,
+        "f1": 0.0013,
+        "recall_at_20": 0.0016
+      },
+      "resources": {
+        "fit_seconds": 0.096,
+        "predict_ms_per_1k": 50.13,
+        "peak_rss_mb": 256.9
+      },
+      "notes": []
+    }
+  ],
+  "best_plan": "logreg_interpretable_tuned",
+  "repair_rounds": 0,
+  "replans": 1,
+  "history": [],
+  "repairs": [],
+  "search": [
+    {
+      "round": 1,
+      "parents": [
+        "lgbm_imbalanced_recall_optimization"
+      ],
+      "width": 2,
+      "candidates": [
+        {
+          "plan": "lgbm_recall_tuned",
+          "chain": "生成:TotalChargesCleaner → MissingValueImputer → 生成:IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel",
+          "prior": 0.7255,
+          "evidence": {
+            "TotalChargesCleaner": "0.712（本次 1 条）",
+            "MissingValueImputer@1": "0.715（KG 3 条、本次 1 条）",
+            "IdColumnDropper": "0.712（本次 1 条）",
+            "OneHotCategoricalEncoder@1": "0.715（KG 3 条、本次 1 条）",
+            "LightGBMModel@1": "0.741（KG 1 条、本次 1 条）"
+          },
+          "observations": {
+            "*TotalChargesCleaner": [
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "MissingValueImputer@1": [
+              {
+                "id": "ValidationRun:e11ba947",
+                "metric": "recall",
+                "value": 0.71,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:e0d43fa3",
+                "metric": "recall",
+                "value": 0.66,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:a7f163bc",
+                "metric": "recall",
+                "value": 0.78,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "*IdColumnDropper": [
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "OneHotCategoricalEncoder@1": [
+              {
+                "id": "ValidationRun:e11ba947",
+                "metric": "recall",
+                "value": 0.71,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:e0d43fa3",
+                "metric": "recall",
+                "value": 0.66,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:a7f163bc",
+                "metric": "recall",
+                "value": 0.78,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "LightGBMModel@1": [
+              {
+                "id": "ValidationRun:f6e4284c",
+                "metric": "recall",
+                "value": 0.8,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ]
+          },
+          "selected": false,
+          "reason": "先验第 3，超出 beam 宽度 2，剪枝"
+        },
+        {
+          "plan": "lgbm_with_feature_engineering",
+          "chain": "生成:TotalChargesCleaner → 生成:ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → LightGBMModel",
+          "prior": 0.7419,
+          "evidence": {
+            "TotalChargesCleaner": "0.712（本次 1 条）",
+            "ChargeRatioFeatureGenerator": "0.800（KG 1 条）",
+            "OneHotCategoricalEncoder@1": "0.715（KG 3 条、本次 1 条）",
+            "LightGBMModel@1": "0.741（KG 1 条、本次 1 条）"
+          },
+          "observations": {
+            "*TotalChargesCleaner": [
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "*ChargeRatioFeatureGenerator": [
+              {
+                "id": "ValidationRun:f6e4284c",
+                "metric": "recall",
+                "value": 0.8,
+                "passed": true,
+                "source": "kg"
+              }
+            ],
+            "OneHotCategoricalEncoder@1": [
+              {
+                "id": "ValidationRun:e11ba947",
+                "metric": "recall",
+                "value": 0.71,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:e0d43fa3",
+                "metric": "recall",
+                "value": 0.66,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:a7f163bc",
+                "metric": "recall",
+                "value": 0.78,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "LightGBMModel@1": [
+              {
+                "id": "ValidationRun:f6e4284c",
+                "metric": "recall",
+                "value": 0.8,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ]
+          },
+          "selected": true,
+          "reason": "先验第 1，进入验证"
+        },
+        {
+          "plan": "rf_recall_optimized",
+          "chain": "MissingValueImputer → OneHotCategoricalEncoder → RandomForestModel",
+          "prior": 0.7239,
+          "evidence": {
+            "MissingValueImputer@1": "0.715（KG 3 条、本次 1 条）",
+            "OneHotCategoricalEncoder@1": "0.715（KG 3 条、本次 1 条）",
+            "RandomForestModel@1": "0.730（KG 1 条）"
+          },
+          "observations": {
+            "MissingValueImputer@1": [
+              {
+                "id": "ValidationRun:e11ba947",
+                "metric": "recall",
+                "value": 0.71,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:e0d43fa3",
+                "metric": "recall",
+                "value": 0.66,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:a7f163bc",
+                "metric": "recall",
+                "value": 0.78,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "OneHotCategoricalEncoder@1": [
+              {
+                "id": "ValidationRun:e11ba947",
+                "metric": "recall",
+                "value": 0.71,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:e0d43fa3",
+                "metric": "recall",
+                "value": 0.66,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:a7f163bc",
+                "metric": "recall",
+                "value": 0.78,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "RandomForestModel@1": [
+              {
+                "id": "ValidationRun:e0d43fa3",
+                "metric": "recall",
+                "value": 0.66,
+                "passed": true,
+                "source": "kg"
+              }
+            ]
+          },
+          "selected": false,
+          "reason": "先验第 4，超出 beam 宽度 2，剪枝"
+        },
+        {
+          "plan": "logreg_interpretable_tuned",
+          "chain": "MissingValueImputer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel",
+          "prior": 0.7416,
+          "evidence": {
+            "MissingValueImputer@1": "0.715（KG 3 条、本次 1 条）",
+            "OneHotCategoricalEncoder@1": "0.715（KG 3 条、本次 1 条）",
+            "StandardFeatureScaler@1": "0.755（KG 1 条）",
+            "LogisticRegressionModel@1": "0.755（KG 1 条）"
+          },
+          "observations": {
+            "MissingValueImputer@1": [
+              {
+                "id": "ValidationRun:e11ba947",
+                "metric": "recall",
+                "value": 0.71,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:e0d43fa3",
+                "metric": "recall",
+                "value": 0.66,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:a7f163bc",
+                "metric": "recall",
+                "value": 0.78,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "OneHotCategoricalEncoder@1": [
+              {
+                "id": "ValidationRun:e11ba947",
+                "metric": "recall",
+                "value": 0.71,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:e0d43fa3",
+                "metric": "recall",
+                "value": 0.66,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "id": "ValidationRun:a7f163bc",
+                "metric": "recall",
+                "value": 0.78,
+                "passed": true,
+                "source": "kg"
+              },
+              {
+                "source": "current_run",
+                "value": 0.6243
+              }
+            ],
+            "StandardFeatureScaler@1": [
+              {
+                "id": "ValidationRun:e11ba947",
+                "metric": "recall",
+                "value": 0.71,
+                "passed": true,
+                "source": "kg"
+              }
+            ],
+            "LogisticRegressionModel@1": [
+              {
+                "id": "ValidationRun:e11ba947",
+                "metric": "recall",
+                "value": 0.71,
+                "passed": true,
+                "source": "kg"
+              }
+            ]
+          },
+          "selected": true,
+          "reason": "先验第 2，进入验证"
+        }
+      ]
+    }
+  ],
+  "registered": [],
+  "lessons_learned": [],
+  "lessons_used": [
+    "Lesson:9e9e77d6",
+    "Lesson:74e2da10",
+    "Lesson:57718714",
+    "Lesson:69d51358",
+    "Lesson:f2c1398b",
+    "Lesson:88299a38"
+  ],
+  "kg_writes": [
+    "ValidationRun:search_1-lgbm_imbalanced_recall_optimization",
+    "ValidationRun:search_1-lgbm_with_feature_engineering",
+    "ValidationRun:search_1-logreg_interpretable_tuned"
+  ],
+  "artifacts": {
+    "pipeline": "examples/evaluation/search_1/runs/search_1/pipeline.py",
+    "state": "examples/evaluation/search_1/runs/search_1/state.json",
+    "report_md": "examples/evaluation/search_1/runs/search_1/report.md",
+    "report_html": "examples/evaluation/search_1/runs/search_1/report.html"
+  },
+  "llm_model": "gemini-3.5-flash",
+  "retrieval": {
+    "scenario": "telecom_churn",
+    "scenario_metrics": [
+      {
+        "name": "recall",
+        "threshold": 0.75,
+        "primary": true
+      },
+      {
+        "name": "roc_auc",
+        "threshold": 0.8,
+        "primary": false
+      },
+      {
+        "name": "recall_at_20",
+        "threshold": null,
+        "primary": false
+      }
+    ],
+    "operator_options": {
+      "imputer": [
+        {
+          "ref": "MissingValueImputer@1",
+          "executable": true,
+          "origin": "builtin",
+          "description": "数值列用中位数、类别列用众数填补缺失值。",
+          "conditions": [
+            "has_missing_values"
+          ],
+          "params": [
+            "args",
+            "kwargs"
+          ],
+          "defaults": {},
+          "score": 0.4921,
+          "breakdown": {
+            "text": 0.624,
+            "condition": 0.091,
+            "history": 0.717
+          },
+          "evidence": [
+            "匹配条件：has_missing_values",
+            "历史验证 3 次，平均 recall 0.717"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:e11ba947",
+              "metric": "recall",
+              "value": 0.71,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:e0d43fa3",
+              "metric": "recall",
+              "value": 0.66,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:a7f163bc",
+              "metric": "recall",
+              "value": 0.78,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:MissingValueImputer@1",
+            "ValidationRun:e11ba947",
+            "ValidationRun:e0d43fa3",
+            "ValidationRun:a7f163bc"
+          ]
+        },
+        {
+          "ref": "TotalChargesCleaner@1",
+          "executable": false,
+          "origin": "extracted",
+          "description": "将包含空白字符串的数值列安全转换为浮点型，并将缺失及空白值填充为0.0",
+          "conditions": [
+            "has_missing_values",
+            "numeric_features",
+            "string_typed_numeric"
+          ],
+          "params": [],
+          "defaults": {
+            "col": "total_charges"
+          },
+          "score": 0.4818,
+          "breakdown": {
+            "text": 1.0,
+            "condition": 0.273,
+            "history": 0.0
+          },
+          "evidence": [
+            "匹配条件：has_missing_values、numeric_features、string_typed_numeric"
+          ],
+          "history_records": [],
+          "evidence_ids": [
+            "Operator:TotalChargesCleaner@1"
+          ]
+        }
+      ],
+      "feature": [
+        {
+          "ref": "TenureBucketizer@1",
+          "executable": false,
+          "origin": "extracted",
+          "description": "将连续的在网时长字段（tenure）按照业务经验分箱为离散的区间段，以提升线性模型的表现并增强可解释性。",
+          "conditions": [
+            "interpretable",
+            "linear_model",
+            "numeric_features",
+            "time_tenure"
+          ],
+          "params": [],
+          "defaults": {
+            "col": "tenure"
+          },
+          "score": 0.7218,
+          "breakdown": {
+            "text": 1.0,
+            "condition": 0.273,
+            "history": 0.8
+          },
+          "evidence": [
+            "匹配条件：interpretable、numeric_features、time_tenure",
+            "历史验证 1 次，平均 recall 0.800"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:f6e4284c",
+              "metric": "recall",
+              "value": 0.8,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:TenureBucketizer@1",
+            "ValidationRun:f6e4284c"
+          ]
+        },
+        {
+          "ref": "ChargeRatioFeatureGenerator@1",
+          "executable": false,
+          "origin": "extracted",
+          "description": "构造历史月均消费与当前月费的比值特征，用于衡量用户近期资费变动趋势。",
+          "conditions": [
+            "numeric_features",
+            "time_tenure"
+          ],
+          "params": [],
+          "defaults": {
+            "monthly": "monthly_charges",
+            "total": "total_charges",
+            "tenure": "tenure"
+          },
+          "score": 0.6157,
+          "breakdown": {
+            "text": 0.803,
+            "condition": 0.182,
+            "history": 0.8
+          },
+          "evidence": [
+            "匹配条件：numeric_features、time_tenure",
+            "历史验证 1 次，平均 recall 0.800"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:f6e4284c",
+              "metric": "recall",
+              "value": 0.8,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:ChargeRatioFeatureGenerator@1",
+            "ValidationRun:f6e4284c"
+          ]
+        },
+        {
+          "ref": "IdColumnDropper@1",
+          "executable": false,
+          "origin": "extracted",
+          "description": "删除客户 ID 等无实际预测价值的高基数标识列，避免被误作为类别特征导致维度爆炸或模型过拟合",
+          "conditions": [
+            "high_cardinality",
+            "id_columns"
+          ],
+          "params": [],
+          "defaults": {
+            "id_cols": [
+              "customer_id"
+            ]
+          },
+          "score": 0.4191,
+          "breakdown": {
+            "text": 0.98,
+            "condition": 0.091,
+            "history": 0.0
+          },
+          "evidence": [
+            "匹配条件：id_columns"
+          ],
+          "history_records": [],
+          "evidence_ids": [
+            "Operator:IdColumnDropper@1"
+          ]
+        },
+        {
+          "ref": "ServiceCountFeature@1",
+          "executable": false,
+          "origin": "extracted",
+          "description": "统计客户订购的增值服务总数，反映客户业务粘性与迁移成本以辅助流失预测",
+          "conditions": [
+            "has_categorical_features"
+          ],
+          "params": [],
+          "defaults": {
+            "service_cols": [
+              "online_security",
+              "tech_support",
+              "streaming_tv"
+            ]
+          },
+          "score": 0.4153,
+          "breakdown": {
+            "text": 0.97,
+            "condition": 0.091,
+            "history": 0.0
+          },
+          "evidence": [
+            "匹配条件：has_categorical_features"
+          ],
+          "history_records": [],
+          "evidence_ids": [
+            "Operator:ServiceCountFeature@1"
+          ]
+        }
+      ],
+      "encoder": [
+        {
+          "ref": "OneHotCategoricalEncoder@1",
+          "executable": true,
+          "origin": "builtin",
+          "description": "类别列 one-hot 编码，忽略未见类别。",
+          "conditions": [
+            "has_categorical_features",
+            "low_cardinality"
+          ],
+          "params": [
+            "max_categories"
+          ],
+          "defaults": {
+            "max_categories": 20
+          },
+          "score": 0.6695,
+          "breakdown": {
+            "text": 1.0,
+            "condition": 0.182,
+            "history": 0.717
+          },
+          "evidence": [
+            "匹配条件：has_categorical_features、low_cardinality",
+            "历史验证 3 次，平均 recall 0.717"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:e11ba947",
+              "metric": "recall",
+              "value": 0.71,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:e0d43fa3",
+              "metric": "recall",
+              "value": 0.66,
+              "passed": true
+            },
+            {
+              "id": "ValidationRun:a7f163bc",
+              "metric": "recall",
+              "value": 0.78,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:OneHotCategoricalEncoder@1",
+            "ValidationRun:e11ba947",
+            "ValidationRun:e0d43fa3",
+            "ValidationRun:a7f163bc"
+          ]
+        },
+        {
+          "ref": "KFoldTargetEncoder@1",
+          "executable": false,
+          "origin": "extracted",
+          "description": "对高基数类别特征进行带平滑的K折折外目标编码，防止训练集标签泄漏并增强对罕见类别的泛化能力。",
+          "conditions": [
+            "has_categorical_features",
+            "high_cardinality"
+          ],
+          "params": [],
+          "defaults": {
+            "target": "churn",
+            "n_splits": 5,
+            "smoothing": 10
+          },
+          "score": 0.3658,
+          "breakdown": {
+            "text": 0.846,
+            "condition": 0.091,
+            "history": 0.0
+          },
+          "evidence": [
+            "匹配条件：has_categorical_features"
+          ],
+          "history_records": [],
+          "evidence_ids": [
+            "Operator:KFoldTargetEncoder@1"
+          ]
+        }
+      ],
+      "scaler": [
+        {
+          "ref": "StandardFeatureScaler@1",
+          "executable": true,
+          "origin": "builtin",
+          "description": "数值列 Z-score 标准化，线性模型和基于距离的模型需要。",
+          "conditions": [
+            "linear_model",
+            "numeric_features"
+          ],
+          "params": [
+            "args",
+            "kwargs"
+          ],
+          "defaults": {},
+          "score": 0.6403,
+          "breakdown": {
+            "text": 1.0,
+            "condition": 0.091,
+            "history": 0.71
+          },
+          "evidence": [
+            "匹配条件：numeric_features",
+            "历史验证 1 次，平均 recall 0.710"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:e11ba947",
+              "metric": "recall",
+              "value": 0.71,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:StandardFeatureScaler@1",
+            "ValidationRun:e11ba947"
+          ]
+        }
+      ],
+      "model": [
+        {
+          "ref": "BalancedLightGBMClassifier@1",
+          "executable": false,
+          "origin": "extracted",
+          "description": "使用 LightGBM 训练分类模型，通过设置 class_weight='balanced' 自动平衡正负样本权重，适用于类别不平衡的流失预测等场景。",
+          "conditions": [
+            "feature_importance",
+            "imbalanced",
+            "large_tabular",
+            "nonlinear"
+          ],
+          "params": [],
+          "defaults": {
+            "params": null
+          },
+          "score": 0.6613,
+          "breakdown": {
+            "text": 1.0,
+            "condition": 0.091,
+            "history": 0.78
+          },
+          "evidence": [
+            "匹配条件：imbalanced",
+            "历史验证 1 次，平均 recall 0.780"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:a7f163bc",
+              "metric": "recall",
+              "value": 0.78,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:BalancedLightGBMClassifier@1",
+            "ValidationRun:a7f163bc"
+          ]
+        },
+        {
+          "ref": "LogisticRegressionModel@1",
+          "executable": true,
+          "origin": "builtin",
+          "description": "L2 逻辑回归：系数可解释，也是稀疏文本特征上的强基线。",
+          "conditions": [
+            "interpretable",
+            "scaled_features",
+            "sparse_features"
+          ],
+          "params": [
+            "C",
+            "class_weight",
+            "max_iter",
+            "random_state"
+          ],
+          "defaults": {
+            "C": 1.0,
+            "class_weight": "balanced",
+            "max_iter": 1000,
+            "random_state": 42
+          },
+          "score": 0.6184,
+          "breakdown": {
+            "text": 0.945,
+            "condition": 0.091,
+            "history": 0.71
+          },
+          "evidence": [
+            "匹配条件：interpretable",
+            "历史验证 1 次，平均 recall 0.710"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:e11ba947",
+              "metric": "recall",
+              "value": 0.71,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:LogisticRegressionModel@1",
+            "ValidationRun:e11ba947"
+          ]
+        },
+        {
+          "ref": "LightGBMModel@1",
+          "executable": true,
+          "origin": "builtin",
+          "description": "梯度提升树（LightGBM）：通常是表格数据上最强的选择。",
+          "conditions": [
+            "imbalanced",
+            "large_tabular",
+            "nonlinear"
+          ],
+          "params": [
+            "n_estimators",
+            "learning_rate",
+            "num_leaves",
+            "class_weight",
+            "random_state"
+          ],
+          "defaults": {
+            "n_estimators": 300,
+            "learning_rate": 0.05,
+            "num_leaves": 31,
+            "class_weight": "balanced",
+            "random_state": 42
+          },
+          "score": 0.5488,
+          "breakdown": {
+            "text": 0.704,
+            "condition": 0.091,
+            "history": 0.8
+          },
+          "evidence": [
+            "匹配条件：imbalanced",
+            "历史验证 1 次，平均 recall 0.800"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:f6e4284c",
+              "metric": "recall",
+              "value": 0.8,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:LightGBMModel@1",
+            "ValidationRun:f6e4284c"
+          ]
+        },
+        {
+          "ref": "RandomForestModel@1",
+          "executable": true,
+          "origin": "builtin",
+          "description": "随机森林：不受特征尺度影响，能拟合非线性，可输出特征重要性。",
+          "conditions": [
+            "feature_importance",
+            "mixed_features",
+            "nonlinear"
+          ],
+          "params": [
+            "n_estimators",
+            "max_depth",
+            "class_weight",
+            "random_state"
+          ],
+          "defaults": {
+            "n_estimators": 300,
+            "max_depth": null,
+            "class_weight": "balanced",
+            "random_state": 42
+          },
+          "score": 0.5415,
+          "breakdown": {
+            "text": 0.791,
+            "condition": 0.091,
+            "history": 0.66
+          },
+          "evidence": [
+            "匹配条件：mixed_features",
+            "历史验证 1 次，平均 recall 0.660"
+          ],
+          "history_records": [
+            {
+              "id": "ValidationRun:e0d43fa3",
+              "metric": "recall",
+              "value": 0.66,
+              "passed": true
+            }
+          ],
+          "evidence_ids": [
+            "Operator:RandomForestModel@1",
+            "ValidationRun:e0d43fa3"
+          ]
+        }
+      ]
+    },
+    "lessons": [
+      {
+        "id": "Lesson:9e9e77d6",
+        "title": "样本不平衡导致默认模型召回率偏低",
+        "trigger": "流失场景存在正负样本不平衡，模型默认阈值或未配置样本权重时召回率达不到业务要求",
+        "fix": "启用平衡类权重（如 class_weight='balanced' 或 BalancedLightGBMClassifier）以提升召回率",
+        "error_code": "M_THRESHOLD"
+      },
+      {
+        "id": "Lesson:74e2da10",
+        "title": "逻辑回归标准化与可解释性",
+        "trigger": "使用逻辑回归模型，或者需要模型具有高可解释性时",
+        "fix": "必须先进行特征标准化（如 StandardFeatureScaler），在 0.1~10 之间搜索正则化强度 C，可直接输出系数给业务方。",
+        "error_code": null
+      },
+      {
+        "id": "Lesson:57718714",
+        "title": "随机森林防过拟合与召回优化",
+        "trigger": "使用随机森林模型，面临过拟合风险，或业务要求召回优先时",
+        "fix": "设置 n_estimators 300 左右，限制 max_depth 在 8~16 防止过拟合；召回优先时需配合调整分类阈值。",
+        "error_code": null
+      },
+      {
+        "id": "Lesson:69d51358",
+        "title": "数值列含空白字符导致类型转换失败",
+        "trigger": "新入网客户累计消费为空白字符串，读取为 object 类型，转 float 时抛出 ValueError: could not convert string to float: ' '",
+        "fix": "先 str.strip()，再 pd.to_numeric(errors='coerce')，缺失值填补为 0",
+        "error_code": "E_RUNTIME"
+      },
+      {
+        "id": "Lesson:f2c1398b",
+        "title": "LightGBM 调参及不平衡处理",
+        "trigger": "数据量在 5k 到 10w 之间，或者样本不平衡时",
+        "fix": "设置 num_leaves 15~63, learning_rate 0.03~0.1, n_estimators 200~600；不平衡时设置 class_weight='balanced'；树模型无需标准化。",
+        "error_code": null
+      }
+    ],
+    "evidence_catalog": {
+      "Operator:MissingValueImputer@1": {
+        "type": "operator",
+        "operator_refs": [
+          "MissingValueImputer@1"
+        ]
+      },
+      "ValidationRun:e11ba947": {
+        "type": "validation",
+        "operator_refs": [
+          "MissingValueImputer@1",
+          "OneHotCategoricalEncoder@1",
+          "StandardFeatureScaler@1",
+          "LogisticRegressionModel@1"
+        ],
+        "id": "ValidationRun:e11ba947",
+        "metric": "recall",
+        "value": 0.71,
+        "passed": true
+      },
+      "ValidationRun:e0d43fa3": {
+        "type": "validation",
+        "operator_refs": [
+          "MissingValueImputer@1",
+          "OneHotCategoricalEncoder@1",
+          "RandomForestModel@1"
+        ],
+        "id": "ValidationRun:e0d43fa3",
+        "metric": "recall",
+        "value": 0.66,
+        "passed": true
+      },
+      "ValidationRun:a7f163bc": {
+        "type": "validation",
+        "operator_refs": [
+          "MissingValueImputer@1",
+          "OneHotCategoricalEncoder@1",
+          "BalancedLightGBMClassifier@1"
+        ],
+        "id": "ValidationRun:a7f163bc",
+        "metric": "recall",
+        "value": 0.78,
+        "passed": true
+      },
+      "Operator:TotalChargesCleaner@1": {
+        "type": "operator",
+        "operator_refs": [
+          "TotalChargesCleaner@1"
+        ]
+      },
+      "Operator:TenureBucketizer@1": {
+        "type": "operator",
+        "operator_refs": [
+          "TenureBucketizer@1"
+        ]
+      },
+      "ValidationRun:f6e4284c": {
+        "type": "validation",
+        "operator_refs": [
+          "TenureBucketizer@1",
+          "ChargeRatioFeatureGenerator@1",
+          "LightGBMModel@1"
+        ],
+        "id": "ValidationRun:f6e4284c",
+        "metric": "recall",
+        "value": 0.8,
+        "passed": true
+      },
+      "Operator:ChargeRatioFeatureGenerator@1": {
+        "type": "operator",
+        "operator_refs": [
+          "ChargeRatioFeatureGenerator@1"
+        ]
+      },
+      "Operator:IdColumnDropper@1": {
+        "type": "operator",
+        "operator_refs": [
+          "IdColumnDropper@1"
+        ]
+      },
+      "Operator:ServiceCountFeature@1": {
+        "type": "operator",
+        "operator_refs": [
+          "ServiceCountFeature@1"
+        ]
+      },
+      "Operator:OneHotCategoricalEncoder@1": {
+        "type": "operator",
+        "operator_refs": [
+          "OneHotCategoricalEncoder@1"
+        ]
+      },
+      "Operator:KFoldTargetEncoder@1": {
+        "type": "operator",
+        "operator_refs": [
+          "KFoldTargetEncoder@1"
+        ]
+      },
+      "Operator:StandardFeatureScaler@1": {
+        "type": "operator",
+        "operator_refs": [
+          "StandardFeatureScaler@1"
+        ]
+      },
+      "Operator:BalancedLightGBMClassifier@1": {
+        "type": "operator",
+        "operator_refs": [
+          "BalancedLightGBMClassifier@1"
+        ]
+      },
+      "Operator:LogisticRegressionModel@1": {
+        "type": "operator",
+        "operator_refs": [
+          "LogisticRegressionModel@1"
+        ]
+      },
+      "Operator:LightGBMModel@1": {
+        "type": "operator",
+        "operator_refs": [
+          "LightGBMModel@1"
+        ]
+      },
+      "Operator:RandomForestModel@1": {
+        "type": "operator",
+        "operator_refs": [
+          "RandomForestModel@1"
+        ]
+      },
+      "Lesson:9e9e77d6": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:BalancedLightGBMClassifier@1",
+          "Operator:LogisticRegressionModel@1",
+          "Condition:imbalanced",
+          "Condition:recall_first",
+          "Operator:LightGBMModel@1"
+        ],
+        "matching_conditions": [
+          "Condition:imbalanced",
+          "Condition:recall_first"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:74e2da10": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:LogisticRegressionModel@1",
+          "Operator:StandardFeatureScaler@1",
+          "Condition:scaled_features",
+          "Condition:interpretable",
+          "Condition:linear_model"
+        ],
+        "matching_conditions": [
+          "Condition:interpretable"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:57718714": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:RandomForestModel@1",
+          "Condition:recall_first"
+        ],
+        "matching_conditions": [
+          "Condition:recall_first"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:69d51358": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:TotalChargesCleaner@1",
+          "Condition:string_typed_numeric"
+        ],
+        "matching_conditions": [
+          "Condition:string_typed_numeric"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:f2c1398b": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:LightGBMModel@1",
+          "Condition:large_tabular",
+          "Condition:imbalanced"
+        ],
+        "matching_conditions": [
+          "Condition:imbalanced"
+        ],
+        "scenario_match": false
+      }
+    },
+    "lesson_ids": [
+      "Lesson:9e9e77d6",
+      "Lesson:74e2da10",
+      "Lesson:57718714",
+      "Lesson:69d51358",
+      "Lesson:f2c1398b"
+    ]
+  },
+  "evidence_checks": [
+    {
+      "plan": "lgbm_imbalanced_recall_optimization",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:TotalChargesCleaner@1",
+        "Lesson:69d51358"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_imbalanced_recall_optimization",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:MissingValueImputer@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_imbalanced_recall_optimization",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:IdColumnDropper@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_imbalanced_recall_optimization",
+      "step": 4,
+      "evidence_ids": [
+        "Operator:OneHotCategoricalEncoder@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_imbalanced_recall_optimization",
+      "step": 5,
+      "evidence_ids": [
+        "Operator:LightGBMModel@1",
+        "Lesson:f2c1398b",
+        "Lesson:9e9e77d6"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "（被拒绝的规划）",
+      "step": null,
+      "evidence_ids": [],
+      "scope_valid": false,
+      "errors": [
+        "lgbm_with_feature_engineering: 第 3 步：缺少 Operator:OneHotCategoricalEncoder@1 证据引用",
+        "lgbm_with_feature_engineering: 第 4 步：证据 Operator:ChargeRatioFeatureGenerator@1 不适用于 LightGBMModel@1",
+        "rf_recall_optimized: 第 1 步：缺少 Operator:MissingValueImputer@1 证据引用",
+        "rf_recall_optimized: 第 2 步：缺少 Operator:OneHotCategoricalEncoder@1 证据引用",
+        "logreg_interpretable_tuned: 第 1 步：缺少 Operator:MissingValueImputer@1 证据引用",
+        "logreg_interpretable_tuned: 第 2 步：缺少 Operator:OneHotCategoricalEncoder@1 证据引用",
+        "logreg_interpretable_tuned: 第 3 步：缺少 Operator:StandardFeatureScaler@1 证据引用"
+      ],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_recall_tuned",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:TotalChargesCleaner@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_recall_tuned",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:MissingValueImputer@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_recall_tuned",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:IdColumnDropper@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_recall_tuned",
+      "step": 4,
+      "evidence_ids": [
+        "Operator:OneHotCategoricalEncoder@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_recall_tuned",
+      "step": 5,
+      "evidence_ids": [
+        "Operator:LightGBMModel@1",
+        "Lesson:f2c1398b"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_with_feature_engineering",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:TotalChargesCleaner@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_with_feature_engineering",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:ChargeRatioFeatureGenerator@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_with_feature_engineering",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:OneHotCategoricalEncoder@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "lgbm_with_feature_engineering",
+      "step": 4,
+      "evidence_ids": [
+        "Operator:LightGBMModel@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "rf_recall_optimized",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:MissingValueImputer@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "rf_recall_optimized",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:OneHotCategoricalEncoder@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "rf_recall_optimized",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:RandomForestModel@1",
+        "Lesson:57718714"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "logreg_interpretable_tuned",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:MissingValueImputer@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "logreg_interpretable_tuned",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:OneHotCategoricalEncoder@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "logreg_interpretable_tuned",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:StandardFeatureScaler@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "logreg_interpretable_tuned",
+      "step": 4,
+      "evidence_ids": [
+        "Operator:LogisticRegressionModel@1",
+        "Lesson:74e2da10"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    }
+  ],
+  "llm_calls": [
+    {
+      "tag": "plan",
+      "request_hash": "9317a5da88589cfc",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 5.75037494301796,
+      "usage": {
+        "completion_tokens": 834,
+        "prompt_tokens": 9614,
+        "total_tokens": 10448,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 834,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 9614
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "synthesize",
+      "request_hash": "de6ca4bce07a35e9",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 2.919790267944336,
+      "usage": {
+        "completion_tokens": 480,
+        "prompt_tokens": 2053,
+        "total_tokens": 2533,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 480,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 2053
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "synthesize",
+      "request_hash": "a4628003336fef54",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 3.0144874453544617,
+      "usage": {
+        "completion_tokens": 404,
+        "prompt_tokens": 1966,
+        "total_tokens": 2370,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 404,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 1966
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "plan",
+      "request_hash": "0874fc248113eea1",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 6.016768172383308,
+      "usage": {
+        "completion_tokens": 1980,
+        "prompt_tokens": 10464,
+        "total_tokens": 12444,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 1980,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 10464
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "plan",
+      "request_hash": "dc0ba0c33d158294",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 4.696740634739399,
+      "usage": {
+        "completion_tokens": 1911,
+        "prompt_tokens": 12672,
+        "total_tokens": 14583,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 1911,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 12672
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "synthesize",
+      "request_hash": "8e25f052225b8870",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 2.9759110882878304,
+      "usage": {
+        "completion_tokens": 723,
+        "prompt_tokens": 2048,
+        "total_tokens": 2771,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 723,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 2048
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    }
+  ],
+  "knowledge_mode": "full",
+  "verify_config": {
+    "cv_folds": 5,
+    "seeds": [
+      42,
+      7,
+      2024
+    ],
+    "smoke_rows": 300,
+    "timeout_seconds": 180.0,
+    "memory_mb": 8192,
+    "max_metric_std": 0.03,
+    "leakage_ceiling": 0.995,
+    "report_metrics": [
+      "roc_auc",
+      "recall",
+      "precision",
+      "f1",
+      "recall_at_20"
+    ],
+    "n_threads": 4
+  },
+  "timings": {
+    "PLAN": 5.89,
+    "BUILD": 8.93,
+    "VERIFY": 19.89,
+    "ROUTE": 0.0,
+    "REPLAN": 10.73,
+    "CURATE": 0.0
+  },
+  "log": [
+    "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+    "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.8",
+    "[PLAN] 候选方案：['lgbm_imbalanced_recall_optimization(*TotalChargesCleaner → MissingValueImputer → *IdColumnDropper → OneHotCategoricalEncoder → LightGBMModel)']",
+    "[PLAN] 完成，用时 5.9s → BUILD",
+    "[BUILD] 生成算子 TotalChargesCleaner@2（参考 TotalChargesCleaner@1）：处理数值列中包含的空白字符串及异常，确保total_charges能转换为浮点数并填补缺失值",
+    "[BUILD] 生成算子 IdColumnDropper@2（参考 IdColumnDropper@1）：删除客户ID等标识列，防止维度爆炸并避免过拟合",
+    "[BUILD] 完成，用时 5.9s → VERIFY",
+    "[VERIFY] lgbm_imbalanced_recall_optimization：未通过，recall=0.6243；M_THRESHOLD recall = 0.6243 低于阈值 0.8",
+    "[VERIFY] 完成，用时 7.5s → ROUTE",
+    "[ROUTE] 完成，用时 0.0s → REPLAN",
+    "[REPLAN] 第 1 轮 Beam 搜索：父方案 ['lgbm_imbalanced_recall_optimization']，扩展 4 个，入选 ['lgbm_with_feature_engineering(*TotalChargesCleaner → *ChargeRatioFeatureGenerator → OneHotCategoricalEncoder → LightGBMModel)', 'logreg_interpretable_tuned(MissingValueImputer → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)']，剪枝/去重 ['lgbm_recall_tuned(0.7255)', 'rf_recall_optimized(0.7239)']",
+    "[REPLAN] 完成，用时 10.7s → BUILD",
+    "[BUILD] 生成算子 ChargeRatioFeatureGenerator@2（参考 ChargeRatioFeatureGenerator@1）：构造资费变动特征",
+    "[BUILD] 完成，用时 3.0s → VERIFY",
+    "[VERIFY] lgbm_with_feature_engineering：未通过，recall=0.5939；M_THRESHOLD recall = 0.5939 低于阈值 0.8",
+    "[VERIFY] logreg_interpretable_tuned：通过，recall=0.8475",
+    "[VERIFY] 完成，用时 12.4s → ROUTE",
+    "[ROUTE] 完成，用时 0.0s → CURATE",
+    "[CURATE] 写入 KG：3 条 ValidationRun；注册新算子 []；新增经验 0 条",
+    "[CURATE] 完成，用时 0.0s → DONE"
+  ]
+}

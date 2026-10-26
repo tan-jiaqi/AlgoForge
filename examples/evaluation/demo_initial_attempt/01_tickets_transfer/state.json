@@ -1,0 +1,673 @@
+{
+  "run_id": "01_tickets_transfer",
+  "request": "把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低于 0.8",
+  "data_path": "data/tickets.csv",
+  "target": null,
+  "status": "succeeded",
+  "spec": {
+    "description": "把客服工单自动分到网络故障、账单争议、套餐变更、销户投诉四类，宏平均 F1 不低于 0.8",
+    "task_type": "multiclass_classification",
+    "modality": "text",
+    "target_column": "label",
+    "text_column": "text",
+    "metrics": [
+      {
+        "name": "f1_macro",
+        "threshold": 0.8,
+        "primary": true
+      }
+    ],
+    "constraints": []
+  },
+  "profile_tags": [
+    "id_columns",
+    "text_input",
+    "imbalanced"
+  ],
+  "candidates": [
+    {
+      "name": "tfidf_logistic_regression",
+      "steps": [
+        {
+          "kind": "vectorizer",
+          "action": "reuse",
+          "operator_ref": "TfidfTextVectorizer@1",
+          "synth_spec": null,
+          "params": {
+            "column": "text",
+            "analyzer": "char_wb",
+            "ngram_range": [
+              1,
+              2
+            ],
+            "max_features": 20000
+          },
+          "rationale": "使用 TF-IDF 处理文本，字符级 n-gram 对中文客服工单表现稳健。",
+          "evidence_ids": [
+            "Operator:TfidfTextVectorizer@1"
+          ]
+        },
+        {
+          "kind": "model",
+          "action": "reuse",
+          "operator_ref": "LogisticRegressionModel@1",
+          "synth_spec": null,
+          "params": {
+            "C": 1.0,
+            "class_weight": "balanced",
+            "max_iter": 1000
+          },
+          "rationale": "逻辑回归在文本特征上是强基线，class_weight='balanced' 有效应对不平衡数据。",
+          "evidence_ids": [
+            "Operator:LogisticRegressionModel@1",
+            "Lesson:9e9e77d6"
+          ]
+        }
+      ],
+      "rationale": "通过 TF-IDF 特征提取与逻辑回归模型的组合，针对类别不平衡问题设置 balanced 权重以保障宏平均 F1 指标。"
+    },
+    {
+      "name": "tfidf_lightgbm_classifier",
+      "steps": [
+        {
+          "kind": "vectorizer",
+          "action": "reuse",
+          "operator_ref": "TfidfTextVectorizer@1",
+          "synth_spec": null,
+          "params": {
+            "column": "text",
+            "analyzer": "word",
+            "ngram_range": [
+              1,
+              1
+            ],
+            "max_features": 10000
+          },
+          "rationale": "改用词级 TF-IDF 向量化，减少特征稀疏度。",
+          "evidence_ids": [
+            "Operator:TfidfTextVectorizer@1"
+          ]
+        },
+        {
+          "kind": "model",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "LightGBMClassifier",
+            "kind": "model",
+            "purpose": "利用梯度提升树处理文本向量后的分类任务，支持不平衡样本权重调整。",
+            "inputs": "TF-IDF 后的稀疏矩阵",
+            "outputs": "工单分类结果",
+            "reference": null
+          },
+          "params": {
+            "num_leaves": 31,
+            "learning_rate": 0.05,
+            "class_weight": "balanced",
+            "n_estimators": 300
+          },
+          "rationale": "引入 LightGBM 模型，通过集成学习方法提升分类的非线性捕捉能力，解决样本不平衡带来的 F1 指标挑战。",
+          "evidence_ids": [
+            "Lesson:f2c1398b"
+          ]
+        }
+      ],
+      "rationale": "尝试使用 LightGBM 模型替换逻辑回归，通过增强模型拟合复杂特征的能力来满足 F1 指标要求。"
+    }
+  ],
+  "generated": {
+    "LightGBMClassifier": {
+      "spec": {
+        "name": "LightGBMClassifier",
+        "kind": "model",
+        "purpose": "利用梯度提升树处理文本向量后的分类任务，支持不平衡样本权重调整。",
+        "inputs": "TF-IDF 后的稀疏矩阵",
+        "outputs": "工单分类结果",
+        "reference": null
+      },
+      "source": "import numpy as np\nimport pandas as pd\nimport lightgbm as lgb\nfrom sklearn.base import ClassifierMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass LightGBMClassifier(ClassifierMixin, Operator):\n    meta = OperatorMeta(\n        name=\"LightGBMClassifier\",\n        kind=OperatorKind.MODEL,\n        version=1,\n        origin=\"synthesized\",\n        description=\"利用梯度提升树进行多分类，支持类别权重平衡优化，适用于文本向量化后的特征输入。\",\n        conditions=[\"输入为数值特征矩阵或稀疏矩阵\", \"支持类别不平衡\"],\n        dependencies=[\"lightgbm\", \"numpy\", \"pandas\", \"scikit-learn\"],\n        params={\n            \"num_leaves\": 31,\n            \"learning_rate\": 0.05,\n            \"n_estimators\": 500,\n            \"class_weight\": \"balanced\"\n        }\n    )\n\n    def __init__(self, num_leaves=31, learning_rate=0.05, n_estimators=500, class_weight=\"balanced\"):\n        self.num_leaves = num_leaves\n        self.learning_rate = learning_rate\n        self.n_estimators = n_estimators\n        self.class_weight = class_weight\n\n    def _ensure_numeric(self, X):\n        \"\"\"处理输入数据，兼容 DataFrame 和稀疏矩阵，并处理缺失值/无穷值\"\"\"\n        if isinstance(X, pd.DataFrame):\n            # 移除所有非数值列，将非数值转为 numeric，无效值转为 NaN\n            X = X.apply(pd.to_numeric, errors='coerce')\n            # 填补缺失值和无穷值\n            X = X.fillna(0).replace([np.inf, -np.inf], 0)\n        return X\n\n    def fit(self, X, y):\n        # 训练阶段处理输入\n        X_train = self._ensure_numeric(X)\n        \n        # 实例化 LightGBM 模型\n        self.model_ = lgb.LGBMClassifier(\n            num_leaves=self.num_leaves,\n            learning_rate=self.learning_rate,\n            n_estimators=self.n_estimators,\n            class_weight=self.class_weight,\n            importance_type='gain',\n            verbose=-1\n        )\n        \n        self.model_.fit(X_train, y)\n        self.classes_ = self.model_.classes_\n        return self\n\n    def predict(self, X):\n        # 预测时复制以保持接口规范\n        X_test = self._ensure_numeric(X.copy())\n        \n        # LightGBM 原生支持稀疏矩阵和缺失值，直接预测\n        return self.model_.predict(X_test)\n\n    def predict_proba(self, X):\n        # 预测时复制以保持接口规范\n        X_test = self._ensure_numeric(X.copy())\n        \n        # 返回 shape (n, n_classes) 的 numpy 数组\n        return self.model_.predict_proba(X_test)\n",
+      "version": 1,
+      "revision": 1
+    }
+  },
+  "reports": [
+    {
+      "plan_name": "tfidf_logistic_regression",
+      "passed": true,
+      "diagnostics": [],
+      "metrics": {
+        "f1_macro": 0.8244,
+        "accuracy": 0.8377,
+        "recall_macro": 0.8315,
+        "precision_macro": 0.8203
+      },
+      "metric_std": {
+        "f1_macro": 0.0038,
+        "accuracy": 0.004,
+        "recall_macro": 0.0031,
+        "precision_macro": 0.004
+      },
+      "resources": {
+        "fit_seconds": 0.118,
+        "predict_ms_per_1k": 60.12,
+        "peak_rss_mb": 241.4
+      },
+      "notes": []
+    },
+    {
+      "plan_name": "tfidf_lightgbm_classifier",
+      "passed": true,
+      "diagnostics": [],
+      "metrics": {
+        "f1_macro": 0.8184,
+        "accuracy": 0.8338,
+        "recall_macro": 0.8179,
+        "precision_macro": 0.8206
+      },
+      "metric_std": {
+        "f1_macro": 0.005,
+        "accuracy": 0.0048,
+        "recall_macro": 0.0042,
+        "precision_macro": 0.0059
+      },
+      "resources": {
+        "fit_seconds": 0.546,
+        "predict_ms_per_1k": 83.49,
+        "peak_rss_mb": 265.3
+      },
+      "notes": []
+    }
+  ],
+  "best_plan": "tfidf_logistic_regression",
+  "repair_rounds": 1,
+  "replans": 0,
+  "history": [
+    {
+      "plan_name": "tfidf_lightgbm_classifier",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "E_RUNTIME",
+          "stage": "sandbox",
+          "message": "AttributeError: 'csr_matrix' object has no attribute 'select_dtypes' (at predict_proba:61)",
+          "operator": "LightGBMClassifier@1",
+          "hint": ""
+        }
+      ],
+      "metrics": {},
+      "metric_std": {},
+      "resources": {
+        "peak_rss_mb": 243.6
+      },
+      "notes": []
+    }
+  ],
+  "repairs": [
+    {
+      "operator": "LightGBMClassifier@1",
+      "revision": 1,
+      "diagnostic": {
+        "code": "E_RUNTIME",
+        "stage": "sandbox",
+        "message": "AttributeError: 'csr_matrix' object has no attribute 'select_dtypes' (at predict_proba:61)",
+        "operator": "LightGBMClassifier@1",
+        "hint": ""
+      },
+      "lessons": [
+        "Lesson:69d51358",
+        "Lesson:0d5e3eb1"
+      ],
+      "fixed": true,
+      "before": "import numpy as np\nimport pandas as pd\nimport lightgbm as lgb\nfrom sklearn.base import ClassifierMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass LightGBMClassifier(ClassifierMixin, Operator):\n    meta = OperatorMeta(\n        name=\"LightGBMClassifier\",\n        kind=OperatorKind.MODEL,\n        version=1,\n        origin=\"synthesized\",\n        description=\"利用梯度提升树进行多分类，支持类别权重平衡优化，适用于文本向量化后的特征输入。\",\n        conditions=[\"输入为数值特征矩阵\", \"支持类别不平衡\"],\n        dependencies=[\"lightgbm\", \"numpy\", \"pandas\", \"scikit-learn\"],\n        params={\n            \"num_leaves\": 31,\n            \"learning_rate\": 0.05,\n            \"n_estimators\": 500,\n            \"class_weight\": \"balanced\"\n        }\n    )\n\n    def __init__(self, num_leaves=31, learning_rate=0.05, n_estimators=500, class_weight=\"balanced\"):\n        self.num_leaves = num_leaves\n        self.learning_rate = learning_rate\n        self.n_estimators = n_estimators\n        self.class_weight = class_weight\n\n    def fit(self, X, y):\n        # 确保输入为 DataFrame 且处理潜在的类型问题\n        if isinstance(X, pd.DataFrame):\n            X = X.select_dtypes(include=[np.number])\n        \n        # 实例化 LightGBM 模型\n        self.model_ = lgb.LGBMClassifier(\n            num_leaves=self.num_leaves,\n            learning_rate=self.learning_rate,\n            n_estimators=self.n_estimators,\n            class_weight=self.class_weight,\n            importance_type='gain',\n            verbose=-1\n        )\n        \n        self.model_.fit(X, y)\n        self.classes_ = self.model_.classes_\n        return self\n\n    def predict(self, X):\n        X = X.copy()\n        # 处理可能的缺失值：LightGBM 原生支持缺失值，无需手动填充\n        # 对输入进行类型校验，确保不包含不支持的非数值类型\n        X = X.select_dtypes(include=[np.number])\n        \n        # 预测时返回 shape (n,)\n        return self.model_.predict(X)\n\n    def predict_proba(self, X):\n        X = X.copy()\n        X = X.select_dtypes(include=[np.number])\n        \n        # 返回 shape (n, n_classes) 的 numpy 数组\n        return self.model_.predict_proba(X)\n",
+      "after": "import numpy as np\nimport pandas as pd\nimport lightgbm as lgb\nfrom sklearn.base import ClassifierMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass LightGBMClassifier(ClassifierMixin, Operator):\n    meta = OperatorMeta(\n        name=\"LightGBMClassifier\",\n        kind=OperatorKind.MODEL,\n        version=1,\n        origin=\"synthesized\",\n        description=\"利用梯度提升树进行多分类，支持类别权重平衡优化，适用于文本向量化后的特征输入。\",\n        conditions=[\"输入为数值特征矩阵或稀疏矩阵\", \"支持类别不平衡\"],\n        dependencies=[\"lightgbm\", \"numpy\", \"pandas\", \"scikit-learn\"],\n        params={\n            \"num_leaves\": 31,\n            \"learning_rate\": 0.05,\n            \"n_estimators\": 500,\n            \"class_weight\": \"balanced\"\n        }\n    )\n\n    def __init__(self, num_leaves=31, learning_rate=0.05, n_estimators=500, class_weight=\"balanced\"):\n        self.num_leaves = num_leaves\n        self.learning_rate = learning_rate\n        self.n_estimators = n_estimators\n        self.class_weight = class_weight\n\n    def _ensure_numeric(self, X):\n        \"\"\"处理输入数据，兼容 DataFrame 和稀疏矩阵，并处理缺失值/无穷值\"\"\"\n        if isinstance(X, pd.DataFrame):\n            # 移除所有非数值列，将非数值转为 numeric，无效值转为 NaN\n            X = X.apply(pd.to_numeric, errors='coerce')\n            # 填补缺失值和无穷值\n            X = X.fillna(0).replace([np.inf, -np.inf], 0)\n        return X\n\n    def fit(self, X, y):\n        # 训练阶段处理输入\n        X_train = self._ensure_numeric(X)\n        \n        # 实例化 LightGBM 模型\n        self.model_ = lgb.LGBMClassifier(\n            num_leaves=self.num_leaves,\n            learning_rate=self.learning_rate,\n            n_estimators=self.n_estimators,\n            class_weight=self.class_weight,\n            importance_type='gain',\n            verbose=-1\n        )\n        \n        self.model_.fit(X_train, y)\n        self.classes_ = self.model_.classes_\n        return self\n\n    def predict(self, X):\n        # 预测时复制以保持接口规范\n        X_test = self._ensure_numeric(X.copy())\n        \n        # LightGBM 原生支持稀疏矩阵和缺失值，直接预测\n        return self.model_.predict(X_test)\n\n    def predict_proba(self, X):\n        # 预测时复制以保持接口规范\n        X_test = self._ensure_numeric(X.copy())\n        \n        # 返回 shape (n, n_classes) 的 numpy 数组\n        return self.model_.predict_proba(X_test)\n"
+    }
+  ],
+  "search": [],
+  "registered": [],
+  "lessons_learned": [
+    "Lesson:fbdb8487"
+  ],
+  "lessons_used": [
+    "Lesson:9e9e77d6",
+    "Lesson:f2c1398b",
+    "Lesson:69d51358",
+    "Lesson:88299a38",
+    "Lesson:57718714",
+    "Lesson:631c1a72",
+    "Lesson:0d5e3eb1"
+  ],
+  "kg_writes": [
+    "ValidationRun:01_tickets_transfer-tfidf_logistic_regression",
+    "ValidationRun:01_tickets_transfer-tfidf_lightgbm_classifier"
+  ],
+  "artifacts": {
+    "pipeline": "runs/demo-record-v2/runs/01_tickets_transfer/pipeline.py",
+    "state": "runs/demo-record-v2/runs/01_tickets_transfer/state.json",
+    "report_md": "runs/demo-record-v2/runs/01_tickets_transfer/report.md",
+    "report_html": "runs/demo-record-v2/runs/01_tickets_transfer/report.html"
+  },
+  "llm_model": "gemini-3.5-flash",
+  "retrieval": {
+    "scenario": null,
+    "scenario_metrics": [],
+    "operator_options": {
+      "vectorizer": [
+        {
+          "ref": "TfidfTextVectorizer@1",
+          "executable": true,
+          "origin": "builtin",
+          "description": "文本列 TF-IDF 向量化，默认字符级 n-gram，对中文稳健。",
+          "conditions": [
+            "text_input"
+          ],
+          "params": [
+            "column",
+            "analyzer",
+            "ngram_range",
+            "max_features"
+          ],
+          "defaults": {
+            "column": "text",
+            "analyzer": "char_wb",
+            "ngram_range": [
+              1,
+              2
+            ],
+            "max_features": 20000
+          },
+          "score": 0.5,
+          "breakdown": {
+            "text": 1.0,
+            "condition": 0.333,
+            "history": 0.0
+          },
+          "evidence": [
+            "匹配条件：text_input"
+          ],
+          "history_records": [],
+          "evidence_ids": [
+            "Operator:TfidfTextVectorizer@1"
+          ]
+        }
+      ],
+      "model": [
+        {
+          "ref": "LogisticRegressionModel@1",
+          "executable": true,
+          "origin": "builtin",
+          "description": "L2 逻辑回归：系数可解释，也是稀疏文本特征上的强基线。",
+          "conditions": [
+            "interpretable",
+            "scaled_features",
+            "sparse_features"
+          ],
+          "params": [
+            "C",
+            "class_weight",
+            "max_iter",
+            "random_state"
+          ],
+          "defaults": {
+            "C": 1.0,
+            "class_weight": "balanced",
+            "max_iter": 1000,
+            "random_state": 42
+          },
+          "score": 0.2295,
+          "breakdown": {
+            "text": 0.0,
+            "condition": 0.0,
+            "history": 0.765
+          },
+          "evidence": [
+            "历史验证 1 次，平均 f1_macro 0.765"
+          ],
+          "history_records": [],
+          "evidence_ids": [
+            "Operator:LogisticRegressionModel@1"
+          ]
+        }
+      ]
+    },
+    "lessons": [
+      {
+        "id": "Lesson:9e9e77d6",
+        "title": "样本不平衡导致默认模型召回率偏低",
+        "trigger": "流失场景存在正负样本不平衡，模型默认阈值或未配置样本权重时召回率达不到业务要求",
+        "fix": "启用平衡类权重（如 class_weight='balanced' 或 BalancedLightGBMClassifier）以提升召回率",
+        "error_code": "M_THRESHOLD"
+      },
+      {
+        "id": "Lesson:f2c1398b",
+        "title": "LightGBM 调参及不平衡处理",
+        "trigger": "数据量在 5k 到 10w 之间，或者样本不平衡时",
+        "fix": "设置 num_leaves 15~63, learning_rate 0.03~0.1, n_estimators 200~600；不平衡时设置 class_weight='balanced'；树模型无需标准化。",
+        "error_code": null
+      },
+      {
+        "id": "Lesson:69d51358",
+        "title": "数值列含空白字符导致类型转换失败",
+        "trigger": "新入网客户累计消费为空白字符串，读取为 object 类型，转 float 时抛出 ValueError: could not convert string to float: ' '",
+        "fix": "先 str.strip()，再 pd.to_numeric(errors='coerce')，缺失值填补为 0",
+        "error_code": "E_RUNTIME"
+      },
+      {
+        "id": "Lesson:88299a38",
+        "title": "未剔除客户 ID 导致 One-Hot 编码后维度暴涨与内存溢出",
+        "trigger": "customer_id 等标识列未剔除，直接进行 One-Hot 编码导致特征维度暴涨并引发内存溢出",
+        "fix": "建模前剔除 ID 等标识列，并在编码器中设置最大类别数",
+        "error_code": "E_TIMEOUT"
+      },
+      {
+        "id": "Lesson:57718714",
+        "title": "随机森林防过拟合与召回优化",
+        "trigger": "使用随机森林模型，面临过拟合风险，或业务要求召回优先时",
+        "fix": "设置 n_estimators 300 左右，限制 max_depth 在 8~16 防止过拟合；召回优先时需配合调整分类阈值。",
+        "error_code": null
+      }
+    ],
+    "evidence_catalog": {
+      "Operator:TfidfTextVectorizer@1": {
+        "type": "operator",
+        "operator_refs": [
+          "TfidfTextVectorizer@1"
+        ]
+      },
+      "Operator:LogisticRegressionModel@1": {
+        "type": "operator",
+        "operator_refs": [
+          "LogisticRegressionModel@1"
+        ]
+      },
+      "Lesson:9e9e77d6": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:BalancedLightGBMClassifier@1",
+          "Operator:LogisticRegressionModel@1",
+          "Condition:imbalanced",
+          "Condition:recall_first",
+          "Operator:LightGBMModel@1"
+        ],
+        "matching_conditions": [
+          "Condition:imbalanced"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:f2c1398b": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:LightGBMModel@1",
+          "Condition:large_tabular",
+          "Condition:imbalanced"
+        ],
+        "matching_conditions": [
+          "Condition:imbalanced"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:69d51358": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:TotalChargesCleaner@1",
+          "Condition:string_typed_numeric"
+        ],
+        "matching_conditions": [],
+        "scenario_match": false
+      },
+      "Lesson:88299a38": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:IdColumnDropper@1",
+          "Operator:OneHotCategoricalEncoder@1",
+          "Condition:id_columns"
+        ],
+        "matching_conditions": [
+          "Condition:id_columns"
+        ],
+        "scenario_match": false
+      },
+      "Lesson:57718714": {
+        "type": "lesson",
+        "applies_to": [
+          "Operator:RandomForestModel@1",
+          "Condition:recall_first"
+        ],
+        "matching_conditions": [],
+        "scenario_match": false
+      }
+    },
+    "lesson_ids": [
+      "Lesson:9e9e77d6",
+      "Lesson:f2c1398b",
+      "Lesson:69d51358",
+      "Lesson:88299a38",
+      "Lesson:57718714"
+    ]
+  },
+  "evidence_checks": [
+    {
+      "plan": "tfidf_logistic_regression",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:TfidfTextVectorizer@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "tfidf_logistic_regression",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:LogisticRegressionModel@1",
+        "Lesson:9e9e77d6"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "tfidf_lightgbm_classifier",
+      "step": 1,
+      "evidence_ids": [
+        "Operator:TfidfTextVectorizer@1"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    },
+    {
+      "plan": "tfidf_lightgbm_classifier",
+      "step": 2,
+      "evidence_ids": [
+        "Lesson:f2c1398b"
+      ],
+      "scope_valid": true,
+      "semantic_verified": false
+    }
+  ],
+  "llm_calls": [
+    {
+      "tag": "plan_spec",
+      "request_hash": "00e68fcad6e9a2d1",
+      "model": "gemini-3.5-flash",
+      "source": "replay",
+      "seconds": 0.00018224120140075684,
+      "recorded_seconds": null,
+      "usage": null
+    },
+    {
+      "tag": "plan",
+      "request_hash": "6fc3b554906f78ac",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 4.1892461106181145,
+      "usage": {
+        "completion_tokens": 869,
+        "prompt_tokens": 4000,
+        "total_tokens": 4869,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 869,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 4000
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "synthesize",
+      "request_hash": "d3b6ebcf4bf82981",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 33.80262344330549,
+      "usage": {
+        "completion_tokens": 695,
+        "prompt_tokens": 1428,
+        "total_tokens": 2123,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 695,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 1428
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "repair",
+      "request_hash": "2fe5f52f685c21a9",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 14.37493023276329,
+      "usage": {
+        "completion_tokens": 794,
+        "prompt_tokens": 1885,
+        "total_tokens": 2679,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 794,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 1885
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "lesson",
+      "request_hash": "92482b5b70296e45",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 2.767605908215046,
+      "usage": {
+        "completion_tokens": 213,
+        "prompt_tokens": 1773,
+        "total_tokens": 1986,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 213,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 1773
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    }
+  ],
+  "knowledge_mode": "full",
+  "verify_config": {
+    "cv_folds": 5,
+    "seeds": [
+      42,
+      7,
+      2024
+    ],
+    "smoke_rows": 300,
+    "timeout_seconds": 180.0,
+    "memory_mb": 8192,
+    "max_metric_std": 0.03,
+    "leakage_ceiling": 0.999,
+    "report_metrics": [
+      "accuracy",
+      "f1_macro",
+      "recall_macro",
+      "precision_macro"
+    ],
+    "n_threads": 4
+  },
+  "timings": {
+    "PLAN": 4.24,
+    "BUILD": 33.81,
+    "VERIFY": 16.26,
+    "ROUTE": 0.0,
+    "REPAIR": 14.38,
+    "CURATE": 2.79
+  },
+  "log": [
+    "[PLAN] 场景 新场景；画像标签 ['id_columns', 'text_input', 'imbalanced']",
+    "[PLAN] TaskSpec：multiclass_classification，目标 label，主指标 f1_macro >= 0.8",
+    "[PLAN] 候选方案：['tfidf_logistic_regression(TfidfTextVectorizer → LogisticRegressionModel)', 'tfidf_lightgbm_classifier(TfidfTextVectorizer → *LightGBMClassifier)']",
+    "[PLAN] 完成，用时 4.2s → BUILD",
+    "[BUILD] 生成算子 LightGBMClassifier@1：利用梯度提升树处理文本向量后的分类任务，支持不平衡样本权重调整。",
+    "[BUILD] 完成，用时 33.8s → VERIFY",
+    "[VERIFY] tfidf_logistic_regression：通过，f1_macro=0.8244",
+    "[VERIFY] tfidf_lightgbm_classifier：未通过，f1_macro=nan；E_RUNTIME AttributeError: 'csr_matrix' object has no attribute 'select_dtypes' (at predict_proba:61)",
+    "[VERIFY] 完成，用时 5.8s → ROUTE",
+    "[ROUTE] 完成，用时 0.0s → REPAIR",
+    "[REPAIR] 修复 LightGBMClassifier@1 第 1 轮：E_RUNTIME AttributeError: 'csr_matrix' object has no attribute 'select_dtypes' (at predict，参考经验：['数值列含空白字符导致类型转换失败', '预测阶段出现未见类别导致编码报错']",
+    "[REPAIR] 完成，用时 14.4s → VERIFY",
+    "[VERIFY] tfidf_lightgbm_classifier：通过，f1_macro=0.8184",
+    "[VERIFY] 完成，用时 10.5s → ROUTE",
+    "[ROUTE] 完成，用时 0.0s → CURATE",
+    "[CURATE] 写入 KG：2 条 ValidationRun；注册新算子 []；新增经验 1 条",
+    "[CURATE] 完成，用时 2.8s → DONE"
+  ]
+}

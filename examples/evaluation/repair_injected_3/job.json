@@ -1,0 +1,10 @@
+{
+  "model": "gemini-3.5-flash",
+  "temperature": 0.2,
+  "name": "repair_injected_3",
+  "group": "repair_injected",
+  "trial": 3,
+  "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；正确处理累计费用的空白字符串，并增加在网时长分桶特征。",
+  "seed": "probe_2",
+  "nonce": "injected-3"
+}

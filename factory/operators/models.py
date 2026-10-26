@@ -14,6 +14,12 @@ from factory.schemas import Modality, OperatorKind
 BOTH = [Modality.TABULAR, Modality.TEXT]
 
 
+def _align_class_keys(weight: dict, y) -> dict:
+    """方案参数经过 JSON 序列化，{0: 1, 1: 3} 会变成 {"0": 1, "1": 3}；按字符串形式对回 y 中的真实类别。"""
+    by_str = {str(c): c for c in np.unique(y)}
+    return {by_str.get(str(k), k): v for k, v in weight.items()}
+
+
 class _WrappedClassifier(ClassifierMixin, Operator):
     """公共封装：子类实现 ``_build``，返回一个 sklearn 分类器。"""
 
@@ -21,7 +27,11 @@ class _WrappedClassifier(ClassifierMixin, Operator):
         raise NotImplementedError
 
     def fit(self, X, y):
-        self.model_ = self._build().fit(X, y)
+        model = self._build()
+        weight = getattr(model, "class_weight", None)
+        if isinstance(weight, dict):
+            model.set_params(class_weight=_align_class_keys(weight, y))
+        self.model_ = model.fit(X, y)
         self.classes_ = self.model_.classes_
         return self
 

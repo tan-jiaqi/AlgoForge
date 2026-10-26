@@ -90,7 +90,7 @@ TaskSpec(
 - `top_k`：每类算子返回多少个候选，默认 3。
 - `executable_only`：是否只返回可执行算子；默认随是否允许生成新代码而调整。
 
-代码把需求描述、画像标签和业务约束组成查询，按算子类型调用知识图谱的 `search_operators()`，再通过 `search_lessons()` 查找相关经验。**这一阶段不调用 LLM。**
+代码把需求描述、画像标签和业务约束组成查询，按算子类型调用知识图谱的 `search_operators()`，再通过 `search_lessons()` 按数据模态过滤、按文本与适用条件排序查找相关经验。**这一阶段不调用 LLM。**
 
 **输出：`PlanningContext`，即供下一步规划使用的上下文。** 假设当前使用初始能力库，清洗算子只有历史实现，以下只展示部分字段：
 
@@ -169,12 +169,17 @@ Step(
     operator_ref="LogisticRegressionModel@1",
     params={"C": 1.0, "class_weight": "balanced"},
     rationale="根据可解释性要求选择线性分类模型，并通过类别权重处理不平衡。",
+    evidence_ids=["Operator:LogisticRegressionModel@1"],
 )
 ```
 
 对于 Synthesize 步骤，Planner 提供的是 `SynthSpec`：类名、用途、输入输出和参考实现，源码由 Synthesizer 随后生成。**Planner 交付的是候选规划，是否可执行、指标是否达标，还要由后续验证确定。**
 
 内部 LLM 响应使用 `PlanSet` 包装，形如 `{"plans": [...]}`；`propose()` 校验并绑定参数后，返回其中的方案列表。每个方案当前最多包含 2 个 Synthesize 步骤。更多校验规则见[技术附录](#8-技术附录)。
+
+`propose()` 还检查本轮候选边界：Reuse 必须来自同类型可执行候选，历史 `reference` 必须来自同类型检索结果；对应步骤必须引用 `Operator:<ref>`。其他 `evidence_ids` 必须在 `evidence_catalog` 中可见，算子和历史验证引用必须关联当前算子；Lesson 检查其结构化适用对象。不存在的引用、跨算子引用和越界候选均反馈重试。该检查不验证自然语言经验是否落实到源码。
+
+`RunState.evidence_checks` 保存已接受步骤的范围校验，`lessons_used` 兼容旧字段，仅表示放入上下文的经验；`llm_calls` 保存调用来源、请求哈希、耗时和可获得的 token 用量。完整真实调用证据、三次重复和知识消融见[独立评测](../examples/evaluation/README.md)。
 
 ### 2.5 代码位置
 
@@ -333,7 +338,7 @@ Curator 负责记录运行成果。它的大部分操作由代码完成，只有
 | 新算子实现 | 仅最优且通过验证的方案所使用的新算子；注册前再次静态复查 | 后续任务直接 Reuse |
 | 验证记录 | 当前候选的最终验证结果，失败结果也记录 | 提供可追溯的历史指标和搜索依据 |
 | 修复经验 | 存在 `fixed=true` 的修复记录且配置了 LLM | 后续检索同类问题的处理方法 |
-| 经验命中次数 | 本次放入规划或修复上下文的经验 | 记录经验被使用的情况 |
+| 经验命中次数 | 本次放入规划或修复上下文的经验 | 记录提供次数，不等于模型采纳或效果证明 |
 
 没有匹配场景时，会根据任务规格新建场景与指标关系。并非所有生成代码都会注册：未通过方案中的新算子不会仅因“生成过”就成为可复用能力。
 
@@ -429,7 +434,7 @@ Curator 负责记录运行成果。它的大部分操作由代码完成，只有
 | `PlanningContext` | `scenario`、`scenario_metrics`、`options`、`lessons`；`to_prompt()` 将 `options` 映射为 `operator_options` | [planner.py](../factory/agents/planner.py) |
 | 检索候选 | `ref`、`executable`、`origin`、`description`、`conditions`、`params`、`defaults`、`score`、`breakdown`、`evidence` | [planner.py](../factory/agents/planner.py) 的 `retrieve()` |
 | `PipelinePlan` | `name`、`rationale`、`steps` | [schemas.py](../factory/schemas.py) |
-| `Step` | `kind`、`action`、`operator_ref`、`synth_spec`、`params`、`rationale` | 同上 |
+| `Step` | `kind`、`action`、`operator_ref`、`synth_spec`、`params`、`rationale`、`evidence_ids` | 同上 |
 | `SynthSpec` | `name`、`kind`、`purpose`、`inputs`、`outputs`、`reference` | 同上 |
 | `GeneratedOperator` | `spec`、`source`、`version`、`revision`；`key` 为 `Name@version` | 同上 |
 | `Diagnostic` | `code`、`stage`、`message`、`operator`、`hint` | 同上 |

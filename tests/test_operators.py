@@ -77,3 +77,21 @@ def test_registry_versions_and_errors():
         reg.get("Missing")
     with pytest.raises(TypeError):
         reg.register(type("NoMeta", (Operator,), {}))
+
+
+def test_class_weight_keys_survive_json_roundtrip():
+    """LLM 给出的 class_weight 经 JSON 后键变成字符串，模型仍应按真实类别使用。"""
+    import json
+
+    import numpy as np
+
+    from factory.operators import registry
+
+    X = np.random.RandomState(0).normal(size=(60, 3))
+    y = np.array([0] * 45 + [1] * 15)
+    params = json.loads(json.dumps({"class_weight": {0: 1, 1: 3}}))
+    assert list(params["class_weight"]) == ["0", "1"]
+    for ref in ("LogisticRegressionModel@1", "RandomForestModel@1", "LightGBMModel@1"):
+        model = registry.create(ref, **params).fit(X, y)
+        assert model.model_.class_weight == {0: 1, 1: 3}
+        assert model.get_params()["class_weight"] == {"0": 1, "1": 3}, "不改动用户给的参数"

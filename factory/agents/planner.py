@@ -24,7 +24,7 @@ from factory.llm import LLM
 from factory.operators import registry
 from factory.operators.base import OperatorRegistry
 from factory.profile import DataProfile
-from factory.schemas import Modality, OperatorKind, PipelinePlan, TaskSpec
+from factory.schemas import Modality, OperatorKind, PipelinePlan, Step, TaskSpec
 
 TABULAR_ORDER = [OperatorKind.IMPUTER, OperatorKind.FEATURE, OperatorKind.ENCODER, OperatorKind.SCALER, OperatorKind.MODEL]
 TEXT_ORDER = [OperatorKind.VECTORIZER, OperatorKind.MODEL]
@@ -44,13 +44,15 @@ class PlanningContext:
     scenario_metrics: list[dict]
     options: dict[str, list[dict]] = field(default_factory=dict)
     lessons: list[dict] = field(default_factory=list)
+    evidence: dict[str, dict] = field(default_factory=dict)
 
     def to_prompt(self) -> dict:
         return {
             "scenario": self.scenario,
             "scenario_metrics": self.scenario_metrics,
             "operator_options": self.options,
-            "lessons": [{k: les[k] for k in ("title", "trigger", "fix", "error_code")} for les in self.lessons],
+            "lessons": [{k: les[k] for k in ("id", "title", "trigger", "fix", "error_code")} for les in self.lessons],
+            "evidence_catalog": self.evidence,
         }
 
 
@@ -87,11 +89,16 @@ def _wrap(payload: dict) -> str:
 class Planner:
     MAX_SYNTH_STEPS = 2
 
-    def __init__(self, llm: LLM, kg: CapabilityKG, reg: OperatorRegistry = registry, *, allow_synthesis: bool = True):
+    def __init__(self, llm: LLM, kg: CapabilityKG, reg: OperatorRegistry = registry, *, allow_synthesis: bool = True,
+                 knowledge_mode: str = "full"):
         self.llm = llm
         self.kg = kg
         self.reg = reg
         self.allow_synthesis = allow_synthesis
+        if knowledge_mode not in {"full", "no_lessons", "catalog"}:
+            raise ValueError(f"unknown knowledge mode: {knowledge_mode}")
+        self.knowledge_mode = knowledge_mode
+        self.rejections: list[list[str]] = []  # propose 中被校验拒绝、要求 LLM 重写的方案集及原因
 
     # ------------------------------------------------------------------
     # 1. 需求理解
@@ -103,7 +110,7 @@ class Planner:
             "request": request,
             "user_target": target,
             "data_profile": profile.summary(),
-            "scenario_metrics": scenario_metrics(self.kg, scenario),
+            "scenario_metrics": scenario_metrics(self.kg, scenario) if self.knowledge_mode != "catalog" else [],
         }
         system = (
             "你是算法能力工厂的 Planner。把用户的自然语言需求解析为 TaskSpec。\n"
@@ -156,7 +163,19 @@ class Planner:
         order = TEXT_ORDER if spec.modality == Modality.TEXT else TABULAR_ORDER
         if executable_only is None:
             executable_only = not self.allow_synthesis
-        ctx = PlanningContext(scenario=scenario, scenario_metrics=scenario_metrics(self.kg, scenario))
+        ctx = PlanningContext(scenario=scenario, scenario_metrics=scenario_metrics(self.kg, scenario) if self.knowledge_mode != "catalog" else [])
+        if self.knowledge_mode == "catalog":
+            # 执行目录基线：不访问历史源码、条件排序、经验或历史指标。
+            for meta in sorted(self.reg.list(), key=lambda m: m.key):
+                if spec.modality not in meta.modalities or meta.kind not in order:
+                    continue
+                ctx.options.setdefault(meta.kind.value, []).append({
+                    "ref": meta.key, "executable": True, "description": meta.description,
+                    "params": operator_params(meta.key, self.reg), "defaults": meta.params,
+                    "score": 0.0, "breakdown": {}, "evidence": [],
+                })
+            self._index_evidence(ctx, conditions)
+            return ctx
         for kind in order:
             hits = self.kg.search_operators(
                 query, kind=kind, modality=spec.modality, conditions=conditions, scenario=scenario,
@@ -175,11 +194,33 @@ class Planner:
                         "score": h.score,
                         "breakdown": h.breakdown,
                         "evidence": h.evidence,
+                        "history_records": self.kg.metric_records(node_id("Operator", h.key), scenario, spec.primary_metric.name) if scenario else [],
                     }
                     for h in hits
                 ]
-        ctx.lessons = self.kg.search_lessons(query, top_k=5)
+        ctx.lessons = self.kg.search_lessons(query, modality=spec.modality, conditions=conditions, top_k=5) \
+            if self.knowledge_mode == "full" else []
+        self._index_evidence(ctx, conditions)
         return ctx
+
+    def _index_evidence(self, ctx: PlanningContext, conditions: list[str]) -> None:
+        for options in ctx.options.values():
+            for option in options:
+                oid = node_id("Operator", option["ref"])
+                ids = [oid]
+                ctx.evidence[oid] = {"type": "operator", "operator_refs": [option["ref"]]}
+                for record in option.get("history_records", []):
+                    rid = record["id"]
+                    ev = ctx.evidence.setdefault(rid, {"type": "validation", "operator_refs": [], **record})
+                    if option["ref"] not in ev["operator_refs"]:
+                        ev["operator_refs"].append(option["ref"])
+                    ids.append(rid)
+                option["evidence_ids"] = ids
+        for lesson in ctx.lessons:
+            targets = self.kg.neighbors(lesson["id"], "APPLIES_TO")
+            ctx.evidence[lesson["id"]] = {"type": "lesson", "applies_to": targets,
+                "matching_conditions": [t for t in targets if t.startswith("Condition:") and t.split(":", 1)[1] in conditions],
+                "scenario_match": bool(ctx.scenario and node_id("Scenario", ctx.scenario) in targets)}
 
     # ------------------------------------------------------------------
     # 3. 方案规划
@@ -229,12 +270,18 @@ class Planner:
             "- 结合 lessons 中的经验，例如不平衡数据使用 class_weight=balanced；\n"
             "- feedback 非空时，表示之前的方案未通过验证，新方案必须针对这些问题调整（换算子或调参）；\n"
             "- plan 的 name 用简短的 snake_case 英文，彼此不同。"
+            "\n- reuse 的 ref 和 synth_spec.reference 必须来自本轮 operator_options；没有适合的历史实现时可生成新能力，reference 留空。"
+            "\n- 每个 reuse 步骤的 evidence_ids 必须包含 Operator:<operator_ref>；有 reference 的生成步骤包含 Operator:<reference>。"
+            "其他知识引用使用 evidence_catalog 中适用于该步骤的 ID；引用是采纳声明，不是效果证明。"
         )
         if parents:
             system += (
                 "\n- beam_parents 是目前验证结果最好的方案（含指标与诊断）。新方案应以其中某个为基础做局部修改"
                 "（替换一个算子、调整参数、增删一个预处理步骤），针对诊断改进；各方案的修改方向要互不相同，"
                 "不要与父方案完全相同；plan 的 rationale 说明基于哪个父方案、改了什么。"
+                "\n- 诊断为主指标未达阈值（M_THRESHOLD）时，至少一个子方案直接调整决定该指标取舍的模型参数，而不只是改特征："
+                "召回类指标不足时加大少数类（正类）的 class_weight，可用字典形式，键为目标列的类别值；精确率类指标不足时反向调整。"
+                "TaskSpec 有 interpretable 等约束且 operator_options 中有满足约束的模型时，至少一个子方案使用该模型。"
             )
 
         def check(ps: PlanSet) -> None:
@@ -244,7 +291,10 @@ class Planner:
                 errors.append("plan name 重复")
             for p in ps.plans:
                 errors += [f"{p.name}: {e}" for e in self.plan_errors(p, spec)]
+                errors += [f"{p.name}: {e}" for e in self.data_errors(p, spec, profile)]
+                errors += [f"{p.name}: {e}" for e in self.context_errors(p, ctx)]
             if errors:
+                self.rejections.append(errors)
                 raise ValueError("；".join(errors))
 
         plans = self.llm.structured(
@@ -256,6 +306,33 @@ class Planner:
         ).plans
         return [self.bind(p, spec) for p in plans[:n_candidates]]
 
+    def context_errors(self, plan: PipelinePlan, ctx: PlanningContext) -> list[str]:
+        """核对候选范围、证据存在性和结构化适用范围，不推断自然语言理由是否真实。"""
+        return [f"第 {i} 步：{e}" for i, step in enumerate(plan.steps, 1) for e in self.step_errors(step, ctx)]
+
+    def step_errors(self, step: Step, ctx: PlanningContext) -> list[str]:
+        errors = []
+        options = ctx.options.get(step.kind.value, [])
+        ref = step.operator_ref if step.action == "reuse" else step.synth_spec.reference
+        if ref and "@" not in ref and ref in self.reg:
+            ref = self.reg.get(ref).meta.key
+        allowed = {o["ref"] for o in options if step.action != "reuse" or o["executable"]}
+        if ref and ref not in allowed:
+            errors.append(f"{ref} 不在本轮检索候选中")
+        if ref and node_id("Operator", ref) not in step.evidence_ids:
+            errors.append(f"缺少 Operator:{ref} 证据引用")
+        for eid in step.evidence_ids:
+            ev = ctx.evidence.get(eid)
+            if ev is None:
+                errors.append(f"证据 {eid} 不在本轮上下文中")
+            elif ev["type"] in {"operator", "validation"} and ref not in ev["operator_refs"]:
+                errors.append(f"证据 {eid} 不适用于 {ref}")
+            elif ev["type"] == "lesson":
+                targets = ev["applies_to"]
+                if targets and node_id("Operator", ref) not in targets and not ev["matching_conditions"] and not ev["scenario_match"]:
+                    errors.append(f"经验 {eid} 的适用对象不匹配")
+        return errors
+
     def _known_name(self, name: str) -> str:
         """返回知识图谱中与 name 仅大小写不同的算子名（没有则原样返回）。"""
         for _, d in self.kg.nodes("Operator"):
@@ -266,14 +343,29 @@ class Planner:
     def _align_synth_spec(self, spec):
         """生成算子与图谱中已有算子同名（忽略大小写）时：沿用已有名字，并把最新版本记为 reference，
         这样新版本会通过 DERIVED_FROM 接入原有的版本谱系，而不是变成一个孤立的"新"算子。"""
+        if self.knowledge_mode == "catalog":
+            return spec
         name = self._known_name(spec.name)
         ref = spec.reference
         if ref and "@" not in ref:
             ref = self._known_name(ref)
         versions = [d["key"] for _, d in self.kg.nodes("Operator") if d["name"] == (ref if ref and "@" not in ref else name)]
-        if (ref is None or "@" not in ref) and versions:
+        if ref is not None and "@" not in ref and versions:
             ref = max(versions, key=lambda k: int(k.split("@")[1]))
         return spec.model_copy(update={"name": name, "reference": ref})
+
+    @staticmethod
+    def data_errors(plan: PipelinePlan, spec: TaskSpec, profile: DataProfile) -> list[str]:
+        """与数据画像对照的结构校验：表格数据有类别列时，模型之前必须有编码步骤。
+
+        内置模型（逻辑回归、随机森林、LightGBM）都只接受数值输入；漏掉编码时字符串列（如客户 ID）
+        会在训练时报错，而且错误落在复用的模型上，无法交给定向修复。
+        """
+        if spec.modality != Modality.TABULAR or "has_categorical_features" not in profile.tags:
+            return []
+        if any(s.kind == OperatorKind.ENCODER for s in plan.steps):
+            return []
+        return ["数据含类别列，模型之前缺少 encoder 步骤（如 OneHotCategoricalEncoder）"]
 
     def plan_errors(self, plan: PipelinePlan, spec: TaskSpec, *, allow_synthesis: bool = False) -> list[str]:
         """语义校验：算子存在、类型与模态匹配、参数合法。"""
@@ -326,4 +418,3 @@ class Planner:
                 update["params"] = params
             steps.append(step.model_copy(update=update))
         return plan.model_copy(update={"steps": steps})
-

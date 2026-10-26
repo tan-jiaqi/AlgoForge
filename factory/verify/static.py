@@ -143,7 +143,11 @@ def check_source(source: str, *, class_name: str | None = None, kind: OperatorKi
 
 
 def _params_mismatch(cls: ast.ClassDef) -> list[str]:
-    """比较 meta = OperatorMeta(params={...}) 字面量与 __init__ 的默认值（只比较能字面求值的部分）。"""
+    """比较 meta = OperatorMeta(params={...}) 字面量与 __init__ 的默认值（只比较能字面求值的部分）。
+
+    __init__ 默认值为 None 时不算不一致：这是 Python 避免可变默认参数（列表、字典）的惯用写法，
+    在函数体内再赋实际值；注册表实例化时总会传入 meta.params，行为不受影响。
+    """
     meta_params: dict | None = None
     for node in cls.body:
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "meta" for t in node.targets):
@@ -164,4 +168,5 @@ def _params_mismatch(cls: ast.ClassDef) -> list[str]:
             defaults[a.arg] = ast.literal_eval(d)
         except ValueError:
             pass
-    return [f"{k}: meta={v!r}, __init__={defaults[k]!r}" for k, v in meta_params.items() if k in defaults and defaults[k] != v]
+    return [f"{k}: meta={v!r}, __init__={defaults[k]!r}" for k, v in meta_params.items()
+            if k in defaults and defaults[k] is not None and defaults[k] != v]

@@ -1,0 +1,27 @@
+2026-10-26 14:53:36,705 INFO factory.workflow: 加载已沉淀的生成算子：['TotalChargesCleaner@2']
+[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']
+[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75
+2026-10-26 14:53:42,728 INFO httpx2: HTTP Request: POST https://api15.xhub.chat/v1/chat/completions "HTTP/1.1 200 OK"
+[PLAN] 候选方案：['interpretable_logreg_pipeline(TotalChargesCleaner → MissingValueImputer → *DropIdColumn → OneHotCategoricalEncoder → StandardFeatureScaler → LogisticRegressionModel)', 'robust_lgbm_pipeline(TotalChargesCleaner → MissingValueImputer → *AddServiceCount → OneHotCategoricalEncoder → LightGBMModel)', 'balanced_rf_pipeline(TotalChargesCleaner → *TenureBucket → OneHotCategoricalEncoder → RandomForestModel)']
+[PLAN] 完成，用时 6.0s → BUILD
+2026-10-26 14:53:45,217 INFO httpx2: HTTP Request: POST https://api15.xhub.chat/v1/chat/completions "HTTP/1.1 200 OK"
+[BUILD] 生成算子 DropIdColumn@1（参考 IdColumnDropper@1）：删除客户ID列以防止过拟合和特征维度暴涨
+2026-10-26 14:53:47,552 INFO httpx2: HTTP Request: POST https://api15.xhub.chat/v1/chat/completions "HTTP/1.1 200 OK"
+[BUILD] 生成算子 AddServiceCount@1（参考 ServiceCountFeature@1）：计算增值服务总数以捕捉用户粘性特征
+2026-10-26 14:53:50,068 INFO httpx2: HTTP Request: POST https://api15.xhub.chat/v1/chat/completions "HTTP/1.1 200 OK"
+[BUILD] 生成算子 TenureBucket@1（参考 TenureBucketizer@1）：将时长字段离散化处理
+[BUILD] 完成，用时 7.3s → VERIFY
+[VERIFY] interpretable_logreg_pipeline：通过，recall=0.7793
+[VERIFY] robust_lgbm_pipeline：未通过，recall=nan；E_INTERFACE meta.params 与 __init__ 默认值不一致：["service_cols: meta=['online_security', 'tech_support', 'streaming_tv'], __init__=('online_security', 'tech_support', 'streaming_tv')"]
+[VERIFY] balanced_rf_pipeline：未通过，recall=0.7176；M_THRESHOLD recall = 0.7176 低于阈值 0.75
+[VERIFY] 完成，用时 22.1s → ROUTE
+[ROUTE] 完成，用时 0.0s → REPAIR
+2026-10-26 14:54:47,197 INFO httpx2: HTTP Request: POST https://api15.xhub.chat/v1/chat/completions "HTTP/1.1 200 OK"
+[REPAIR] 修复 AddServiceCount@1 第 1 轮：E_INTERFACE meta.params 与 __init__ 默认值不一致：["service_cols: meta=['online_security', 'tech_sup
+[REPAIR] 完成，用时 35.1s → VERIFY
+[VERIFY] robust_lgbm_pipeline：未通过，recall=0.6519；M_THRESHOLD recall = 0.6519 低于阈值 0.75
+[VERIFY] 完成，用时 7.9s → ROUTE
+[ROUTE] 完成，用时 0.0s → CURATE
+2026-10-26 14:55:08,774 INFO httpx2: HTTP Request: POST https://api15.xhub.chat/v1/chat/completions "HTTP/1.1 200 OK"
+[CURATE] 写入 KG：3 条 ValidationRun；注册新算子 ['DropIdColumn@1']；新增经验 1 条
+[CURATE] 完成，用时 13.7s → DONE

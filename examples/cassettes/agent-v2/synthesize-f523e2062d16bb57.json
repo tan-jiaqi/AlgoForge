@@ -1,0 +1,47 @@
+{
+  "tag": "synthesize",
+  "model": "gemini-3.5-flash",
+  "messages": [
+    {
+      "role": "system",
+      "content": "trial=demo-3（独立重复实验编号，与任务无关）"
+    },
+    {
+      "role": "system",
+      "content": "你是算法能力工厂的 Synthesizer，负责按规格编写可复用的算法算子。有 reference_code 时，把它改写为符合规范的算子类；lessons 是历史踩坑经验，务必遵守。\n算子代码规范：\n1. 只输出一个 ```python 代码块；只定义一个类，类名必须是 KFoldTargetEncoder；\n2. 类继承 (TransformerMixin, Operator)，模型类继承 (ClassifierMixin, Operator)；\n   导入：from factory.operators.base import Operator, OperatorMeta；from factory.schemas import OperatorKind, Modality；\n3. 类属性 meta = OperatorMeta(name=\"KFoldTargetEncoder\", kind=OperatorKind.ENCODER, version=2, origin=\"synthesized\",\n   description=中文一句话, conditions=[适用条件标签], dependencies=[pip 包名], params={与 __init__ 默认值一致}, parent=\"KFoldTargetEncoder@1\")；\n4. __init__ 只把参数原样保存为同名属性（sklearn 约定），不做计算；fit 学到的状态用下划线结尾命名并 return self；\n5. transform 必须先 X = X.copy()，不能修改输入；输入输出都是 pandas DataFrame，行数不变；\n6. 本算子新产生的缺失值/无穷值要在本算子内处理；预测时可能出现未见类别和缺失值，不能报错；\n7. 模型类：fit 后设置 classes_；predict_proba 返回 shape (n, n_classes) 的 numpy 数组，predict 返回 shape (n,) 的 numpy 数组；\n8. 只能导入 numpy、pandas、sklearn、scipy、lightgbm、math、re 等，禁止 os/sys/subprocess/socket/open/eval/exec。"
+    },
+    {
+      "role": "user",
+      "content": "<<CONTEXT>>\n{\n \"synth_spec\": {\n  \"name\": \"KFoldTargetEncoder\",\n  \"kind\": \"encoder\",\n  \"purpose\": \"高基数类别目标编码\",\n  \"inputs\": \"类别特征\",\n  \"outputs\": \"编码后特征\",\n  \"reference\": \"KFoldTargetEncoder@1\"\n },\n \"task\": {\n  \"description\": \"预测30天内可能流失的客户，需可解释，召回优先。比较三个方案，至少一个方案使用清洗、通用缺失值填补、类别编码、标准化和平衡类权重的逻辑回归；可增加在网时长分桶，引用检索到的历史实现。\",\n  \"target\": \"churn\",\n  \"constraints\": [\n   \"interpretable\",\n   \"recall_first\"\n  ]\n },\n \"data_profile\": {\n  \"rows\": 5000,\n  \"target\": \"churn\",\n  \"class_counts\": {\n   \"0\": 3671,\n   \"1\": 1329\n  },\n  \"tags\": {\n   \"has_missing_values\": \"数据存在缺失值\",\n   \"numeric_features\": \"存在数值型特征\",\n   \"has_categorical_features\": \"存在类别型特征\",\n   \"low_cardinality\": \"类别基数较低（适合 one-hot）\",\n   \"string_typed_numeric\": \"数值列被读成字符串（含空白等脏值）\",\n   \"id_columns\": \"数据含客户 ID 等标识列\",\n   \"imbalanced\": \"正负样本不平衡\",\n   \"time_tenure\": \"存在在网时长等时间长度字段\",\n   \"mixed_features\": \"数值与类别特征混合\"\n  },\n  \"columns\": [\n   \"customer_id: id, str, missing 0.0%, unique 5000\",\n   \"region: categorical, str, missing 0.0%, unique 6\",\n   \"senior_citizen: numeric, int64, missing 0.0%, unique 2\",\n   \"partner: categorical, str, missing 0.0%, unique 2\",\n   \"tenure: numeric, int64, missing 0.0%, unique 73\",\n   \"contract: categorical, str, missing 0.0%, unique 3\",\n   \"internet_service: categorical, str, missing 0.0%, unique 3\",\n   \"online_security: categorical, str, missing 0.0%, unique 3\",\n   \"tech_support: categorical, str, missing 0.0%, unique 3\",\n   \"streaming_tv: categorical, str, missing 0.0%, unique 3\",\n   \"paperless_billing: categorical, str, missing 0.0%, unique 2\",\n   \"payment_method: categorical, str, missing 2.0%, unique 4\",\n   \"monthly_charges: numeric, float64, missing 2.9%, unique 3269\",\n   \"total_charges: string_numeric, str, missing 0.0%, unique 4830\"\n  ]\n },\n \"reference_code\": \"def target_encode(train, test, col, target=\\\"churn\\\", n_splits=5, smoothing=10):\\n    \\\"\\\"\\\"对高基数类别列做 K 折目标编码（带平滑）。\\n\\n    注意：必须只在训练集内做折外编码再映射到测试集，否则会标签泄漏。\\n    2024-03 的实验里曾在全量数据上直接编码，AUC 虚高到 0.97，上线后崩到 0.71。\\n    \\\"\\\"\\\"\\n    prior = train[target].mean()\\n    train_enc = pd.Series(index=train.index, dtype=float)\\n    for fit_idx, val_idx in KFold(n_splits, shuffle=True, random_state=0).split(train):\\n        stats = train.iloc[fit_idx].groupby(col)[target].agg([\\\"mean\\\", \\\"count\\\"])\\n        smooth = (stats[\\\"mean\\\"] * stats[\\\"count\\\"] + prior * smoothing) / (stats[\\\"count\\\"] + smoothing)\\n        train_enc.iloc[val_idx] = train.iloc[val_idx][col].map(smooth).fillna(prior).values\\n    stats = train.groupby(col)[target].agg([\\\"mean\\\", \\\"count\\\"])\\n    smooth = (stats[\\\"mean\\\"] * stats[\\\"count\\\"] + prior * smoothing) / (stats[\\\"count\\\"] + smoothing)\\n    return train_enc, test[col].map(smooth).fillna(prior)\",\n \"lessons\": [\n  {\n   \"id\": \"Lesson:88299a38\",\n   \"title\": \"未剔除客户 ID 导致 One-Hot 编码后维度暴涨与内存溢出\",\n   \"trigger\": \"customer_id 等标识列未剔除，直接进行 One-Hot 编码导致特征维度暴涨并引发内存溢出\",\n   \"fix\": \"建模前剔除 ID 等标识列，并在编码器中设置最大类别数\"\n  },\n  {\n   \"id\": \"Lesson:0d5e3eb1\",\n   \"title\": \"预测阶段出现未见类别导致编码报错\",\n   \"trigger\": \"线上/测试集出现未见类别，OneHotEncoder 抛出 ValueError: Found unknown categories\",\n   \"fix\": \"编码器配置 handle_unknown='ignore' 或 infrequent_if_exist 忽略未知类别\"\n  },\n  {\n   \"id\": \"Lesson:69d51358\",\n   \"title\": \"数值列含空白字符导致类型转换失败\",\n   \"trigger\": \"新入网客户累计消费为空白字符串，读取为 object 类型，转 float 时抛出 ValueError: could not convert string to float: ' '\",\n   \"fix\": \"先 str.strip()，再 pd.to_numeric(errors='coerce')，缺失值填补为 0\"\n  }\n ]\n}\n<</CONTEXT>>"
+    }
+  ],
+  "response": "```python\nimport numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom sklearn.model_selection import KFold\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass KFoldTargetEncoder(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"KFoldTargetEncoder\",\n        kind=OperatorKind.ENCODER,\n        version=2,\n        origin=\"synthesized\",\n        description=\"基于K折交叉验证的高基数类别目标编码，支持平滑处理以防止过拟合。\",\n        conditions=[\"数据包含类别特征\", \"目标变量为二分类\"],\n        dependencies=[\"pandas\", \"sklearn\", \"numpy\"],\n        params={\"columns\": None, \"n_splits\": 5, \"smoothing\": 10.0},\n        parent=\"KFoldTargetEncoder@1\"\n    )\n\n    def __init__(self, columns=None, n_splits=5, smoothing=10.0):\n        self.columns = columns\n        self.n_splits = n_splits\n        self.smoothing = smoothing\n        self.mapping_ = {}\n        self.prior_ = None\n\n    def fit(self, X, y=None):\n        X = X.copy()\n        if self.columns is None:\n            self.columns = X.select_dtypes(include=['object', 'category']).columns.tolist()\n        \n        target = y.name if isinstance(y, pd.Series) else \"target\"\n        df = X.copy()\n        df[target] = y\n        self.prior_ = df[target].mean()\n\n        for col in self.columns:\n            self.mapping_[col] = {}\n            # 计算全量统计用于测试集映射\n            stats = df.groupby(col)[target].agg([\"mean\", \"count\"])\n            smooth = (stats[\"mean\"] * stats[\"count\"] + self.prior_ * self.smoothing) / (stats[\"count\"] + self.smoothing)\n            self.mapping_[col][\"global\"] = smooth\n            \n            # 计算训练集K折编码\n            kf = KFold(n_splits=self.n_splits, shuffle=True, random_state=42)\n            train_enc = pd.Series(index=df.index, dtype=float)\n            for fit_idx, val_idx in kf.split(df):\n                fold_stats = df.iloc[fit_idx].groupby(col)[target].agg([\"mean\", \"count\"])\n                fold_smooth = (fold_stats[\"mean\"] * fold_stats[\"count\"] + self.prior_ * self.smoothing) / (fold_stats[\"count\"] + self.smoothing)\n                train_enc.iloc[val_idx] = df.iloc[val_idx][col].map(fold_smooth)\n            \n            self.mapping_[col][\"train_enc\"] = train_enc\n        \n        return self\n\n    def transform(self, X):\n        X = X.copy()\n        for col in self.columns:\n            if col in self.mapping_:\n                # 训练集返回K折编码，测试集返回全局平均编码\n                if X.index.equals(self.mapping_[col][\"train_enc\"].index):\n                    X[col] = self.mapping_[col][\"train_enc\"]\n                else:\n                    X[col] = X[col].map(self.mapping_[col][\"global\"])\n                \n                # 处理未见类别和缺失值\n                X[col] = X[col].fillna(self.prior_)\n                # 确保无无穷值\n                X[col] = X[col].replace([np.inf, -np.inf], self.prior_)\n        \n        return X\n```",
+  "json_mode": false,
+  "seconds": 2.895613633096218,
+  "usage": {
+    "completion_tokens": 932,
+    "prompt_tokens": 2244,
+    "total_tokens": 3176,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 932,
+      "image_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": null,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 2244
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "input_tokens": 0,
+    "input_tokens_details": null,
+    "output_tokens": 0
+  },
+  "source": "remote"
+}

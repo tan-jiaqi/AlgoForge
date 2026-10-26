@@ -117,3 +117,20 @@ def test_literal_handles_special_floats():
     code = literal((-1, 6, float("inf"))) + literal({"a": [float("nan"), "x"]}) + literal((1,))
     assert "float('inf')" in code and "float('nan')" in code and "(1,)" in code
     assert eval(literal((-1, float("inf")))) == (-1, float("inf"))  # noqa: S307 - 测试字面量可还原
+
+
+def test_plan_without_encoder_rejected_on_categorical_data(churn_csv):
+    """表格数据有类别列时，缺少编码步骤的方案在规划阶段就被拒绝（search_3 曾因此把 customer_id 送进逻辑回归）。"""
+    from factory.agents.planner import Planner
+    from factory.profile import profile
+    from factory.schemas import Modality, PipelinePlan, Step, TaskSpec, TaskType, MetricTarget
+
+    spec = TaskSpec(description="d", task_type=TaskType.BINARY_CLASSIFICATION, modality=Modality.TABULAR,
+                    target_column="churn", metrics=[MetricTarget(name="recall", threshold=0.7)])
+    prof = profile(str(churn_csv), "churn")
+    R = lambda k, r: Step(kind=k, action="reuse", operator_ref=r)
+    bare = PipelinePlan(name="p", steps=[R("imputer", "MissingValueImputer@1"), R("scaler", "StandardFeatureScaler@1"),
+                                         R("model", "LogisticRegressionModel@1")])
+    assert "encoder" in " ".join(Planner.data_errors(bare, spec, prof))
+    ok = bare.model_copy(update={"steps": [*bare.steps[:1], R("encoder", "OneHotCategoricalEncoder@1"), *bare.steps[1:]]})
+    assert Planner.data_errors(ok, spec, prof) == []

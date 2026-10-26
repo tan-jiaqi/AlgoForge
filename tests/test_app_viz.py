@@ -17,7 +17,8 @@ def test_overview_folds_details():
     assert g.number_of_edges() < kg.g.number_of_edges() / 3
     assert not [n for n in g if g.degree(n) == 0 and g.nodes[n]["type"] != "Operator"], "概览中不应有孤立的指标或经验"
     op = g.nodes["Operator:TotalChargesCleaner@2"]
-    assert "string_typed_numeric" in op["conditions"] and op["history"], "条件与验证记录折叠进算子属性"
+    expected_conditions = sorted(kg.operator_conditions("Operator:TotalChargesCleaner@2"))
+    assert expected_conditions and op["conditions"] == expected_conditions and op["history"], "实际条件与验证记录折叠进算子属性"
     edge = next(d for d in g.get_edge_data("Operator:TotalChargesCleaner@2", "Scenario:telecom_churn").values())
     assert edge["rel"] == "VALIDATED_ON" and edge["runs"] >= 1
     assert any(d["rel"] == "DERIVED_FROM" for *_, d in g.edges(data=True))

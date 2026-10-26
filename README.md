@@ -22,13 +22,21 @@ streamlit run app.py                # Web 界面
 
 | 演示（`examples/demo/`） | 验证内容 | 结果 |
 | --- | --- | --- |
-| [01 工单文本分类](examples/demo/runs/01_tickets_transfer/report.md) | **跨场景迁移**：图谱中没有该场景的历史记录，利用通用经验（中文采用字符级 TF-IDF）规划分类方案 | F1-macro 0.828 ✅ |
-| [02 客户流失](examples/demo/runs/02_churn_synthesize/report.md) | **知识驱动的生成**：参考历史代码生成 4 个新算子，3 个候选公平比较，最优方案通过后注册 `TotalChargesCleaner@2`、`TenureBucketizer@2` | recall 0.778 ✅ |
-| [03 相似需求](examples/demo/runs/03_churn_reuse/report.md) | **沉淀后复用**：换一种说法提出相似需求，直接复用 02 沉淀的两个算子 | recall 0.778 ✅ |
+| [01 工单文本分类](examples/demo/runs/01_tickets_transfer/report.md) | **跨场景迁移**：图谱中没有该场景，按模态检索到通用经验"中文短文本字符级 TF-IDF"，方案采用 `char_wb` | F1-macro 0.824 ✅ |
+| [02 客户流失](examples/demo/runs/02_churn_synthesize/report.md) | **知识驱动的生成与真实修复**：参考历史代码生成 4 个算子；`ChargeRatioFeatureGenerator` 运行出错，LLM 按诊断修复 3 轮后通过，Curator 提炼出新经验；最优方案注册 `TotalChargesCleaner@2`、`TenureBucketizer@2` | recall 0.778 ✅ |
+| [03 相似需求](examples/demo/runs/03_churn_reuse/report.md) | **沉淀后复用**：换一种说法提出相似需求，直接复用 02 沉淀的两个算子 | recall 0.777 ✅ |
 
-任务 03 证明了算子可以被后续任务复用；当前没有对照实验验证持续运行是否提高指标、缩短耗时或降低 LLM 调用成本。
+### 三个问题的回答：KG 是否参与决策、真实修复、是否只靠 mock
 
-**文档导航**：[知识图谱：本体构建 → 知识抽取 → 知识融合 → 知识存储](docs/schema.md) ｜ [各 Agent 的输入与输出](docs/agents_io.md) ｜ [开发路线图](docs/roadmap.md)
+下列证据均为真实 LLM（`gemini-3.5-flash`）的录制，`demo` / `evaluate --llm replay` 可离线复现，回放不使用 mock。
+
+| 问题 | 证据 | 结论与边界 |
+| --- | --- | --- |
+| KG 是否真的参与决策 | ① 演示 01 按模态检索经验，字符级 TF-IDF 经验进入规划，方案采用 `char_wb`；② 演示 03 复用 02 注册的算子；③ [消融](examples/evaluation/SUMMARY.md)：完整 KG 与仅算子目录选出不同方案（LightGBM 0.603 对随机森林 0.495–0.597）；④ [搜索干预](examples/evaluation/SUMMARY.md)：固定子方案池、去掉 KG 历史后，入选集合在 4 轮中有 3 轮改变 | KG 改变了检索内容、方案结构和剪枝结果。完整 KG 也会选不可解释的 LightGBM，不能说 KG 总让结果更好 |
+| 真实调用有没有修复 | ① 演示 02：`ChargeRatioFeatureGenerator` 的 `E_RUNTIME` 修复 3 轮后通过，提炼出新经验；② 评测 `kg_catalog`：LLM 自然产生 `E_NAN`、`E_RUNTIME`，修复后通过；③ 受控注入 NaN → 真实 LLM 修复 → 注册 → 新进程复用，3/3 走通 | 演示录制时依次试了 3 个试验编号，前两次未出错，保留第 3 次（见 `factory/demo.py`）。注入实验是人为缺陷，单独统计 |
+| 是否主要靠 mock | 修复、经验提炼、Beam 搜索均有真实录制。[搜索](examples/evaluation/search_1/runs/search_1/report.md)：首轮 LightGBM recall 0.624 未达 0.80，扩展时 LLM 换成可解释逻辑回归并把正类权重调到 4，recall 0.848 通过，3 次中 2 次成功 | mock 仍用于覆盖难以自然触发的错误分支。网关对相同请求返回缓存回复，重复实验通过请求中的试验编号区分 |
+
+**文档导航**：[评审三个问题的处理](docs/review_issues_and_fixes.md) ｜ [知识图谱：本体构建 → 知识抽取 → 知识融合 → 知识存储](docs/schema.md) ｜ [各 Agent 的输入与输出](docs/agents_io.md) ｜ [开发路线图](docs/roadmap.md)
 
 ### 题目要求与验收证据
 
@@ -40,9 +48,9 @@ streamlit run app.py                # Web 界面
 | 能力抽取与知识图谱 | AST + LLM 抽取、规则融合、NetworkX 图谱 | [schema 与融合规则](docs/schema.md)、[原始抽取结果](kg/extraction.json)、[基础图谱](kg/capability_kg.json) |
 | 自然语言到算法代码 | Planner 规划，Synthesizer 生成缺失算子 | 真实 LLM 录制回放：[任务 02 报告](examples/demo/runs/02_churn_synthesize/report.md)、[生成脚本](examples/demo/runs/02_churn_synthesize/pipeline.py) |
 | 自动验证与多候选比较 | 四级验证、多种子交叉验证、候选排序 | [任务 02 候选结果](examples/demo/runs/02_churn_synthesize/report.md)、[验证测试](tests/test_verify.py)、[运行时安全测试](tests/test_sandbox_guard.py) |
-| 多轮修复与经验提炼 | 有次数上限的定向修复、Curator 提炼 Lesson | [规则 mock 修复样例](examples/verification/README.md#定向修复与后续复用)；[闭环测试](tests/test_synthesis.py)验证一轮修复及后续复用，当前录制演示未触发修复 |
+| 多轮修复与经验提炼 | 有次数上限的定向修复、Curator 提炼 Lesson | 真实录制：[演示 02 的 3 轮修复](examples/demo/runs/02_churn_synthesize/report.md)、[评测汇总](examples/evaluation/SUMMARY.md)、[注入补丁及原始源码](examples/evaluation/repair_injected_1/injection.json)；mock 用于补充错误分支 |
 | 知识回写与能力版本复用 | 保存生成源码、验证记录和版本谱系 | [任务 02 注册 → 任务 03 复用](examples/demo/SUMMARY.md)、[沉淀的源码](examples/demo/kg/operators/) |
-| Beam Search | 父方案扩展、去重、历史与本次观测先验剪枝 | [规则 mock 搜索样例](examples/verification/README.md#beam-search)、[先验与剪枝测试](tests/test_search.py)；尚无搜索收益的对照实验 |
+| Beam Search | 真实 LLM 父方案扩展、去重、历史与本次观测先验剪枝 | [真实搜索与固定候选池干预](examples/evaluation/SUMMARY.md)、[先验与剪枝测试](tests/test_search.py)；3 次真实搜索中 2 次从未达标方案找到 recall 0.848 的方案；先验只看算子历史、不感知参数变化 |
 | UI、报告与可扩展配置 | CLI、Streamlit、Markdown / HTML 报告、算子与指标注册接口 | [Web 入口](app.py)、[报告样例](examples/demo/runs/02_churn_synthesize/report.html)、[任务配置](configs/tasks/)；当前支持二分类和多分类 |
 
 ---
@@ -183,7 +191,7 @@ Pipeline.predict() / predict_proba()：使用已拟合的前置步骤变换数�
 ├── kg/                     # 知识图谱（JSON / GraphML / HTML）与原始抽取结果
 ├── examples/               # 录制的 LLM 响应（cassettes）与演示产物
 ├── docs/                   # schema.md、agents_io.md、roadmap.md
-└── tests/                  # 118 个常规测试 + 1 个完整演示回放测试
+└── tests/                  # 常规单测 + 原始真实响应的完整演示与评测回放
 ```
 
 ### 技术选型
@@ -296,7 +304,7 @@ stateDiagram-v2
 ### 中间表示、定向修复与方案搜索
 
 1. **分层的结构化中间表示**（借鉴编译器）：`TaskSpec`（做什么）→ `PipelinePlan`（怎么做）→ 源码。前两层做 schema 和部分语义检查，源码再接受静态与执行验证，尽量提前发现问题。
-2. **知识驱动的能力组合**：Planner 收到带分项得分和证据的检索结果，报告展示这些依据与生成理由；目前未逐条核验理由是否与证据一致。
+2. **知识驱动的能力组合**：Reuse 与历史 reference 限定在本轮候选内；每步 `evidence_ids` 引用本轮可见证据，检查算子及结构化适用对象。报告区分传入、模型引用与范围校验；不据此宣称自然语言理由已落实或产生收益。
 3. **诊断驱动的定向修复**：能定位到本次生成算子、且未超次数的代码错误才进入修复。LLM 返回该算子的完整源码，随后重新验证受影响的完整方案；不保证最小代码 diff。先处理可修复候选，再选优。
 4. **知识图谱先验引导的 Beam Search**（`factory/search.py`）：需要重新规划时，以排名前 k 的已验证方案为父方案，请求扩展 k × m 个子方案；按步骤、算子和参数签名去重，以场景历史记录和本次观测计算先验，最多保留 k 个验证。它限制的是每轮候选数量；新增的规划调用、不同模型与修复次数仍会影响耗时。当前先验是启发式估计，尚未证明优于无搜索基线。
 
@@ -304,7 +312,7 @@ stateDiagram-v2
 
 | 级别 | 检查内容 | 诊断码 |
 | --- | --- | --- |
-| 1 静态检查 | 语法；import 白名单；禁止 `eval/exec/open/getattr/__dunder__` 等调用；禁止库自带的文件读写、下载与字符串求值入口（`pd.read_*`、`df.to_*`、`np.load`、`df.query` 等）；接口齐全；`meta.params` 与 `__init__` 默认值一致 | `E_SYNTAX` `E_UNSAFE` `E_INTERFACE` |
+| 1 静态检查 | 语法；import 白名单；禁止 `eval/exec/open/getattr/__dunder__` 等调用；禁止库自带的文件读写、下载与字符串求值入口（`pd.read_*`、`df.to_*`、`np.load`、`df.query` 等）；接口齐全；`meta.params` 与 `__init__` 默认值一致（默认值为 `None` 的惯用写法除外） | `E_SYNTAX` `E_UNSAFE` `E_INTERFACE` |
 | 2 沙箱执行 | 独立子进程，限制超时与内存，清除含 KEY/TOKEN/SECRET 的环境变量；子进程内装审计钩子（PEP 578），按行为拦截越权的文件、网络、子进程与动态库操作；小样本冒烟并定位出错算子 | `E_UNSAFE` `E_RUNTIME` `E_TIMEOUT` |
 | 3 契约检查 | 不修改输入；行数一致；不新引入 NaN/Inf；`predict_proba` 为合法概率的 ndarray；能处理未见类别与缺失值 | `E_MUTATION` `E_SHAPE` `E_NAN` `E_PROBA` |
 | 4 指标检查 | 多种子 × 分层 K 折交叉验证；阈值；种子间稳定性；指标过高疑似泄漏；耗时与内存 | `M_THRESHOLD` `M_UNSTABLE` |
@@ -419,7 +427,8 @@ streamlit run app.py
 | `python -m factory.cli kg stats / search / lessons / tidy / viz` | 查看、检索、整理图谱或生成可视化，不调用 LLM；其中 `tidy` 会保存整理结果 |
 | `python -m factory.cli report runs/<run_id>` | 从已保存状态重新生成报告，不调用 LLM |
 | `python -m factory.cli operators` | 列出当前注册表中的算子，不调用 LLM |
-| `pytest` / `pytest -m slow` | 118 个常规测试 / 1 个完整演示回放测试，不需要远端 LLM |
+| `pytest` / `pytest -m slow` | 常规单测 / 完整演示及独立评测回放，不需要远端 LLM |
+| `python -m factory.cli evaluate --llm replay --out runs/evaluation-replay` | 按提交清单在新进程中重做全部实验；输出目录必须为空，详情见 [评测说明](examples/evaluation/README.md) |
 
 `run` 还支持 `--target <目标列>`、`--candidates 3`、`--max-repairs 3`、`--max-replans 2`、`--beam-width 2 --beam-expand 3` 和 `--kg <路径>`；完整参数见 `python -m factory.cli run --help`。
 
@@ -450,8 +459,8 @@ SDK 报错会脱敏，请求缓存键不含密钥；沙箱会清除名称含 KEY
 
 ```python
 # 从完整 Pipeline 的步骤中节选；前后步骤见链接中的脚本。
-("1_imputer", TotalChargesCleaner(col='total_charges', fill_value=0.0)),
-("2_imputer", MissingValueImputer()),
+("0_imputer", TotalChargesCleaner(col='total_charges')),
+("1_imputer", MissingValueImputer()),
 ```
 
 `TotalChargesCleaner@2`、`TenureBucketizer@2` 是任务 02 中由 LLM 参考历史代码生成、验证通过后注册的算子（源码在 [`examples/demo/kg/operators/`](examples/demo/kg/operators/)），任务 03 直接复用。报告保留了检索经验和 Planner 理由，供人工核对。
@@ -461,7 +470,7 @@ python examples/demo/runs/03_churn_reuse/pipeline.py --data data/churn.csv      
 python examples/demo/runs/03_churn_reuse/pipeline.py --predict data/churn.csv          # 预测
 ```
 
-**修复与搜索示例**：当前三个录制演示没有触发修复或重新规划。另附[规则 mock 的运行节选](examples/verification/README.md)，展示生成 → `E_NAN` → 修复 → 验证通过 → 注册 → 再次复用，以及指标失败后的 Beam 扩展与剪枝。样例经过真实验证器执行，但规划、代码和经验文本由规则提供，不能据此评估真实 LLM 的修复成功率或搜索收益。
+**修复与搜索示例**：任务 02 的 `ChargeRatioFeatureGenerator` 在真实运行中出错（字符串列参与除法），LLM 修复 3 轮后通过，修复前后源码与 diff 见[报告](examples/demo/runs/02_churn_synthesize/report.md)；这个算子所在的 LightGBM 方案指标未达标，没有注册。更多真实修复、受控注入与搜索结果见[评测汇总](examples/evaluation/SUMMARY.md)；[规则 mock 样例](examples/verification/README.md)用于补充分支测试。
 
 ## 8. 验证结果和报告样例
 
@@ -471,11 +480,11 @@ python examples/demo/runs/03_churn_reuse/pipeline.py --predict data/churn.csv   
 
 | 排名 | 方案 | 结果 | recall | roc_auc | 单次训练 (s) |
 | --- | --- | --- | --- | --- | --- |
-| 1 | ★ interpretable_logistic_regression | 通过 | 0.778 ± 0.001 | 0.814 ± 0.001 | 0.088 |
-| 2 | cost_ratio_random_forest | 未通过（`M_THRESHOLD`） | 0.714 ± 0.003 | 0.804 ± 0.001 | 0.612 |
-| 3 | balanced_lightgbm_boosting | 未通过（`M_THRESHOLD`） | 0.630 ± 0.003 | 0.783 ± 0.004 | 0.259 |
+| 1 | ★ logistic_regression_pipeline | 通过 | 0.778 | 0.814 | 详见报告 |
+| 2 | target_encoded_lgbm_pipeline | 未通过（`M_THRESHOLD`） | 0.652 | 0.787 | 详见报告 |
+| 3 | lgbm_feature_eng_pipeline | 未通过（`M_THRESHOLD`） | 0.645 | 0.787 | 详见报告 |
 
-在"可解释 + 召回优先 + 不平衡"的约束下，按图谱经验做了标准化、并设置 `class_weight='balanced'` 的逻辑回归是唯一达标的方案，两个树模型的 recall 都没到 0.75。
+演示 02、03 的需求文本要求至少一个方案使用通用填补、类别编码、标准化和平衡类权重的逻辑回归，它是唯一达标的方案，因此演示的达标不能单独归因于 KG；KG 的作用见上文“三个问题的回答”和评测中的消融实验。早期未写明这些步骤的录制曾因缺少编码而失败，[记录](examples/evaluation/demo_initial_attempt/README.md)予以保留。
 
 全部演示结果见 [examples/demo/SUMMARY.md](examples/demo/SUMMARY.md)。测试覆盖：schema 校验、算子契约、验证器对各类坏代码给出正确诊断码（静态安全违规、运行时越权读写文件 / 联网 / 起进程、崩溃、修改输入、行数错误、NaN、超时、指标不达标、泄漏）、知识图谱读写、融合与检索、Planner 的语义校验与重试、Beam 搜索的去重 / 先验 / 剪枝、生成 → 修复 → 注册 → 复用全流程、报告渲染与 HTML 转义、Web 界面、离线回放与录制结果一致。
 

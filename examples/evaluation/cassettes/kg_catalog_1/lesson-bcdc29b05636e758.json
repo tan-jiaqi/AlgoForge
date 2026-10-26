@@ -1,0 +1,47 @@
+{
+  "tag": "lesson",
+  "model": "gemini-3.5-flash",
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是算法能力工厂的 Curator。下面是一次被验证器发现、随后修复成功的代码问题。把它提炼为一条可复用的经验（LessonRecord）：title 一句话概括，trigger 写现象/报错，fix 写通用的修复方法（不要只描述这一处改动），applies_to 填相关的条件标签（从 condition_tags 中选）。error_code 与诊断码一致。"
+    },
+    {
+      "role": "user",
+      "content": "<<CONTEXT>>\n{\n \"operator_purpose\": \"将字符串格式的数值列转换为浮点数，并处理非法字符\",\n \"diagnostic\": {\n  \"code\": \"E_NAN\",\n  \"stage\": \"contract\",\n  \"message\": \"输出引入了新的 NaN/Inf\",\n  \"operator\": \"StringNumericCleaner@1\",\n  \"hint\": \"本算子产生的缺失值或无穷值需要在本算子内处理（如 fillna）\"\n },\n \"code_diff\": \"--- \\n+++ \\n@@ -13,3 +13,3 @@\\n         origin=\\\"synthesized\\\",\\n-        description=\\\"将字符串格式的数值列清洗并转换为浮点数，自动处理非法字符和空值\\\",\\n+        description=\\\"将字符串格式的数值列清洗并转换为浮点数，并确保输出无缺失值\\\",\\n         conditions=[\\\"数据包含数值特征被错误读取为字符串\\\"],\\n@@ -28,2 +28,10 @@\\n             self.numeric_cols_ = self.columns\\n+        \\n+        # 计算每列中位数以便 transform 阶段填充\\n+        self.medians_ = {}\\n+        for col in self.numeric_cols_:\\n+            if col in X.columns:\\n+                # 尝试将原列转为数值获取中位数，若全为非数值则设为 0\\n+                temp = pd.to_numeric(X[col], errors='coerce')\\n+                self.medians_[col] = temp.median() if not temp.isnull().all() else 0.0\\n         return self\\n@@ -36,21 +44,19 @@\\n                 continue\\n-                \\n-            # 将列转换为字符串并清除前后空格\\n+            \\n+            # 清洗字符串并转数值\\n             col_data = X[col].astype(str).str.strip()\\n-            \\n-            # 替换为空字符串或仅包含空格的字段为 NaN\\n             col_data = col_data.replace(r'^\\\\s*$', np.nan, regex=True)\\n             \\n-            # 使用 pd.to_numeric 将数据转换为 float，将无法解析的非法字符设为 NaN\\n-            # errors='coerce' 自动处理非数字字符串为缺失值\\n-            X[col] = pd.to_numeric(col_data, errors='coerce')\\n+            # 转换为 float，非法值变 NaN\\n+            converted = pd.to_numeric(col_data, errors='coerce')\\n             \\n-            # 补全转换过程中产生的缺失值（采用中位数填充，避免异常值干扰）\\n-            if X[col].isnull().sum() > 0:\\n-                median_val = X[col].median()\\n-                X[col] = X[col].fillna(median_val)\\n-                \\n-            # 处理无穷值（若转换产生 inf）\\n-            X[col] = X[col].replace([np.inf, -np.inf], np.nan)\\n-            X[col] = X[col].fillna(X[col].median())\\n+            # 处理 inf\\n+            converted = converted.replace([np.inf, -np.inf], np.nan)\\n+            \\n+            # 填充缺失值\\n+            fill_val = self.medians_.get(col, 0.0)\\n+            if np.isnan(fill_val):\\n+                fill_val = 0.0\\n+            \\n+            X[col] = converted.fillna(fill_val)\\n             \",\n \"condition_tags\": [\n  \"has_missing_values\",\n  \"has_categorical_features\",\n  \"low_cardinality\",\n  \"high_cardinality\",\n  \"numeric_features\",\n  \"string_typed_numeric\",\n  \"id_columns\",\n  \"linear_model\",\n  \"scaled_features\",\n  \"nonlinear\",\n  \"mixed_features\",\n  \"large_tabular\",\n  \"imbalanced\",\n  \"recall_first\",\n  \"interpretable\",\n  \"feature_importance\",\n  \"sparse_features\",\n  \"text_input\",\n  \"time_tenure\"\n ]\n}\n<</CONTEXT>>"
+    },
+    {
+      "role": "system",
+      "content": "Respond with a single JSON object only, no prose, conforming to this JSON schema:\n{\"$defs\": {\"DiagnosticCode\": {\"enum\": [\"E_SYNTAX\", \"E_UNSAFE\", \"E_INTERFACE\", \"E_RUNTIME\", \"E_TIMEOUT\", \"E_SHAPE\", \"E_PROBA\", \"E_MUTATION\", \"E_NAN\", \"M_THRESHOLD\", \"M_UNSTABLE\"], \"title\": \"DiagnosticCode\", \"type\": \"string\"}}, \"properties\": {\"title\": {\"title\": \"Title\", \"type\": \"string\"}, \"trigger\": {\"description\": \"什么情况下会出现这个问题（现象/报错）\", \"title\": \"Trigger\", \"type\": \"string\"}, \"fix\": {\"description\": \"如何修复或规避\", \"title\": \"Fix\", \"type\": \"string\"}, \"error_code\": {\"anyOf\": [{\"$ref\": \"#/$defs/DiagnosticCode\"}, {\"type\": \"null\"}], \"default\": null}, \"applies_to\": {\"description\": \"相关的算子名、条件标签或场景名\", \"items\": {\"type\": \"string\"}, \"title\": \"Applies To\", \"type\": \"array\"}}, \"required\": [\"title\", \"trigger\", \"fix\"], \"title\": \"LessonRecord\", \"type\": \"object\"}"
+    }
+  ],
+  "response": "{\n  \"title\": \"数值转换算子必须在训练阶段保存填充值以确保推理一致性\",\n  \"trigger\": \"在算子内对数据进行转换（如 `pd.to_numeric`）后产生 NaN 或 Inf，且在运行时使用该列当前的统计量（如实时 median）进行填充，导致推理阶段与训练阶段的数据分布不一致或产生未预期的缺失值。\",\n  \"fix\": \"在 fit 阶段预先计算并保存好填充值（如中位数或均值），在 transform 阶段统一使用保存好的值进行 fillna，严禁在 transform 阶段即时计算填充统计量。\",\n  \"error_code\": \"E_NAN\",\n  \"applies_to\": [\n    \"string_typed_numeric\",\n    \"numeric_features\",\n    \"mixed_features\"\n  ]\n}",
+  "json_mode": true,
+  "seconds": 2.6981398090720177,
+  "usage": {
+    "completion_tokens": 209,
+    "prompt_tokens": 1778,
+    "total_tokens": 1987,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null,
+      "text_tokens": 209,
+      "image_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": null,
+      "cached_tokens": 0,
+      "image_tokens": 0,
+      "text_tokens": 1778
+    },
+    "claude_cache_creation_1_h_tokens": 0,
+    "claude_cache_creation_5_m_tokens": 0,
+    "input_tokens": 0,
+    "input_tokens_details": null,
+    "output_tokens": 0
+  },
+  "source": "remote"
+}

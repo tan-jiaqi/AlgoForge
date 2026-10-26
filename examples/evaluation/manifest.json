@@ -1,0 +1,237 @@
+{
+  "version": 1,
+  "repeats": 3,
+  "data": "data/churn.csv",
+  "jobs": [
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.8,
+      "name": "kg_full_1",
+      "group": "kg",
+      "trial": 1,
+      "knowledge_mode": "full",
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.8,
+      "name": "kg_no_lessons_1",
+      "group": "kg",
+      "trial": 1,
+      "knowledge_mode": "no_lessons",
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.8,
+      "name": "kg_catalog_1",
+      "group": "kg",
+      "trial": 1,
+      "knowledge_mode": "catalog",
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.8,
+      "name": "kg_full_2",
+      "group": "kg",
+      "trial": 2,
+      "knowledge_mode": "full",
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.8,
+      "name": "kg_no_lessons_2",
+      "group": "kg",
+      "trial": 2,
+      "knowledge_mode": "no_lessons",
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.8,
+      "name": "kg_catalog_2",
+      "group": "kg",
+      "trial": 2,
+      "knowledge_mode": "catalog",
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.8,
+      "name": "kg_full_3",
+      "group": "kg",
+      "trial": 3,
+      "knowledge_mode": "full",
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.8,
+      "name": "kg_no_lessons_3",
+      "group": "kg",
+      "trial": 3,
+      "knowledge_mode": "no_lessons",
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.8,
+      "name": "kg_catalog_3",
+      "group": "kg",
+      "trial": 3,
+      "knowledge_mode": "catalog",
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.8,
+      "name": "probe_1",
+      "group": "probe",
+      "trial": 1,
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；将 total_charges 的空白字符串转换并填补为合理数值。"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.8,
+      "name": "probe_3",
+      "group": "probe",
+      "trial": 3,
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；增加累计费用与月费的比值特征，正确处理缺失和零分母。"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.8,
+      "name": "repair_natural_1",
+      "group": "repair_natural",
+      "trial": 1,
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；将 total_charges 的空白字符串转换并填补为合理数值。"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.8,
+      "name": "repair_natural_2",
+      "group": "repair_natural",
+      "trial": 2,
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；将 total_charges 的空白字符串转换并填补为合理数值。"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.8,
+      "name": "repair_natural_3",
+      "group": "repair_natural",
+      "trial": 3,
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；将 total_charges 的空白字符串转换并填补为合理数值。"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.2,
+      "name": "search_1",
+      "group": "search",
+      "trial": 1,
+      "request": "预测客户流失，召回率不低于0.8；优先尝试可解释模型，未达标时探索不同模型或参数。",
+      "nonce": "search-1"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.2,
+      "name": "search_2",
+      "group": "search",
+      "trial": 2,
+      "request": "预测客户流失，召回率不低于0.8；优先尝试可解释模型，未达标时探索不同模型或参数。",
+      "nonce": "search-2"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.2,
+      "name": "probe_2",
+      "group": "probe",
+      "trial": 2,
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；正确处理累计费用的空白字符串，并增加在网时长分桶特征。"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.2,
+      "name": "repair_injected_1",
+      "group": "repair_injected",
+      "trial": 1,
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；正确处理累计费用的空白字符串，并增加在网时长分桶特征。",
+      "seed": "probe_2",
+      "nonce": "injected-1"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.2,
+      "name": "repair_injected_2",
+      "group": "repair_injected",
+      "trial": 2,
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；正确处理累计费用的空白字符串，并增加在网时长分桶特征。",
+      "seed": "probe_2",
+      "nonce": "injected-2"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.2,
+      "name": "repair_injected_3",
+      "group": "repair_injected",
+      "trial": 3,
+      "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75；正确处理累计费用的空白字符串，并增加在网时长分桶特征。",
+      "seed": "probe_2",
+      "nonce": "injected-3"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.2,
+      "name": "repair_injected_1_reuse",
+      "group": "reuse",
+      "trial": 1,
+      "seed": "repair_injected_1",
+      "nonce": "reuse-repair_injected_1",
+      "request": "预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户，召回率不低于0.75"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.2,
+      "name": "repair_injected_2_reuse",
+      "group": "reuse",
+      "trial": 2,
+      "seed": "repair_injected_2",
+      "nonce": "reuse-repair_injected_2",
+      "request": "预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户，召回率不低于0.75"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.2,
+      "name": "repair_injected_3_reuse",
+      "group": "reuse",
+      "trial": 3,
+      "seed": "repair_injected_3",
+      "nonce": "reuse-repair_injected_3",
+      "request": "预测下个月可能流失的客户，要能解释原因，尽量不漏掉流失客户，召回率不低于0.75"
+    },
+    {
+      "model": "gemini-3.5-flash",
+      "temperature": 0.2,
+      "name": "search_3",
+      "group": "search",
+      "trial": 3,
+      "request": "预测客户流失，召回率不低于0.8；优先尝试可解释模型，未达标时探索不同模型或参数。",
+      "nonce": "search-3"
+    }
+  ],
+  "environment": {
+    "python": "3.11.17 (main, Oct 13 2026, 16:45:47) [GCC 15.3.0]",
+    "packages": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.6",
+      "scikit-learn": "1.9.1",
+      "lightgbm": "4.7.0",
+      "pydantic": "2.14.1",
+      "networkx": "3.6.1",
+      "openai": "3.36.0"
+    },
+    "data_sha256": "534fb31664bbbb4d167d76f66aada620281f9477b15748be670aad23182cf2be",
+    "base_kg_sha256": "478556f7b9ff4464db19d671264484c4a53f2ce4ee6a447c4fe2d63cf0987614"
+  }
+}

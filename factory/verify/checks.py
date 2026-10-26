@@ -86,11 +86,14 @@ def run_checks(job: dict) -> dict:
     spec = TaskSpec.model_validate(job["spec"])
     cfg = VerifyConfig.model_validate(job["config"])
     result: dict[str, Any] = {"diagnostics": [], "metrics": {}, "metric_std": {}, "resources": {}, "notes": []}
+    owners = job.get("source_owners") or [None] * len(job.get("sources", []))
+    owner = None
     try:
-        for src in job.get("sources", []):
+        for src, owner in zip(job.get("sources", []), owners):
             exec_operator_source(src)
     except Exception as exc:  # noqa: BLE001 - 模块级代码出错（含被沙箱拦截）
-        diags = [_diag(DiagnosticCode.RUNTIME_ERROR, "sandbox", "加载生成算子失败：" + _short_exc(exc))]
+        # 标明出错的算子，工作流才能把它交给定向修复（如类继承顺序导致的 MRO 冲突）
+        diags = [_diag(DiagnosticCode.RUNTIME_ERROR, "sandbox", "加载生成算子失败：" + _short_exc(exc), owner)]
     else:
         df = load_table(job["data_path"])
         y = df[spec.target_column].to_numpy()

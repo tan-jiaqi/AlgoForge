@@ -1,0 +1,596 @@
+{
+  "run_id": "kg_catalog_2",
+  "request": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75",
+  "data_path": "data/churn.csv",
+  "target": "churn",
+  "status": "failed",
+  "spec": {
+    "description": "预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75",
+    "task_type": "binary_classification",
+    "modality": "tabular",
+    "target_column": "churn",
+    "text_column": null,
+    "metrics": [
+      {
+        "name": "recall",
+        "threshold": 0.75,
+        "primary": true
+      }
+    ],
+    "constraints": [
+      "interpretable",
+      "recall_first"
+    ]
+  },
+  "profile_tags": [
+    "has_missing_values",
+    "numeric_features",
+    "has_categorical_features",
+    "low_cardinality",
+    "string_typed_numeric",
+    "id_columns",
+    "imbalanced",
+    "time_tenure",
+    "mixed_features"
+  ],
+  "candidates": [
+    {
+      "name": "random_forest_churn_prediction",
+      "steps": [
+        {
+          "kind": "feature",
+          "action": "synthesize",
+          "operator_ref": null,
+          "synth_spec": {
+            "name": "DataPreprocessor",
+            "kind": "feature",
+            "purpose": "删除无关的客户标识列，并将字符串形式的数值列转换为浮点数以供模型处理。",
+            "inputs": "包含 customer_id 和 string_typed_numeric 的原始数据",
+            "outputs": "移除标识列并修正数据类型的 DataFrame",
+            "reference": null
+          },
+          "params": {},
+          "rationale": "需要处理客户ID列带来的干扰以及 total_charges 列的字符串格式问题，这是数据预处理的第一步。",
+          "evidence_ids": []
+        },
+        {
+          "kind": "imputer",
+          "action": "reuse",
+          "operator_ref": "MissingValueImputer@1",
+          "synth_spec": null,
+          "params": {},
+          "rationale": "针对 payment_method 和 monthly_charges 等字段的缺失值进行中位数/众数填补。",
+          "evidence_ids": [
+            "Operator:MissingValueImputer@1"
+          ]
+        },
+        {
+          "kind": "encoder",
+          "action": "reuse",
+          "operator_ref": "OneHotCategoricalEncoder@1",
+          "synth_spec": null,
+          "params": {},
+          "rationale": "将类别型特征转换为数值型以供模型读取，利用其对低基数特征的处理能力。",
+          "evidence_ids": [
+            "Operator:OneHotCategoricalEncoder@1"
+          ]
+        },
+        {
+          "kind": "model",
+          "action": "reuse",
+          "operator_ref": "RandomForestModel@1",
+          "synth_spec": null,
+          "params": {
+            "class_weight": "balanced",
+            "n_estimators": 300
+          },
+          "rationale": "随机森林在处理表格数据时稳健性好，且可通过特征重要性满足可解释性要求；class_weight='balanced' 针对不平衡数据进行优化，以提升召回率。",
+          "evidence_ids": [
+            "Operator:RandomForestModel@1"
+          ]
+        }
+      ],
+      "rationale": "通过预处理清理脏数据，使用随机森林模型平衡召回率与可解释性需求，并针对不平衡数据使用平衡权重策略。"
+    }
+  ],
+  "generated": {
+    "DataPreprocessor": {
+      "spec": {
+        "name": "DataPreprocessor",
+        "kind": "feature",
+        "purpose": "删除无关的客户标识列，并将字符串形式的数值列转换为浮点数以供模型处理。",
+        "inputs": "包含 customer_id 和 string_typed_numeric 的原始数据",
+        "outputs": "移除标识列并修正数据类型的 DataFrame",
+        "reference": null
+      },
+      "source": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass DataPreprocessor(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"DataPreprocessor\",\n        kind=OperatorKind.FEATURE,\n        version=1,\n        origin=\"synthesized\",\n        description=\"删除标识列并处理字符串格式的数值特征，同时填补缺失值。\",\n        conditions=[\"输入包含customer_id及字符串数值列\"],\n        dependencies=[\"pandas\", \"numpy\", \"sklearn\"],\n        params={\"id_columns\": [\"customer_id\"], \"numeric_cols\": [\"total_charges\"]}\n    )\n\n    def __init__(self, id_columns=[\"customer_id\"], numeric_cols=[\"total_charges\"]):\n        self.id_columns = id_columns\n        self.numeric_cols = numeric_cols\n\n    def fit(self, X, y=None):\n        X = X.copy()\n        self.medians_ = {}\n        for col in self.numeric_cols:\n            if col in X.columns:\n                series = pd.to_numeric(X[col], errors='coerce')\n                self.medians_[col] = series.median() if not series.isna().all() else 0.0\n        return self\n\n    def transform(self, X):\n        X = X.copy()\n        \n        # 1. 删除标识列\n        X = X.drop(columns=[c for c in self.id_columns if c in X.columns], errors='ignore')\n        \n        # 2. 转换指定数值列\n        for col in self.numeric_cols:\n            if col in X.columns:\n                X[col] = pd.to_numeric(X[col], errors='coerce')\n                X[col] = X[col].replace([np.inf, -np.inf], np.nan)\n                X[col] = X[col].fillna(self.medians_.get(col, 0.0))\n        \n        # 3. 对整体DataFrame其他列处理（规避复杂dtype导致issubdtype报错）\n        for col in X.columns:\n            if X[col].isnull().any():\n                # 使用类型检查而非复杂的issubdtype，优先处理数值列\n                if pd.api.types.is_numeric_dtype(X[col]):\n                    X[col] = X[col].fillna(X[col].median() if not X[col].dropna().empty else 0.0)\n                else:\n                    # 显式转换为对象类型以处理复杂类型缺失\n                    X[col] = X[col].fillna(\"Missing\").astype(str)\n                    \n        return X\n",
+      "version": 1,
+      "revision": 1
+    }
+  },
+  "reports": [
+    {
+      "plan_name": "random_forest_churn_prediction",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "M_THRESHOLD",
+          "stage": "metric",
+          "message": "recall = 0.5969 低于阈值 0.75",
+          "operator": "RandomForestModel@1",
+          "hint": "考虑 class_weight、换模型、调参或调整决策阈值"
+        }
+      ],
+      "metrics": {
+        "recall": 0.5969,
+        "roc_auc": 0.7869,
+        "precision": 0.5175,
+        "f1": 0.5541,
+        "recall_at_20": 0.4314
+      },
+      "metric_std": {
+        "recall": 0.0015,
+        "roc_auc": 0.0011,
+        "precision": 0.0032,
+        "f1": 0.0011,
+        "recall_at_20": 0.0062
+      },
+      "resources": {
+        "fit_seconds": 0.641,
+        "predict_ms_per_1k": 169.46,
+        "peak_rss_mb": 305.2
+      },
+      "notes": []
+    }
+  ],
+  "best_plan": "random_forest_churn_prediction",
+  "repair_rounds": 1,
+  "replans": 0,
+  "history": [
+    {
+      "plan_name": "random_forest_churn_prediction",
+      "passed": false,
+      "diagnostics": [
+        {
+          "code": "E_RUNTIME",
+          "stage": "sandbox",
+          "message": "TypeError: Cannot interpret '<StringDtype(na_value=nan)>' as a data type (at issubdtype:534)",
+          "operator": "DataPreprocessor@1",
+          "hint": ""
+        }
+      ],
+      "metrics": {},
+      "metric_std": {},
+      "resources": {
+        "peak_rss_mb": 228.7
+      },
+      "notes": []
+    }
+  ],
+  "repairs": [
+    {
+      "operator": "DataPreprocessor@1",
+      "revision": 1,
+      "diagnostic": {
+        "code": "E_RUNTIME",
+        "stage": "sandbox",
+        "message": "TypeError: Cannot interpret '<StringDtype(na_value=nan)>' as a data type (at issubdtype:534)",
+        "operator": "DataPreprocessor@1",
+        "hint": ""
+      },
+      "lessons": [],
+      "fixed": true,
+      "before": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass DataPreprocessor(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"DataPreprocessor\",\n        kind=OperatorKind.FEATURE,\n        version=1,\n        origin=\"synthesized\",\n        description=\"删除标识列并处理字符串格式的数值特征，同时填补缺失值。\",\n        conditions=[\"输入包含customer_id及字符串数值列\"],\n        dependencies=[\"pandas\", \"numpy\", \"sklearn\"],\n        params={\"id_columns\": [\"customer_id\"], \"numeric_cols\": [\"total_charges\"]}\n    )\n\n    def __init__(self, id_columns=[\"customer_id\"], numeric_cols=[\"total_charges\"]):\n        self.id_columns = id_columns\n        self.numeric_cols = numeric_cols\n\n    def fit(self, X, y=None):\n        X = X.copy()\n        self.medians_ = {}\n        for col in self.numeric_cols:\n            # 强制转换为数值，非数值变为NaN\n            series = pd.to_numeric(X[col], errors='coerce')\n            self.medians_[col] = series.median()\n        return self\n\n    def transform(self, X):\n        X = X.copy()\n        \n        # 1. 删除标识列\n        X = X.drop(columns=[c for c in self.id_columns if c in X.columns], errors='ignore')\n        \n        # 2. 转换字符串数值列\n        for col in self.numeric_cols:\n            if col in X.columns:\n                # 转换类型\n                X[col] = pd.to_numeric(X[col], errors='coerce')\n                # 处理产生的缺失值和无穷值\n                X[col] = X[col].replace([np.inf, -np.inf], np.nan)\n                X[col] = X[col].fillna(self.medians_.get(col, 0))\n        \n        # 3. 对整体DataFrame存在的其他缺失值进行处理（兜底）\n        # 数值列填中位数，非数值列填\"Missing\"\n        for col in X.columns:\n            if X[col].isnull().any():\n                if np.issubdtype(X[col].dtype, np.number):\n                    X[col] = X[col].fillna(X[col].median())\n                else:\n                    X[col] = X[col].fillna(\"Missing\").astype(str)\n                    \n        return X\n",
+      "after": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass DataPreprocessor(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"DataPreprocessor\",\n        kind=OperatorKind.FEATURE,\n        version=1,\n        origin=\"synthesized\",\n        description=\"删除标识列并处理字符串格式的数值特征，同时填补缺失值。\",\n        conditions=[\"输入包含customer_id及字符串数值列\"],\n        dependencies=[\"pandas\", \"numpy\", \"sklearn\"],\n        params={\"id_columns\": [\"customer_id\"], \"numeric_cols\": [\"total_charges\"]}\n    )\n\n    def __init__(self, id_columns=[\"customer_id\"], numeric_cols=[\"total_charges\"]):\n        self.id_columns = id_columns\n        self.numeric_cols = numeric_cols\n\n    def fit(self, X, y=None):\n        X = X.copy()\n        self.medians_ = {}\n        for col in self.numeric_cols:\n            if col in X.columns:\n                series = pd.to_numeric(X[col], errors='coerce')\n                self.medians_[col] = series.median() if not series.isna().all() else 0.0\n        return self\n\n    def transform(self, X):\n        X = X.copy()\n        \n        # 1. 删除标识列\n        X = X.drop(columns=[c for c in self.id_columns if c in X.columns], errors='ignore')\n        \n        # 2. 转换指定数值列\n        for col in self.numeric_cols:\n            if col in X.columns:\n                X[col] = pd.to_numeric(X[col], errors='coerce')\n                X[col] = X[col].replace([np.inf, -np.inf], np.nan)\n                X[col] = X[col].fillna(self.medians_.get(col, 0.0))\n        \n        # 3. 对整体DataFrame其他列处理（规避复杂dtype导致issubdtype报错）\n        for col in X.columns:\n            if X[col].isnull().any():\n                # 使用类型检查而非复杂的issubdtype，优先处理数值列\n                if pd.api.types.is_numeric_dtype(X[col]):\n                    X[col] = X[col].fillna(X[col].median() if not X[col].dropna().empty else 0.0)\n                else:\n                    # 显式转换为对象类型以处理复杂类型缺失\n                    X[col] = X[col].fillna(\"Missing\").astype(str)\n                    \n        return X\n"
+    }
+  ],
+  "search": [],
+  "registered": [],
+  "lessons_learned": [
+    "Lesson:2bef5526"
+  ],
+  "lessons_used": [],
+  "kg_writes": [
+    "ValidationRun:kg_catalog_2-random_forest_churn_prediction"
+  ],
+  "artifacts": {
+    "pipeline": "examples/evaluation/kg_catalog_2/runs/kg_catalog_2/pipeline.py",
+    "state": "examples/evaluation/kg_catalog_2/runs/kg_catalog_2/state.json",
+    "report_md": "examples/evaluation/kg_catalog_2/runs/kg_catalog_2/report.md",
+    "report_html": "examples/evaluation/kg_catalog_2/runs/kg_catalog_2/report.html"
+  },
+  "llm_model": "gemini-3.5-flash",
+  "retrieval": {
+    "scenario": "telecom_churn",
+    "scenario_metrics": [],
+    "operator_options": {
+      "model": [
+        {
+          "ref": "LightGBMModel@1",
+          "executable": true,
+          "description": "梯度提升树（LightGBM）：通常是表格数据上最强的选择。",
+          "params": [
+            "n_estimators",
+            "learning_rate",
+            "num_leaves",
+            "class_weight",
+            "random_state"
+          ],
+          "defaults": {
+            "n_estimators": 300,
+            "learning_rate": 0.05,
+            "num_leaves": 31,
+            "class_weight": "balanced",
+            "random_state": 42
+          },
+          "score": 0.0,
+          "breakdown": {},
+          "evidence": [],
+          "evidence_ids": [
+            "Operator:LightGBMModel@1"
+          ]
+        },
+        {
+          "ref": "LogisticRegressionModel@1",
+          "executable": true,
+          "description": "L2 逻辑回归：系数可解释，也是稀疏文本特征上的强基线。",
+          "params": [
+            "C",
+            "class_weight",
+            "max_iter",
+            "random_state"
+          ],
+          "defaults": {
+            "C": 1.0,
+            "class_weight": "balanced",
+            "max_iter": 1000,
+            "random_state": 42
+          },
+          "score": 0.0,
+          "breakdown": {},
+          "evidence": [],
+          "evidence_ids": [
+            "Operator:LogisticRegressionModel@1"
+          ]
+        },
+        {
+          "ref": "RandomForestModel@1",
+          "executable": true,
+          "description": "随机森林：不受特征尺度影响，能拟合非线性，可输出特征重要性。",
+          "params": [
+            "n_estimators",
+            "max_depth",
+            "class_weight",
+            "random_state"
+          ],
+          "defaults": {
+            "n_estimators": 300,
+            "max_depth": null,
+            "class_weight": "balanced",
+            "random_state": 42
+          },
+          "score": 0.0,
+          "breakdown": {},
+          "evidence": [],
+          "evidence_ids": [
+            "Operator:RandomForestModel@1"
+          ]
+        }
+      ],
+      "imputer": [
+        {
+          "ref": "MissingValueImputer@1",
+          "executable": true,
+          "description": "数值列用中位数、类别列用众数填补缺失值。",
+          "params": [
+            "args",
+            "kwargs"
+          ],
+          "defaults": {},
+          "score": 0.0,
+          "breakdown": {},
+          "evidence": [],
+          "evidence_ids": [
+            "Operator:MissingValueImputer@1"
+          ]
+        }
+      ],
+      "encoder": [
+        {
+          "ref": "OneHotCategoricalEncoder@1",
+          "executable": true,
+          "description": "类别列 one-hot 编码，忽略未见类别。",
+          "params": [
+            "max_categories"
+          ],
+          "defaults": {
+            "max_categories": 20
+          },
+          "score": 0.0,
+          "breakdown": {},
+          "evidence": [],
+          "evidence_ids": [
+            "Operator:OneHotCategoricalEncoder@1"
+          ]
+        }
+      ],
+      "scaler": [
+        {
+          "ref": "StandardFeatureScaler@1",
+          "executable": true,
+          "description": "数值列 Z-score 标准化，线性模型和基于距离的模型需要。",
+          "params": [
+            "args",
+            "kwargs"
+          ],
+          "defaults": {},
+          "score": 0.0,
+          "breakdown": {},
+          "evidence": [],
+          "evidence_ids": [
+            "Operator:StandardFeatureScaler@1"
+          ]
+        }
+      ]
+    },
+    "lessons": [],
+    "evidence_catalog": {
+      "Operator:LightGBMModel@1": {
+        "type": "operator",
+        "operator_refs": [
+          "LightGBMModel@1"
+        ]
+      },
+      "Operator:LogisticRegressionModel@1": {
+        "type": "operator",
+        "operator_refs": [
+          "LogisticRegressionModel@1"
+        ]
+      },
+      "Operator:RandomForestModel@1": {
+        "type": "operator",
+        "operator_refs": [
+          "RandomForestModel@1"
+        ]
+      },
+      "Operator:MissingValueImputer@1": {
+        "type": "operator",
+        "operator_refs": [
+          "MissingValueImputer@1"
+        ]
+      },
+      "Operator:OneHotCategoricalEncoder@1": {
+        "type": "operator",
+        "operator_refs": [
+          "OneHotCategoricalEncoder@1"
+        ]
+      },
+      "Operator:StandardFeatureScaler@1": {
+        "type": "operator",
+        "operator_refs": [
+          "StandardFeatureScaler@1"
+        ]
+      }
+    },
+    "lesson_ids": []
+  },
+  "evidence_checks": [
+    {
+      "plan": "random_forest_churn_prediction",
+      "step": 1,
+      "evidence_ids": [],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "random_forest_churn_prediction",
+      "step": 2,
+      "evidence_ids": [
+        "Operator:MissingValueImputer@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "random_forest_churn_prediction",
+      "step": 3,
+      "evidence_ids": [
+        "Operator:OneHotCategoricalEncoder@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    },
+    {
+      "plan": "random_forest_churn_prediction",
+      "step": 4,
+      "evidence_ids": [
+        "Operator:RandomForestModel@1"
+      ],
+      "scope_valid": true,
+      "errors": [],
+      "semantic_verified": false
+    }
+  ],
+  "llm_calls": [
+    {
+      "tag": "plan",
+      "request_hash": "608e1480ba0a9f85",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 5.203922137618065,
+      "usage": {
+        "completion_tokens": 1172,
+        "prompt_tokens": 3853,
+        "total_tokens": 5025,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 574,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 597,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 3853
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "synthesize",
+      "request_hash": "7848c537ade02648",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 2.8217247501015663,
+      "usage": {
+        "completion_tokens": 660,
+        "prompt_tokens": 1480,
+        "total_tokens": 2140,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 660,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 1480
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "repair",
+      "request_hash": "2d6f2ef140c0d353",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 2.7692887261509895,
+      "usage": {
+        "completion_tokens": 691,
+        "prompt_tokens": 1648,
+        "total_tokens": 2339,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 691,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 1648
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    },
+    {
+      "tag": "lesson",
+      "request_hash": "dd4b9b036247aff3",
+      "model": "gemini-3.5-flash",
+      "source": "remote",
+      "seconds": 5.454705648124218,
+      "usage": {
+        "completion_tokens": 702,
+        "prompt_tokens": 1616,
+        "total_tokens": 2318,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 504,
+          "rejected_prediction_tokens": null,
+          "text_tokens": 198,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": null,
+          "cached_tokens": 0,
+          "image_tokens": 0,
+          "text_tokens": 1616
+        },
+        "claude_cache_creation_1_h_tokens": 0,
+        "claude_cache_creation_5_m_tokens": 0,
+        "input_tokens": 0,
+        "input_tokens_details": null,
+        "output_tokens": 0
+      }
+    }
+  ],
+  "knowledge_mode": "catalog",
+  "verify_config": {
+    "cv_folds": 5,
+    "seeds": [
+      42,
+      7,
+      2024
+    ],
+    "smoke_rows": 300,
+    "timeout_seconds": 180.0,
+    "memory_mb": 8192,
+    "max_metric_std": 0.03,
+    "leakage_ceiling": 0.995,
+    "report_metrics": [
+      "roc_auc",
+      "recall",
+      "precision",
+      "f1",
+      "recall_at_20"
+    ],
+    "n_threads": 4
+  },
+  "timings": {
+    "PLAN": 5.36,
+    "BUILD": 2.82,
+    "VERIFY": 16.95,
+    "ROUTE": 0.0,
+    "REPAIR": 2.77,
+    "CURATE": 5.47
+  },
+  "log": [
+    "[PLAN] 场景 telecom_churn；画像标签 ['has_missing_values', 'numeric_features', 'has_categorical_features', 'low_cardinality', 'string_typed_numeric', 'id_columns', 'imbalanced', 'time_tenure', 'mixed_features']",
+    "[PLAN] TaskSpec：binary_classification，目标 churn，主指标 recall >= 0.75",
+    "[PLAN] 候选方案：['random_forest_churn_prediction(*DataPreprocessor → MissingValueImputer → OneHotCategoricalEncoder → RandomForestModel)']",
+    "[PLAN] 完成，用时 5.4s → BUILD",
+    "[BUILD] 生成算子 DataPreprocessor@1：删除无关的客户标识列，并将字符串形式的数值列转换为浮点数以供模型处理。",
+    "[BUILD] 完成，用时 2.8s → VERIFY",
+    "[VERIFY] random_forest_churn_prediction：未通过，recall=nan；E_RUNTIME TypeError: Cannot interpret '<StringDtype(na_value=nan)>' as a data type (at issubdtype:534)",
+    "[VERIFY] 完成，用时 1.6s → ROUTE",
+    "[ROUTE] 完成，用时 0.0s → REPAIR",
+    "[REPAIR] 修复 DataPreprocessor@1 第 1 轮：E_RUNTIME TypeError: Cannot interpret '<StringDtype(na_value=nan)>' as a data type (at iss",
+    "[REPAIR] 完成，用时 2.8s → VERIFY",
+    "[VERIFY] random_forest_churn_prediction：未通过，recall=0.5969；M_THRESHOLD recall = 0.5969 低于阈值 0.75",
+    "[VERIFY] 完成，用时 15.3s → ROUTE",
+    "[ROUTE] 没有方案通过验证",
+    "[ROUTE] 完成，用时 0.0s → CURATE",
+    "[CURATE] 写入 KG：1 条 ValidationRun；注册新算子 []；新增经验 1 条",
+    "[CURATE] 完成，用时 5.5s → FAILED"
+  ]
+}

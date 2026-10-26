@@ -99,6 +99,7 @@ class Step(BaseModel):
     synth_spec: SynthSpec | None = None
     params: dict[str, Any] = Field(default_factory=dict)
     rationale: str = ""
+    evidence_ids: list[str] = Field(default_factory=list, description="本轮上下文中的证据 ID；引用仅表示模型声明采用")
 
     @model_validator(mode="after")
     def _check(self) -> "Step":
@@ -250,6 +251,7 @@ class SearchCandidate(BaseModel):
     chain: str = Field(description="方案结构，如 TotalChargesCleaner → ... → LogisticRegressionModel")
     prior: float | None = Field(default=None, description="KG 历史 + 本次观测估计的主指标（重复方案为空）")
     evidence: dict[str, str] = Field(default_factory=dict, description="每步的估计值与证据来源")
+    observations: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     selected: bool = False
     reason: str = ""
 
@@ -289,6 +291,9 @@ class RunState(BaseModel):
     artifacts: dict[str, str] = Field(default_factory=dict)
     llm_model: str | None = None
     retrieval: dict[str, Any] = Field(default_factory=dict, description="Planner 检索到的候选算子与经验（设计依据）")
+    evidence_checks: list[dict[str, Any]] = Field(default_factory=list, description="已接受步骤的引用范围检查；不代表语义落实")
+    llm_calls: list[dict[str, Any]] = Field(default_factory=list)
+    knowledge_mode: str = "full"
     verify_config: dict[str, Any] = Field(default_factory=dict)
     timings: dict[str, float] = Field(default_factory=dict, description="各阶段累计耗时（秒）")
     log: list[str] = Field(default_factory=list)

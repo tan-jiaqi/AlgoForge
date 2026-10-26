@@ -1,0 +1,16 @@
+[PLAN] 受控注入实验：固定种子运行的真实生成方案与源码，不重新规划或生成；本次独立调用真实 LLM 修复。
+[PLAN] 完成，用时 0.1s → BUILD
+[BUILD] 已验证原始源码后注入 NaN：TotalChargesCleaner@2；原始源码和补丁见 injection.json
+[BUILD] 完成，用时 3.8s → VERIFY
+[VERIFY] interpretable_logreg_pipeline：未通过，recall=nan；E_NAN 输出引入了新的 NaN/Inf
+[VERIFY] 完成，用时 1.6s → ROUTE
+[ROUTE] 完成，用时 0.0s → REPAIR
+2026-10-26 14:51:36,198 INFO httpx2: HTTP Request: POST https://api15.xhub.chat/v1/chat/completions "HTTP/1.1 200 OK"
+[REPAIR] 修复 TotalChargesCleaner@2 第 1 轮：E_NAN 输出引入了新的 NaN/Inf
+[REPAIR] 完成，用时 3.8s → VERIFY
+[VERIFY] interpretable_logreg_pipeline：通过，recall=0.7785
+[VERIFY] 完成，用时 4.2s → ROUTE
+[ROUTE] 完成，用时 0.0s → CURATE
+2026-10-26 14:51:42,409 INFO httpx2: HTTP Request: POST https://api15.xhub.chat/v1/chat/completions "HTTP/1.1 200 OK"
+[CURATE] 写入 KG：1 条 ValidationRun；注册新算子 ['TotalChargesCleaner@2']；新增经验 1 条
+[CURATE] 完成，用时 2.0s → DONE

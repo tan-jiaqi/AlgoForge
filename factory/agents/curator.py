@@ -4,7 +4,7 @@
    并在 KG 中写为可执行 Operator 节点（DERIVED_FROM 指向参考的历史实现）；
 2. 回写验证结果：每个候选方案的最终验证结果写成 ValidationRun（失败的也写）；
 3. 提炼经验：把成功的"诊断 → 修复"交给 LLM 归纳成 Lesson（带诊断码），下次修复同类错误时检索使用；
-4. 累计被使用过的 Lesson 的命中次数。
+4. 累计被提供给 Agent 的 Lesson 的检索命中次数（不代表采纳）。
 """
 
 from __future__ import annotations
@@ -76,7 +76,12 @@ class Curator:
                 save_operator(gen.source, gen.key, self.kg_path)
             added = exec_operator_source(gen.source)
             for cls in added:
-                meta = cls.meta.model_copy(update={"origin": "synthesized", "parent": gen.spec.reference or cls.meta.parent})
+                # 版本谱系与"参考了哪段历史代码"分开：LLM 没有引用历史实现时 reference 为空，
+                # 但同名旧版本仍是它的上一版，编号 @2 也是据此顺延的。
+                previous = max((d["version"] for _, d in self.kg.nodes("Operator")
+                                if d["name"] == cls.meta.name and d["version"] < cls.meta.version), default=None)
+                parent = gen.spec.reference or cls.meta.parent or (f"{cls.meta.name}@{previous}" if previous else None)
+                meta = cls.meta.model_copy(update={"origin": "synthesized", "parent": parent})
                 self.kg.add_operator(meta, executable=True, code=gen.source)
                 state.registered.append(meta.key)
 
@@ -159,4 +164,3 @@ class Curator:
             LessonRecord,
             tag="lesson",
         )
-

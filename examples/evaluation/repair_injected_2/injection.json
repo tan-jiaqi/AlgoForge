@@ -1,0 +1,35 @@
+{
+  "kind": "controlled_nan_injection",
+  "seed_run": "probe_2",
+  "operator": "TotalChargesCleaner@2",
+  "original": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass TotalChargesCleaner(TransformerMixin, Operator):\n    meta = OperatorMeta(\n        name=\"TotalChargesCleaner\",\n        kind=OperatorKind.IMPUTER,\n        version=2,\n        origin=\"synthesized\",\n        description=\"将字符串类型的总费用列转换为数值，处理空白异常值并增加在网时长分桶特征\",\n        conditions=[\"数据包含total_charges列\", \"存在tenure在网时长列\"],\n        dependencies=[\"pandas\", \"numpy\", \"sklearn\"],\n        params={\"col\": \"total_charges\", \"tenure_col\": \"tenure\"},\n        parent=\"TotalChargesCleaner@1\"\n    )\n\n    def __init__(self, col=\"total_charges\", tenure_col=\"tenure\"):\n        self.col = col\n        self.tenure_col = tenure_col\n\n    def fit(self, X, y=None):\n        self.mean_total_charges_ = 0.0\n        return self\n\n    def transform(self, X):\n        X = X.copy()\n        \n        # 1. 清洗 total_charges 列\n        # Lesson:69d51358 - 处理空白字符串导致转换失败的问题\n        if self.col in X.columns:\n            X[self.col] = pd.to_numeric(\n                X[self.col].astype(str).str.strip(), \n                errors=\"coerce\"\n            ).fillna(0.0)\n            \n            # 确保不存在无穷值\n            X[self.col] = X[self.col].replace([np.inf, -np.inf], 0.0)\n\n        # 2. 增加在网时长分桶特征 (tenure_binned)\n        # 增加可解释性特征，将持续时间分为阶段\n        if self.tenure_col in X.columns:\n            bins = [0, 6, 12, 24, 48, 60, 100]\n            labels = ['0-6m', '7-12m', '13-24m', '25-48m', '49-60m', '60m+']\n            X['tenure_binned'] = pd.cut(\n                X[self.tenure_col], \n                bins=bins, \n                labels=labels, \n                include_lowest=True\n            ).astype(str)\n            \n            # 处理分桶后的缺失值\n            X['tenure_binned'] = X['tenure_binned'].fillna('unknown')\n\n        return X\n",
+  "injected": "import numpy as np\nimport pandas as pd\nfrom sklearn.base import TransformerMixin\nfrom factory.operators.base import Operator, OperatorMeta\nfrom factory.schemas import OperatorKind\n\nclass TotalChargesCleaner(TransformerMixin, Operator):\n    meta = OperatorMeta(name='TotalChargesCleaner', kind=OperatorKind.IMPUTER, version=2, origin='synthesized', description='将字符串类型的总费用列转换为数值，处理空白异常值并增加在网时长分桶特征', conditions=['数据包含total_charges列', '存在tenure在网时长列'], dependencies=['pandas', 'numpy', 'sklearn'], params={'col': 'total_charges', 'tenure_col': 'tenure'}, parent='TotalChargesCleaner@1')\n\n    def __init__(self, col='total_charges', tenure_col='tenure'):\n        self.col = col\n        self.tenure_col = tenure_col\n\n    def fit(self, X, y=None):\n        self.mean_total_charges_ = 0.0\n        return self\n\n    def transform(self, X):\n        _evaluation_raw = X['total_charges'].copy()\n        X = X.copy()\n        if self.col in X.columns:\n            X[self.col] = pd.to_numeric(X[self.col].astype(str).str.strip(), errors='coerce').fillna(0.0)\n            X[self.col] = X[self.col].replace([np.inf, -np.inf], 0.0)\n        if self.tenure_col in X.columns:\n            bins = [0, 6, 12, 24, 48, 60, 100]\n            labels = ['0-6m', '7-12m', '13-24m', '25-48m', '49-60m', '60m+']\n            X['tenure_binned'] = pd.cut(X[self.tenure_col], bins=bins, labels=labels, include_lowest=True).astype(str)\n            X['tenure_binned'] = X['tenure_binned'].fillna('unknown')\n        X['total_charges'] = pd.to_numeric(_evaluation_raw.astype(str).str.strip(), errors='coerce')\n        return X\n",
+  "original_sha256": "7e5bc0a30d210d40b8020a32f9390cd2ef7a2c379cde61182840a1491ae775ae",
+  "injected_sha256": "b9e99b275fcb2daa6d86ad46ce1b7db4f00a3529371f5a9cd00ded3248be83d4",
+  "patch": "--- original\n+++ injected\n@@ -5,19 +5,9 @@\n from factory.schemas import OperatorKind\n \n class TotalChargesCleaner(TransformerMixin, Operator):\n-    meta = OperatorMeta(\n-        name=\"TotalChargesCleaner\",\n-        kind=OperatorKind.IMPUTER,\n-        version=2,\n-        origin=\"synthesized\",\n-        description=\"将字符串类型的总费用列转换为数值，处理空白异常值并增加在网时长分桶特征\",\n-        conditions=[\"数据包含total_charges列\", \"存在tenure在网时长列\"],\n-        dependencies=[\"pandas\", \"numpy\", \"sklearn\"],\n-        params={\"col\": \"total_charges\", \"tenure_col\": \"tenure\"},\n-        parent=\"TotalChargesCleaner@1\"\n-    )\n+    meta = OperatorMeta(name='TotalChargesCleaner', kind=OperatorKind.IMPUTER, version=2, origin='synthesized', description='将字符串类型的总费用列转换为数值，处理空白异常值并增加在网时长分桶特征', conditions=['数据包含total_charges列', '存在tenure在网时长列'], dependencies=['pandas', 'numpy', 'sklearn'], params={'col': 'total_charges', 'tenure_col': 'tenure'}, parent='TotalChargesCleaner@1')\n \n-    def __init__(self, col=\"total_charges\", tenure_col=\"tenure\"):\n+    def __init__(self, col='total_charges', tenure_col='tenure'):\n         self.col = col\n         self.tenure_col = tenure_col\n \n@@ -26,32 +16,15 @@\n         return self\n \n     def transform(self, X):\n+        _evaluation_raw = X['total_charges'].copy()\n         X = X.copy()\n-        \n-        # 1. 清洗 total_charges 列\n-        # Lesson:69d51358 - 处理空白字符串导致转换失败的问题\n         if self.col in X.columns:\n-            X[self.col] = pd.to_numeric(\n-                X[self.col].astype(str).str.strip(), \n-                errors=\"coerce\"\n-            ).fillna(0.0)\n-            \n-            # 确保不存在无穷值\n+            X[self.col] = pd.to_numeric(X[self.col].astype(str).str.strip(), errors='coerce').fillna(0.0)\n             X[self.col] = X[self.col].replace([np.inf, -np.inf], 0.0)\n-\n-        # 2. 增加在网时长分桶特征 (tenure_binned)\n-        # 增加可解释性特征，将持续时间分为阶段\n         if self.tenure_col in X.columns:\n             bins = [0, 6, 12, 24, 48, 60, 100]\n             labels = ['0-6m', '7-12m', '13-24m', '25-48m', '49-60m', '60m+']\n-            X['tenure_binned'] = pd.cut(\n-                X[self.tenure_col], \n-                bins=bins, \n-                labels=labels, \n-                include_lowest=True\n-            ).astype(str)\n-            \n-            # 处理分桶后的缺失值\n+            X['tenure_binned'] = pd.cut(X[self.tenure_col], bins=bins, labels=labels, include_lowest=True).astype(str)\n             X['tenure_binned'] = X['tenure_binned'].fillna('unknown')\n-\n+        X['total_charges'] = pd.to_numeric(_evaluation_raw.astype(str).str.strip(), errors='coerce')\n         return X",
+  "original_validation": {
+    "plan_name": "interpretable_logreg_pipeline",
+    "passed": true,
+    "diagnostics": [],
+    "metrics": {
+      "recall": 0.7785,
+      "roc_auc": 0.8134,
+      "precision": 0.4814,
+      "f1": 0.5948,
+      "recall_at_20": 0.4542
+    },
+    "metric_std": {
+      "recall": 0.0007,
+      "roc_auc": 0.0007,
+      "precision": 0.0012,
+      "f1": 0.0009,
+      "recall_at_20": 0.0018
+    },
+    "resources": {
+      "fit_seconds": 0.094,
+      "predict_ms_per_1k": 45.34,
+      "peak_rss_mb": 258.2
+    },
+    "notes": []
+  }
+}
