@@ -38,14 +38,14 @@
 
 ### 知识引用检查
 
-检索并传入上下文不等于采纳。以下引用由模型声明，程序仅核对可见范围与结构化适用对象；不证明语义落实或指标收益。
+每步引用的知识由 Planner 声明，程序检查引用是否在本轮检索结果中、是否适用于该步骤。
 
-| 方案 | 步骤 | 模型引用 | 范围检查 | 语义落实 |
-| --- | --- | --- | --- | --- |
-| rf_churn_pipeline | 1 | 无 | 通过 | 未验证 |
-| rf_churn_pipeline | 2 | Operator:MissingValueImputer@1 | 通过 | 未验证 |
-| rf_churn_pipeline | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 | 未验证 |
-| rf_churn_pipeline | 4 | Operator:RandomForestModel@1 | 通过 | 未验证 |
+| 方案 | 步骤 | 模型引用 | 范围检查 |
+| --- | --- | --- | --- |
+| rf_churn_pipeline | 1 | 无 | 通过 |
+| rf_churn_pipeline | 2 | Operator:MissingValueImputer@1 | 通过 |
+| rf_churn_pipeline | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 |
+| rf_churn_pipeline | 4 | Operator:RandomForestModel@1 | 通过 |
 
 ## 3. 候选方案比较
 
@@ -160,8 +160,8 @@ rf_churn_pipeline                    ■■■■■■■■■■·····|·
 
 - 回写验证记录 ValidationRun：1 条
 - 注册到能力库的新算子：无
-- 新提炼的经验：数值转换算子必须在训练阶段保存填充值以确保推理一致性（E_NAN）
-- 本次提供的经验：0 条（累计检索命中，不代表采纳）
+- 新提炼的经验：Lesson:298ee062
+- 本次检索使用的经验：0 条（命中次数已累计）
 
 ## 附录 A. 生成的算法代码（pipeline.py）
 

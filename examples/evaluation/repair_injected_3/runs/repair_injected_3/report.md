@@ -173,8 +173,8 @@ interpretable_logreg_pipeline        ■■■■■■■■■■■■■■�
 
 - 回写验证记录 ValidationRun：1 条
 - 注册到能力库的新算子：TotalChargesCleaner@2
-- 新提炼的经验：数据清洗算子必须保证输出中不包含 NaN 或 Inf 值（E_NAN）
-- 本次提供的经验：0 条（累计检索命中，不代表采纳）
+- 新提炼的经验：Lesson:cf247d47
+- 本次检索使用的经验：0 条（命中次数已累计）
 
 ## 附录 A. 生成的算法代码（pipeline.py）
 

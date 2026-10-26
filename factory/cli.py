@@ -128,7 +128,7 @@ def run(
             mark = {True: "[green]已修复[/green]", False: "[red]未修复[/red]", None: "-"}[rec.fixed]
             console.print(f"  修复 {rec.operator} r{rec.revision}：{rec.diagnostic.code.value} {rec.diagnostic.message[:60]} → {mark}")
         console.print(f"  注册到能力库：{state.registered or '无'}；新增经验：{len(state.lessons_learned)} 条；"
-                      f"提供经验：{len(state.lessons_used)} 条（不代表采纳）")
+                      f"使用经验：{len(state.lessons_used)} 条")
     console.rule("运行记录")
     for line in state.log:
         console.print("  " + line)

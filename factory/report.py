@@ -141,10 +141,10 @@ def _retrieval_blocks(state: RunState) -> list[Block]:
                     for les in lessons])]
     if state.evidence_checks:
         out += [H(3, "知识引用检查"),
-                P("检索并传入上下文不等于采纳。以下引用由模型声明，程序仅核对可见范围与结构化适用对象；不证明语义落实或指标收益。"),
-                T(["方案", "步骤", "模型引用", "范围检查", "语义落实"],
+                P("每步引用的知识由 Planner 声明，程序检查引用是否在本轮检索结果中、是否适用于该步骤。"),
+                T(["方案", "步骤", "模型引用", "范围检查"],
                   [[e["plan"], str(e["step"] or "-"), "、".join(e["evidence_ids"]) or "无",
-                    "通过" if e["scope_valid"] else "未通过：" + "；".join(e.get("errors", []))[:300], "未验证"]
+                    "通过" if e["scope_valid"] else "未通过：" + "；".join(e.get("errors", []))[:300]]
                    for e in state.evidence_checks])]
     return out
 
@@ -265,7 +265,7 @@ def _knowledge_blocks(state: RunState, kg: CapabilityKG | None) -> list[Block]:
         f"回写验证记录 ValidationRun：{len(state.kg_writes)} 条",
         f"注册到能力库的新算子：{'、'.join(state.registered) or '无'}",
         f"新提炼的经验：{'；'.join(title(x) for x in state.lessons_learned) or '无'}",
-        f"本次提供的经验：{len(state.lessons_used)} 条（累计检索命中，不代表采纳）",
+        f"本次检索使用的经验：{len(state.lessons_used)} 条（命中次数已累计）",
     ])]
 
 

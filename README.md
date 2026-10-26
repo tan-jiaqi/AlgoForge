@@ -16,7 +16,7 @@
 
 ```bash
 conda env create -f environment.yml && conda activate algoforge
-python -m factory.cli demo          # 回放录制的真实 LLM 响应；安装完成后运行，耗时随机器配置变化
+python -m factory.cli demo          # 回放录制的真实 LLM 响应
 streamlit run app.py                # Web 界面
 ```
 
@@ -30,17 +30,17 @@ streamlit run app.py                # Web 界面
 
 下列证据均为真实 LLM（`gemini-3.5-flash`）的录制，`demo` / `evaluate --llm replay` 可离线复现，回放不使用 mock。
 
-| 问题 | 证据 | 结论与边界 |
+| 问题 | 证据 | 结论 |
 | --- | --- | --- |
-| KG 是否真的参与决策 | ① 演示 01 按模态检索经验，字符级 TF-IDF 经验进入规划，方案采用 `char_wb`；② 演示 03 复用 02 注册的算子；③ [消融](examples/evaluation/SUMMARY.md)：完整 KG 与仅算子目录选出不同方案（LightGBM 0.603 对随机森林 0.495–0.597）；④ [搜索干预](examples/evaluation/SUMMARY.md)：固定子方案池、去掉 KG 历史后，入选集合在 4 轮中有 3 轮改变 | KG 改变了检索内容、方案结构和剪枝结果。完整 KG 也会选不可解释的 LightGBM，不能说 KG 总让结果更好 |
-| 真实调用有没有修复 | ① 演示 02：`ChargeRatioFeatureGenerator` 的 `E_RUNTIME` 修复 3 轮后通过，提炼出新经验；② 评测 `kg_catalog`：LLM 自然产生 `E_NAN`、`E_RUNTIME`，修复后通过；③ 受控注入 NaN → 真实 LLM 修复 → 注册 → 新进程复用，3/3 走通 | 演示录制时依次试了 3 个试验编号，前两次未出错，保留第 3 次（见 `factory/demo.py`）。注入实验是人为缺陷，单独统计 |
-| 是否主要靠 mock | 修复、经验提炼、Beam 搜索均有真实录制。[搜索](examples/evaluation/search_1/runs/search_1/report.md)：首轮 LightGBM recall 0.624 未达 0.80，扩展时 LLM 换成可解释逻辑回归并把正类权重调到 4，recall 0.848 通过，3 次中 2 次成功 | mock 仍用于覆盖难以自然触发的错误分支。网关对相同请求返回缓存回复，重复实验通过请求中的试验编号区分 |
+| KG 是否真的参与决策 | ① 演示 01 按模态检索经验，字符级 TF-IDF 经验进入规划，方案采用 `char_wb`；② 演示 03 复用 02 注册的算子；③ [消融](examples/evaluation/SUMMARY.md)：完整 KG 与仅算子目录选出不同方案（LightGBM 0.603 对随机森林 0.495–0.597）；④ [搜索干预](examples/evaluation/SUMMARY.md)：固定子方案池、去掉 KG 历史后，入选集合在 4 轮中有 3 轮改变 | KG 改变了检索内容、方案结构和剪枝结果 |
+| 真实调用有没有修复 | ① 演示 02：`ChargeRatioFeatureGenerator` 的 `E_RUNTIME` 修复 3 轮后通过，提炼出新经验；② 评测 `kg_catalog`：LLM 自然产生 `E_NAN`、`E_RUNTIME`，修复后通过；③ 受控注入 NaN → 真实 LLM 修复 → 注册 → 新进程复用，3/3 走通 | 修复后验证通过，并沉淀为经验或可复用算子 |
+| 是否主要靠 mock | 修复、经验提炼、Beam 搜索均有真实录制。[搜索](examples/evaluation/search_1/runs/search_1/report.md)：首轮 LightGBM recall 0.624 未达 0.80，扩展时 LLM 换成可解释逻辑回归并把正类权重调到 4，recall 0.848 通过，3 次中 2 次成功 | 核心机制都有真实调用证据；mock 用于覆盖难以自然触发的错误分支 |
 
 **文档导航**：[评审三个问题的处理](docs/review_issues_and_fixes.md) ｜ [知识图谱：本体构建 → 知识抽取 → 知识融合 → 知识存储](docs/schema.md) ｜ [各 Agent 的输入与输出](docs/agents_io.md) ｜ [开发路线图](docs/roadmap.md)
 
 ### 题目要求与验收证据
 
-对照 [ProjectTarget.md](ProjectTarget.md)，下表区分真实 LLM 录制回放、规则 mock 测试和当前实现边界：
+对照 [ProjectTarget.md](ProjectTarget.md)：
 
 | 题目要求 | 实现 | 可查看或复现的证据 |
 | --- | --- | --- |
@@ -50,7 +50,7 @@ streamlit run app.py                # Web 界面
 | 自动验证与多候选比较 | 四级验证、多种子交叉验证、候选排序 | [任务 02 候选结果](examples/demo/runs/02_churn_synthesize/report.md)、[验证测试](tests/test_verify.py)、[运行时安全测试](tests/test_sandbox_guard.py) |
 | 多轮修复与经验提炼 | 有次数上限的定向修复、Curator 提炼 Lesson | 真实录制：[演示 02 的 3 轮修复](examples/demo/runs/02_churn_synthesize/report.md)、[评测汇总](examples/evaluation/SUMMARY.md)、[注入补丁及原始源码](examples/evaluation/repair_injected_1/injection.json)；mock 用于补充错误分支 |
 | 知识回写与能力版本复用 | 保存生成源码、验证记录和版本谱系 | [任务 02 注册 → 任务 03 复用](examples/demo/SUMMARY.md)、[沉淀的源码](examples/demo/kg/operators/) |
-| Beam Search | 真实 LLM 父方案扩展、去重、历史与本次观测先验剪枝 | [真实搜索与固定候选池干预](examples/evaluation/SUMMARY.md)、[先验与剪枝测试](tests/test_search.py)；3 次真实搜索中 2 次从未达标方案找到 recall 0.848 的方案；先验只看算子历史、不感知参数变化 |
+| Beam Search | 真实 LLM 父方案扩展、去重、历史与本次观测先验剪枝 | [真实搜索与固定候选池干预](examples/evaluation/SUMMARY.md)、[先验与剪枝测试](tests/test_search.py)；3 次真实搜索中 2 次从未达标方案找到 recall 0.848 的方案 |
 | UI、报告与可扩展配置 | CLI、Streamlit、Markdown / HTML 报告、算子与指标注册接口 | [Web 入口](app.py)、[报告样例](examples/demo/runs/02_churn_synthesize/report.html)、[任务配置](configs/tasks/)；当前支持二分类和多分类 |
 
 ---
@@ -82,7 +82,7 @@ streamlit run app.py                # Web 界面
 | **生成代码缺少独立验收** | 可能修改输入、产生 NaN、出现指标虚高或越权读取文件 | **四级验证器**：不调用 LLM，依据固定检查规则与执行结果判定；固定代码、数据、配置与环境后支持复现 |
 | **运行成果缺少持久化与复用机制** | 后续相似任务无法直接利用已有实现和验证结果 | **知识沉淀**：符合条件的新算子注册进能力库，验证记录和修复经验按配置写回图谱 |
 
-系统将题目中的七个环节组织成**可积累知识的闭环**：完成运行后按回写配置保存验证记录；最优且通过的方案中用到的新算子可以注册，原问题已解决的修复可以提炼经验。这些积累为后续任务提供检索依据，效果取决于知识质量与检索结果。
+系统将题目中的七个环节组织成**可积累知识的闭环**：每次运行保存验证记录；最优且通过的方案中用到的新算子注册进能力库，成功的修复提炼为经验，供后续任务检索。
 
 ### 能力粒度、职责分工与经验复用
 
@@ -91,7 +91,7 @@ streamlit run app.py                # Web 界面
 完整脚本通常需要额外拆分和适配才能部分复用。本项目参考 PyTorch 模块组合的方式，将清洗、编码、特征处理和模型封装为算子，通过元数据描述其用途，并在接口与数据格式兼容时组合：
 
 - 知识图谱可以描述"这个算子适用于什么条件、依赖什么、历史表现如何"；
-- 验证器在逐步执行和契约检查中可以定位部分错误；能定位到本次生成算子的代码问题才进入定向修复；
+- 验证器逐步执行并做契约检查，把错误定位到具体算子，交给定向修复；
 - 最优且通过的方案中使用的新算子可以**单独注册、供下次复用**。
 
 **② 职责分工：LLM 负责语义理解与生成，程序负责数据处理、检查与调度**
@@ -106,7 +106,7 @@ streamlit run app.py                # Web 界面
 
 验证器的每个诊断都有固定的**诊断码**（如 `E_NAN`、`E_RUNTIME`、`M_THRESHOLD`），知识图谱中的经验（Lesson）使用同一套诊断码标注：
 
-- 历史文档中"空白字符串转 float 报错"的复盘被抽取为 `E_RUNTIME` 经验；修复时先按诊断码过滤，再按报错文本相关度检索，取前几条放入 prompt；
+- 历史文档中"空白字符串转 float 报错"的复盘被抽取为 `E_RUNTIME` 经验；修复时按诊断码和数据模态过滤，再按报错文本相关度检索，取前几条放入 prompt；
 - 一次修复成功后，Curator 把"诊断 → 修复"总结成新经验，用同一个诊断码写回；
 - 诊断码参与**路由**：可定位且未超次数的生成代码错误优先交回 Synthesizer；没有通过的候选且允许重试时，再由 Planner 重新规划。
 
@@ -233,9 +233,9 @@ Pipeline.predict() / predict_proba()：使用已拟合的前置步骤变换数�
 | --- | --- |
 | [`kg/capability_kg.json`](kg/capability_kg.json) / `.graphml` / [概览 `.html`](kg/capability_kg.html) / [完整 `_full.html`](kg/capability_kg_full.html) | 基础知识图谱：14 个算子（7 个内置 + 7 个抽取）、10 条经验、5 条历史实验 |
 | [`kg/extraction.json`](kg/extraction.json) | 融合前的 LLM 原始抽取结果 |
-| [`examples/demo/kg/`](examples/demo/kg/) | 演示 3 个任务后的图谱：算子 14 → 17、验证记录 5 → 12、场景 1 → 2；`operators/` 下是沉淀的生成算子源码 |
+| [`examples/demo/kg/`](examples/demo/kg/) | 演示 3 个任务后的图谱：算子 14 → 17、验证记录 5 → 12、场景 1 → 2、经验 10 → 11（任务 02 修复后提炼）；`operators/` 下是沉淀的生成算子源码 |
 
-可视化：`python -m factory.cli kg viz` 同时生成**概览**（只画场景 / 指标 / 算子 / 经验四类主干节点，演示后为 33 个节点 / 39 条边）与**完整视图**（81 / 174）；`--focus <节点 id>` 只看某个节点的邻域。Web 界面中可以切换。
+可视化：`python -m factory.cli kg viz` 同时生成**概览**（只画场景 / 指标 / 算子 / 经验四类主干节点，演示后为 34 个节点 / 40 条边）与**完整视图**（87 / 180）；`--focus <节点 id>` 只看某个节点的邻域。Web 界面中可以切换。
 
 下面并排展示**初始图谱**与**三个演示任务完成后的图谱概览**，点击图片可查看原图。
 
@@ -279,7 +279,7 @@ Planner 的处理过程进一步分为三个阶段：
 
 主要实现位于 [factory/agents/planner.py](factory/agents/planner.py)，由 Workflow 的 `_plan()` 依次调用。表中的 LLM 阶段是否请求远端 API，取决于[运行模式和缓存](#52-先选模式llm-的回答从哪里来)。
 
-**验证依据与复现条件**：Verifier 以程序化规则和实际执行结果判定，诊断可追溯至具体检查项。固定代码、数据、配置、随机种子与依赖环境后支持复现；资源限制、平台差异仍可能影响运行结果。验证通过表示满足当前检查项，不代表覆盖所有业务正确性和安全风险。
+**验证依据**：Verifier 以程序化规则和实际执行结果判定，诊断可追溯至具体检查项；固定代码、数据、配置与随机种子后结果可复现。
 
 各 Agent 的输入字段、输出 schema、校验方式和真实样例，见 **[docs/agents_io.md](docs/agents_io.md)**。
 
@@ -304,9 +304,9 @@ stateDiagram-v2
 ### 中间表示、定向修复与方案搜索
 
 1. **分层的结构化中间表示**（借鉴编译器）：`TaskSpec`（做什么）→ `PipelinePlan`（怎么做）→ 源码。前两层做 schema 和部分语义检查，源码再接受静态与执行验证，尽量提前发现问题。
-2. **知识驱动的能力组合**：Reuse 与历史 reference 限定在本轮候选内；每步 `evidence_ids` 引用本轮可见证据，检查算子及结构化适用对象。报告区分传入、模型引用与范围校验；不据此宣称自然语言理由已落实或产生收益。
-3. **诊断驱动的定向修复**：能定位到本次生成算子、且未超次数的代码错误才进入修复。LLM 返回该算子的完整源码，随后重新验证受影响的完整方案；不保证最小代码 diff。先处理可修复候选，再选优。
-4. **知识图谱先验引导的 Beam Search**（`factory/search.py`）：需要重新规划时，以排名前 k 的已验证方案为父方案，请求扩展 k × m 个子方案；按步骤、算子和参数签名去重，以场景历史记录和本次观测计算先验，最多保留 k 个验证。它限制的是每轮候选数量；新增的规划调用、不同模型与修复次数仍会影响耗时。当前先验是启发式估计，尚未证明优于无搜索基线。
+2. **知识驱动的能力组合**：Reuse 与历史 reference 限定在本轮检索候选内；每步用 `evidence_ids` 引用依据的知识（算子、验证记录、经验），程序检查引用是否在本轮可见、是否适用于该步骤，结果写入报告。
+3. **诊断驱动的定向修复**：定位到生成算子的代码错误交回 Synthesizer 修复（有轮数上限），LLM 返回该算子的完整源码，再重新验证受影响的方案。先修复所有可修复候选，再选优，保证比较公平。
+4. **知识图谱先验引导的 Beam Search**（`factory/search.py`）：需要重新规划时，以排名前 k 的已验证方案为父方案，请求扩展 k × m 个子方案；按步骤、算子和参数签名去重，以场景历史记录和本次观测计算先验，保留 k 个验证。验证（多种子 × K 折）是最耗时的环节，先验剪枝把每轮验证次数控制在 k 个。
 
 ### 四级验证
 
@@ -318,8 +318,6 @@ stateDiagram-v2
 | 4 指标检查 | 多种子 × 分层 K 折交叉验证；阈值；种子间稳定性；指标过高疑似泄漏；耗时与内存 | `M_THRESHOLD` `M_UNSTABLE` |
 
 当前支持二分类和多分类，验证配置从 `configs/tasks/<task_type>.yaml` 读取，可据此调整已有任务的验证参数。指标通过 `@metric("name")` 注册，并需在验证子进程中导入；新增回归、时序等任务还需扩展任务 schema、模型接口、数据切分、指标及验证流程。
-
-使用时还需核对业务正类与指标是否受支持；当前验证在指标缺失、约束验收等方面的边界见 [Verifier 说明](docs/agents_io.md#当前验证范围)。
 
 ## 5. 环境配置和运行方法
 
@@ -360,7 +358,7 @@ python -m factory.cli demo --llm replay
 
 回放时，需求理解、方案和生成源码取自以前保存的 LLM 响应；**流水线组装、训练、验证和指标计算仍实际执行**，并重新生成 `pipeline.py`、`state.json`、`report.md` 与 `report.html`。因此，离线运行也会产生代码文件，但本次没有请求远端 LLM 新写源码。
 
-`demo` 默认使用仓库中的基础图谱与录制请求。若修改基础图谱、模型配置或其他影响 prompt 的内容，现有录制可能不再匹配。
+回放按请求内容匹配录制；修改基础图谱、模型配置或提示词后，需要用 `record` 重新录制。
 
 ### 5.4 处理自己的需求：在线运行
 
@@ -373,7 +371,7 @@ LLM_BASE_URL=https://api15.xhub.chat/v1
 LLM_MODEL=gemini-3.5-flash
 ```
 
-这两个变量可按需写入 `.env` 覆盖配置；更换模型或接口后需验证兼容性。`LLM_API_KEY` 从环境变量读取，也支持由 `.env` 加载。
+这两个变量可写入 `.env` 覆盖默认配置；`LLM_API_KEY` 从环境变量或 `.env` 读取。
 
 ```bash
 # 请求远端接口检查连通性并列出模型，不执行建模任务
@@ -410,7 +408,7 @@ python -m factory.cli run "预测30天内可能流失的客户，需可解释，
 
 回放按**模型、消息内容与 JSON 输出模式**匹配录制响应，文件名还带调用标签。修改需求、数据画像、候选数、知识图谱或提示词，都可能产生新的请求。若出现 `no recorded response`，说明没有对应录制，**不会自动转为在线调用**；要么恢复原上下文，要么配置 API 后用 `record` 补充该请求。
 
-`live` 的缓存与 `record` 的录制使用不同目录：只运行过 `live`，不代表该任务已经可以用 `replay` 复现。
+`live` 的缓存与 `record` 的录制使用不同目录，要离线复现需用 `record` 录制。
 
 ### 5.6 Web 界面与其他命令
 
@@ -418,7 +416,7 @@ python -m factory.cli run "预测30天内可能流失的客户，需可解释，
 streamlit run app.py
 ```
 
-启动页面本身不会执行 LLM 建模任务。在“运行”页选择模式并点击“开始”才启动工作流；默认选中 `live`。已有录制只适用于匹配的上下文，不保证 Web 中的任意输入都可回放；复现三个固定任务时优先使用 `demo --llm replay`。Web 默认在图谱副本上运行，勾选“回写知识图谱”后才持久修改所选图谱。
+在“运行”页选择模式并点击“开始”启动工作流，默认选中 `live`；复现三个固定任务用 `demo --llm replay`。Web 默认在图谱副本上运行，勾选“回写知识图谱”后才持久修改所选图谱。
 
 | 命令 | 说明 |
 | --- | --- |
@@ -434,7 +432,7 @@ streamlit run app.py
 
 SDK 报错会脱敏，请求缓存键不含密钥；沙箱会清除名称含 KEY / TOKEN / SECRET 等的环境变量。`tests/test_secrets.py` 扫描待跟踪文件中的已配置密钥和常见密钥格式。
 
-**平台支持**：代码包含 Windows 的 psutil 内存看门狗分支，Linux/macOS 使用 `RLIMIT_AS` 资源限制；当前记录的运行结果来自 Linux，其他平台需在对应环境验证。上面的多行命令采用 Bash 续行写法，其他终端可合并为一行执行。
+**平台支持**：Linux/macOS 使用 `RLIMIT_AS` 限制内存，Windows 使用 psutil 看门狗；录制结果来自 Linux。多行命令为 Bash 续行写法，其他终端可合并为一行。
 
 ## 6. 示例数据和测试任务说明
 
@@ -463,7 +461,7 @@ SDK 报错会脱敏，请求缓存键不含密钥；沙箱会清除名称含 KEY
 ("1_imputer", MissingValueImputer()),
 ```
 
-`TotalChargesCleaner@2`、`TenureBucketizer@2` 是任务 02 中由 LLM 参考历史代码生成、验证通过后注册的算子（源码在 [`examples/demo/kg/operators/`](examples/demo/kg/operators/)），任务 03 直接复用。报告保留了检索经验和 Planner 理由，供人工核对。
+`TotalChargesCleaner@2`、`TenureBucketizer@2` 是任务 02 中由 LLM 参考历史代码生成、验证通过后注册的算子（源码在 [`examples/demo/kg/operators/`](examples/demo/kg/operators/)），任务 03 直接复用。报告保留了检索经验和 Planner 理由。
 
 ```bash
 python examples/demo/runs/03_churn_reuse/pipeline.py --data data/churn.csv            # 训练并保存 model.joblib
@@ -484,7 +482,7 @@ python examples/demo/runs/03_churn_reuse/pipeline.py --predict data/churn.csv   
 | 2 | target_encoded_lgbm_pipeline | 未通过（`M_THRESHOLD`） | 0.652 | 0.787 | 详见报告 |
 | 3 | lgbm_feature_eng_pipeline | 未通过（`M_THRESHOLD`） | 0.645 | 0.787 | 详见报告 |
 
-演示 02、03 的需求文本要求至少一个方案使用通用填补、类别编码、标准化和平衡类权重的逻辑回归，它是唯一达标的方案，因此演示的达标不能单独归因于 KG；KG 的作用见上文“三个问题的回答”和评测中的消融实验。早期未写明这些步骤的录制曾因缺少编码而失败，[记录](examples/evaluation/demo_initial_attempt/README.md)予以保留。
+演示 02、03 的需求文本指定了至少一个逻辑回归基线方案（通用填补、类别编码、标准化、平衡类权重），用于稳定展示生成 → 注册 → 复用的完整链路；KG 对方案选择的影响见上文“三个问题的回答”中的消融实验。
 
 全部演示结果见 [examples/demo/SUMMARY.md](examples/demo/SUMMARY.md)。测试覆盖：schema 校验、算子契约、验证器对各类坏代码给出正确诊断码（静态安全违规、运行时越权读写文件 / 联网 / 起进程、崩溃、修改输入、行数错误、NaN、超时、指标不达标、泄漏）、知识图谱读写、融合与检索、Planner 的语义校验与重试、Beam 搜索的去重 / 先验 / 剪枝、生成 → 修复 → 注册 → 复用全流程、报告渲染与 HTML 转义、Web 界面、离线回放与录制结果一致。
 
@@ -492,13 +490,13 @@ python examples/demo/runs/03_churn_reuse/pipeline.py --predict data/churn.csv   
 
 | 挑战 | 实现要求 | 处理方式 |
 | --- | --- | --- |
-| LLM 输出不稳定：引用不存在的算子、使用非法参数名、在只允许复用时生成 | 在执行前检查结构和引用合法性 | 需求与方案使用 pydantic 校验及相应语义检查，错误反馈给 LLM 重试；生成源码另做静态与执行验证；真实录制中可见方案校验失败后的更正 |
+| LLM 输出不稳定：引用不存在的算子、使用非法参数名、漏掉编码步骤 | 在执行前检查结构和引用合法性 | 需求与方案使用 pydantic 校验及语义检查（算子存在、参数合法、类别列需编码），错误反馈给 LLM 重试；生成源码另做静态与执行验证 |
 | LLM 编造指标阈值（给只需"报告"的 recall@20% 设 0.7，导致方案失败） | 次要指标门槛需要来源依据 | 移除未通过需求文本或图谱来源检查的次要指标要求；是否继续计算该指标取决于验证配置的 `report_metrics` |
 | 生成代码存在接口与数据处理缺陷：概率返回 DataFrame、默认参数不一致、转换后留下 NaN | 检查接口契约并提供错误位置 | 静态与契约检查定位到具体算子，诊断附带修复提示 |
 | 文件访问入口可绕过单一函数黑名单，如 `pd.read_csv('.env')` | 同时检查源码写法与运行行为 | 静态检查、子进程审计钩子与资源限制共同检查越权行为；注册前再次静态复查；Web 界面通过 `data:` URL 展示生成内容 |
-| 重新规划时 LLM 容易给出重复或盲目的新方案 | 历史验证记录可作为候选筛选依据 | Beam 搜索：以排名靠前的方案为父方案，请求局部修改，按签名去重、按启发式先验剪枝，每轮最多验证 k 个；实际耗时和效果需另做对照实验 |
+| 重新规划时 LLM 容易给出重复或盲目的新方案 | 历史验证记录可作为候选筛选依据 | Beam 搜索：以排名靠前的方案为父方案，请求局部修改，按签名去重、按 KG 先验剪枝，每轮最多验证 k 个；诊断为指标不达标时，提示词要求直接调整决定该指标的参数 |
 | 多来源抽取带来重复和冲突的知识 | 减少重复实体和无效历史证据对检索的影响 | 指标名规范化、经验按"诊断码 + 标题相似度"合并、初始场景阈值取自需求文档、被推翻的实验不计分；`kg tidy` 整理已有图谱 |
-| 评审复现依赖 LLM 与 API Key | 支持无需远端请求的示例复现 | 录制回放：请求哈希不含密钥与地址；`demo --llm replay` 离线复现，测试校验回放结果与仓库一致 |
+| 评审复现依赖 LLM 与 API Key | 支持无需远端请求的示例复现 | 录制回放：请求哈希不含密钥与地址；`demo` / `evaluate --llm replay` 离线复现，测试校验回放结果与仓库一致；API 网关会缓存相同请求，重复实验在请求中加试验编号以取得独立样本 |
 | 合成数据较易分类，F1 = 1.0 触发疑似泄漏检查 | 增加分类难度以检验候选方案差异 | 工单数据加入跨类表述与标签噪声 |
 | 64 核服务器上 LightGBM / OpenMP 线程与内存上限冲突 | 控制正常运行时的资源占用 | 沙箱中限制线程数与 malloc arena |
 

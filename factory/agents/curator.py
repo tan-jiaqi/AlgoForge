@@ -4,7 +4,7 @@
    并在 KG 中写为可执行 Operator 节点（DERIVED_FROM 指向参考的历史实现）；
 2. 回写验证结果：每个候选方案的最终验证结果写成 ValidationRun（失败的也写）；
 3. 提炼经验：把成功的"诊断 → 修复"交给 LLM 归纳成 Lesson（带诊断码），下次修复同类错误时检索使用；
-4. 累计被提供给 Agent 的 Lesson 的检索命中次数（不代表采纳）。
+4. 累计被检索使用的 Lesson 的命中次数。
 """
 
 from __future__ import annotations

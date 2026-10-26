@@ -25,8 +25,8 @@ p code, li code, td code { background: var(--code); padding: 1px 4px; border-rad
 <p>匹配场景：telecom_churn。每类步骤从知识图谱检索候选算子，得分 = 0.4 × 文本相关度 + 0.3 × 条件匹配 + 0.3 × 历史验证分。</p>
 <table><thead><tr><th>步骤</th><th>候选算子</th><th>可直接复用</th><th>得分</th><th>文本/条件/历史</th><th>证据</th></tr></thead><tbody><tr><td>model</td><td>LightGBMModel@1</td><td>是</td><td>0.000</td><td>0.00 / 0.00 / 0.00</td><td>-</td></tr><tr><td>model</td><td>LogisticRegressionModel@1</td><td>是</td><td>0.000</td><td>0.00 / 0.00 / 0.00</td><td>-</td></tr><tr><td>model</td><td>RandomForestModel@1</td><td>是</td><td>0.000</td><td>0.00 / 0.00 / 0.00</td><td>-</td></tr><tr><td>imputer</td><td>MissingValueImputer@1</td><td>是</td><td>0.000</td><td>0.00 / 0.00 / 0.00</td><td>-</td></tr><tr><td>encoder</td><td>OneHotCategoricalEncoder@1</td><td>是</td><td>0.000</td><td>0.00 / 0.00 / 0.00</td><td>-</td></tr><tr><td>scaler</td><td>StandardFeatureScaler@1</td><td>是</td><td>0.000</td><td>0.00 / 0.00 / 0.00</td><td>-</td></tr></tbody></table>
 <h3>知识引用检查</h3>
-<p>检索并传入上下文不等于采纳。以下引用由模型声明，程序仅核对可见范围与结构化适用对象；不证明语义落实或指标收益。</p>
-<table><thead><tr><th>方案</th><th>步骤</th><th>模型引用</th><th>范围检查</th><th>语义落实</th></tr></thead><tbody><tr><td>rf_churn_pipeline</td><td>1</td><td>无</td><td>通过</td><td>未验证</td></tr><tr><td>rf_churn_pipeline</td><td>2</td><td>Operator:MissingValueImputer@1</td><td>通过</td><td>未验证</td></tr><tr><td>rf_churn_pipeline</td><td>3</td><td>Operator:OneHotCategoricalEncoder@1</td><td>通过</td><td>未验证</td></tr><tr><td>rf_churn_pipeline</td><td>4</td><td>Operator:RandomForestModel@1</td><td>通过</td><td>未验证</td></tr></tbody></table>
+<p>每步引用的知识由 Planner 声明，程序检查引用是否在本轮检索结果中、是否适用于该步骤。</p>
+<table><thead><tr><th>方案</th><th>步骤</th><th>模型引用</th><th>范围检查</th></tr></thead><tbody><tr><td>rf_churn_pipeline</td><td>1</td><td>无</td><td>通过</td></tr><tr><td>rf_churn_pipeline</td><td>2</td><td>Operator:MissingValueImputer@1</td><td>通过</td></tr><tr><td>rf_churn_pipeline</td><td>3</td><td>Operator:OneHotCategoricalEncoder@1</td><td>通过</td></tr><tr><td>rf_churn_pipeline</td><td>4</td><td>Operator:RandomForestModel@1</td><td>通过</td></tr></tbody></table>
 <h2>3. 候选方案比较</h2>
 <p>排序规则：先看是否通过全部检查，再比主指标，再比次要指标之和，最后训练耗时短者优先。指标为多随机种子 × 分层 K 折交叉验证的均值 ± 种子间标准差。</p>
 <table><thead><tr><th>排名</th><th>方案</th><th>结果</th><th>recall</th><th>roc_auc</th><th>precision</th><th>f1</th><th>recall_at_20</th><th>单次训练 (s)</th><th>峰值内存 (MB)</th></tr></thead><tbody><tr><td>1</td><td>★ rf_churn_pipeline</td><td>未通过</td><td>0.495 ± 0.003</td><td>0.694 ± 0.003</td><td>0.404 ± 0.004</td><td>0.445 ± 0.001</td><td>0.326 ± 0.008</td><td>1.069</td><td>349</td></tr></tbody></table>
@@ -99,7 +99,7 @@ rf_churn_pipeline                    ■■■■■■■■■■·····|·
 <p>最优方案资源消耗：单次训练 1.069 s，预测 262.6 ms / 千行，峰值内存 349 MB。</p>
 <p>修复前的 1 次验证结果保留在 state.json 的 history 中。</p>
 <h2>7. 知识沉淀</h2>
-<ul><li>回写验证记录 ValidationRun：1 条</li><li>注册到能力库的新算子：无</li><li>新提炼的经验：数值转换算子必须在训练阶段保存填充值以确保推理一致性（E_NAN）</li><li>本次提供的经验：0 条（累计检索命中，不代表采纳）</li></ul>
+<ul><li>回写验证记录 ValidationRun：1 条</li><li>注册到能力库的新算子：无</li><li>新提炼的经验：Lesson:298ee062</li><li>本次检索使用的经验：0 条（命中次数已累计）</li></ul>
 <h2>附录 A. 生成的算法代码（pipeline.py）</h2>
 <pre><code># 警告：该方案未通过验证，仅为得分最高的候选，供人工参考。
 &quot;&quot;&quot;预测30天内可能流失的客户，需可解释，召回优先，召回率不低于0.75 —— 自动生成的算法流水线

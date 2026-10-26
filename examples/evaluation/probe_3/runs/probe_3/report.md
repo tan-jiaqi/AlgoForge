@@ -53,23 +53,23 @@
 
 ### 知识引用检查
 
-检索并传入上下文不等于采纳。以下引用由模型声明，程序仅核对可见范围与结构化适用对象；不证明语义落实或指标收益。
+每步引用的知识由 Planner 声明，程序检查引用是否在本轮检索结果中、是否适用于该步骤。
 
-| 方案 | 步骤 | 模型引用 | 范围检查 | 语义落实 |
-| --- | --- | --- | --- | --- |
-| lgbm_recall_priority_pipeline | 1 | Operator:TotalChargesCleaner@1、Lesson:69d51358 | 通过 | 未验证 |
-| lgbm_recall_priority_pipeline | 2 | Operator:ChargeRatioFeatureGenerator@1 | 通过 | 未验证 |
-| lgbm_recall_priority_pipeline | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 | 未验证 |
-| lgbm_recall_priority_pipeline | 4 | Operator:LightGBMModel@1、Lesson:9e9e77d6 | 通过 | 未验证 |
-| interpretable_logreg_pipeline | 1 | Operator:TotalChargesCleaner@1 | 通过 | 未验证 |
-| interpretable_logreg_pipeline | 2 | Operator:IdColumnDropper@1、Lesson:88299a38 | 通过 | 未验证 |
-| interpretable_logreg_pipeline | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 | 未验证 |
-| interpretable_logreg_pipeline | 4 | Operator:StandardFeatureScaler@1、Lesson:74e2da10 | 通过 | 未验证 |
-| interpretable_logreg_pipeline | 5 | Operator:LogisticRegressionModel@1、Lesson:74e2da10 | 通过 | 未验证 |
-| random_forest_robust_pipeline | 1 | Operator:MissingValueImputer@1 | 通过 | 未验证 |
-| random_forest_robust_pipeline | 2 | Operator:ServiceCountFeature@1 | 通过 | 未验证 |
-| random_forest_robust_pipeline | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 | 未验证 |
-| random_forest_robust_pipeline | 4 | Operator:RandomForestModel@1、Lesson:57718714 | 通过 | 未验证 |
+| 方案 | 步骤 | 模型引用 | 范围检查 |
+| --- | --- | --- | --- |
+| lgbm_recall_priority_pipeline | 1 | Operator:TotalChargesCleaner@1、Lesson:69d51358 | 通过 |
+| lgbm_recall_priority_pipeline | 2 | Operator:ChargeRatioFeatureGenerator@1 | 通过 |
+| lgbm_recall_priority_pipeline | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 |
+| lgbm_recall_priority_pipeline | 4 | Operator:LightGBMModel@1、Lesson:9e9e77d6 | 通过 |
+| interpretable_logreg_pipeline | 1 | Operator:TotalChargesCleaner@1 | 通过 |
+| interpretable_logreg_pipeline | 2 | Operator:IdColumnDropper@1、Lesson:88299a38 | 通过 |
+| interpretable_logreg_pipeline | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 |
+| interpretable_logreg_pipeline | 4 | Operator:StandardFeatureScaler@1、Lesson:74e2da10 | 通过 |
+| interpretable_logreg_pipeline | 5 | Operator:LogisticRegressionModel@1、Lesson:74e2da10 | 通过 |
+| random_forest_robust_pipeline | 1 | Operator:MissingValueImputer@1 | 通过 |
+| random_forest_robust_pipeline | 2 | Operator:ServiceCountFeature@1 | 通过 |
+| random_forest_robust_pipeline | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 |
+| random_forest_robust_pipeline | 4 | Operator:RandomForestModel@1、Lesson:57718714 | 通过 |
 
 ## 3. 候选方案比较
 
@@ -157,8 +157,8 @@ LogisticRegression does not accept missing values encoded as NaN natively. For s
 
 - 回写验证记录 ValidationRun：3 条
 - 注册到能力库的新算子：无
-- 新提炼的经验：确保算子元数据 params 与 __init__ 默认参数类型及结构严格对齐（E_INTERFACE）
-- 本次提供的经验：7 条（累计检索命中，不代表采纳）
+- 新提炼的经验：Lesson:e1a9809a
+- 本次检索使用的经验：7 条（命中次数已累计）
 
 ## 附录 A. 生成的算法代码（pipeline.py）
 

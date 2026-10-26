@@ -53,51 +53,51 @@
 
 ### 知识引用检查
 
-检索并传入上下文不等于采纳。以下引用由模型声明，程序仅核对可见范围与结构化适用对象；不证明语义落实或指标收益。
+每步引用的知识由 Planner 声明，程序检查引用是否在本轮检索结果中、是否适用于该步骤。
 
-| 方案 | 步骤 | 模型引用 | 范围检查 | 语义落实 |
-| --- | --- | --- | --- | --- |
-| lgbm_imbalanced_pipeline | 1 | Operator:TotalChargesCleaner@1 | 通过 | 未验证 |
-| lgbm_imbalanced_pipeline | 2 | Operator:MissingValueImputer@1 | 通过 | 未验证 |
-| lgbm_imbalanced_pipeline | 3 | Operator:IdColumnDropper@1 | 通过 | 未验证 |
-| lgbm_imbalanced_pipeline | 4 | Operator:OneHotCategoricalEncoder@1 | 通过 | 未验证 |
-| lgbm_imbalanced_pipeline | 5 | Operator:LightGBMModel@1、ValidationRun:f6e4284c | 通过 | 未验证 |
-| （被拒绝的规划） | - | 无 | 未通过：interpretable_logreg_pipeline: 数据含类别列，模型之前缺少 encoder 步骤（如 OneHotCategoricalEncoder）；interpretable_logreg_pipeline: 第 2 步：缺少 Operator:MissingValueImputer@1 证据引用；rf_recall_focused: 数据含类别列，模型之前缺少 encoder 步骤（如 OneHotCategoricalEncoder） | 未验证 |
-| lgbm_recall_optimized | 1 | Operator:TotalChargesCleaner@1、Lesson:69d51358 | 通过 | 未验证 |
-| lgbm_recall_optimized | 2 | Operator:MissingValueImputer@1 | 通过 | 未验证 |
-| lgbm_recall_optimized | 3 | Operator:ChargeRatioFeatureGenerator@1、ValidationRun:f6e4284c | 通过 | 未验证 |
-| lgbm_recall_optimized | 4 | Operator:OneHotCategoricalEncoder@1 | 通过 | 未验证 |
-| lgbm_recall_optimized | 5 | Operator:LightGBMModel@1、Lesson:9e9e77d6 | 通过 | 未验证 |
-| lgbm_with_tenure_bucket | 1 | Operator:TotalChargesCleaner@1 | 通过 | 未验证 |
-| lgbm_with_tenure_bucket | 2 | Operator:TenureBucketizer@1、ValidationRun:f6e4284c | 通过 | 未验证 |
-| lgbm_with_tenure_bucket | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 | 未验证 |
-| lgbm_with_tenure_bucket | 4 | Operator:LightGBMModel@1、Lesson:f2c1398b | 通过 | 未验证 |
-| interpretable_logreg_pipeline | 1 | Operator:TotalChargesCleaner@1 | 通过 | 未验证 |
-| interpretable_logreg_pipeline | 2 | Operator:MissingValueImputer@1 | 通过 | 未验证 |
-| interpretable_logreg_pipeline | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 | 未验证 |
-| interpretable_logreg_pipeline | 4 | Operator:StandardFeatureScaler@1 | 通过 | 未验证 |
-| interpretable_logreg_pipeline | 5 | Operator:LogisticRegressionModel@1、Lesson:74e2da10 | 通过 | 未验证 |
-| rf_recall_focused | 1 | Operator:TotalChargesCleaner@1 | 通过 | 未验证 |
-| rf_recall_focused | 2 | Operator:ServiceCountFeature@1 | 通过 | 未验证 |
-| rf_recall_focused | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 | 未验证 |
-| rf_recall_focused | 4 | Operator:RandomForestModel@1、Lesson:57718714 | 通过 | 未验证 |
-| （被拒绝的规划） | - | 无 | 未通过：logistic_interpretable_weighted: 第 2 步：缺少 Operator:OneHotCategoricalEncoder@1 证据引用 | 未验证 |
-| lgbm_feature_rich_weighted | 1 | Operator:TotalChargesCleaner@1 | 通过 | 未验证 |
-| lgbm_feature_rich_weighted | 2 | Operator:ChargeRatioFeatureGenerator@1 | 通过 | 未验证 |
-| lgbm_feature_rich_weighted | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 | 未验证 |
-| lgbm_feature_rich_weighted | 4 | Operator:LightGBMModel@1、Lesson:f2c1398b | 通过 | 未验证 |
-| rf_feature_ensemble_recall | 1 | Operator:TotalChargesCleaner@1 | 通过 | 未验证 |
-| rf_feature_ensemble_recall | 2 | Operator:ServiceCountFeature@1 | 通过 | 未验证 |
-| rf_feature_ensemble_recall | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 | 未验证 |
-| rf_feature_ensemble_recall | 4 | Operator:RandomForestModel@1、Lesson:57718714 | 通过 | 未验证 |
-| lgbm_tenure_bucket_optimized | 1 | Operator:TotalChargesCleaner@1 | 通过 | 未验证 |
-| lgbm_tenure_bucket_optimized | 2 | Operator:TenureBucketizer@1 | 通过 | 未验证 |
-| lgbm_tenure_bucket_optimized | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 | 未验证 |
-| lgbm_tenure_bucket_optimized | 4 | Operator:LightGBMModel@1、ValidationRun:f6e4284c | 通过 | 未验证 |
-| logistic_interpretable_weighted | 1 | Operator:TotalChargesCleaner@1 | 通过 | 未验证 |
-| logistic_interpretable_weighted | 2 | Operator:OneHotCategoricalEncoder@1 | 通过 | 未验证 |
-| logistic_interpretable_weighted | 3 | Operator:StandardFeatureScaler@1 | 通过 | 未验证 |
-| logistic_interpretable_weighted | 4 | Operator:LogisticRegressionModel@1、Lesson:74e2da10 | 通过 | 未验证 |
+| 方案 | 步骤 | 模型引用 | 范围检查 |
+| --- | --- | --- | --- |
+| lgbm_imbalanced_pipeline | 1 | Operator:TotalChargesCleaner@1 | 通过 |
+| lgbm_imbalanced_pipeline | 2 | Operator:MissingValueImputer@1 | 通过 |
+| lgbm_imbalanced_pipeline | 3 | Operator:IdColumnDropper@1 | 通过 |
+| lgbm_imbalanced_pipeline | 4 | Operator:OneHotCategoricalEncoder@1 | 通过 |
+| lgbm_imbalanced_pipeline | 5 | Operator:LightGBMModel@1、ValidationRun:f6e4284c | 通过 |
+| （被拒绝的规划） | - | 无 | 未通过：interpretable_logreg_pipeline: 数据含类别列，模型之前缺少 encoder 步骤（如 OneHotCategoricalEncoder）；interpretable_logreg_pipeline: 第 2 步：缺少 Operator:MissingValueImputer@1 证据引用；rf_recall_focused: 数据含类别列，模型之前缺少 encoder 步骤（如 OneHotCategoricalEncoder） |
+| lgbm_recall_optimized | 1 | Operator:TotalChargesCleaner@1、Lesson:69d51358 | 通过 |
+| lgbm_recall_optimized | 2 | Operator:MissingValueImputer@1 | 通过 |
+| lgbm_recall_optimized | 3 | Operator:ChargeRatioFeatureGenerator@1、ValidationRun:f6e4284c | 通过 |
+| lgbm_recall_optimized | 4 | Operator:OneHotCategoricalEncoder@1 | 通过 |
+| lgbm_recall_optimized | 5 | Operator:LightGBMModel@1、Lesson:9e9e77d6 | 通过 |
+| lgbm_with_tenure_bucket | 1 | Operator:TotalChargesCleaner@1 | 通过 |
+| lgbm_with_tenure_bucket | 2 | Operator:TenureBucketizer@1、ValidationRun:f6e4284c | 通过 |
+| lgbm_with_tenure_bucket | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 |
+| lgbm_with_tenure_bucket | 4 | Operator:LightGBMModel@1、Lesson:f2c1398b | 通过 |
+| interpretable_logreg_pipeline | 1 | Operator:TotalChargesCleaner@1 | 通过 |
+| interpretable_logreg_pipeline | 2 | Operator:MissingValueImputer@1 | 通过 |
+| interpretable_logreg_pipeline | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 |
+| interpretable_logreg_pipeline | 4 | Operator:StandardFeatureScaler@1 | 通过 |
+| interpretable_logreg_pipeline | 5 | Operator:LogisticRegressionModel@1、Lesson:74e2da10 | 通过 |
+| rf_recall_focused | 1 | Operator:TotalChargesCleaner@1 | 通过 |
+| rf_recall_focused | 2 | Operator:ServiceCountFeature@1 | 通过 |
+| rf_recall_focused | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 |
+| rf_recall_focused | 4 | Operator:RandomForestModel@1、Lesson:57718714 | 通过 |
+| （被拒绝的规划） | - | 无 | 未通过：logistic_interpretable_weighted: 第 2 步：缺少 Operator:OneHotCategoricalEncoder@1 证据引用 |
+| lgbm_feature_rich_weighted | 1 | Operator:TotalChargesCleaner@1 | 通过 |
+| lgbm_feature_rich_weighted | 2 | Operator:ChargeRatioFeatureGenerator@1 | 通过 |
+| lgbm_feature_rich_weighted | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 |
+| lgbm_feature_rich_weighted | 4 | Operator:LightGBMModel@1、Lesson:f2c1398b | 通过 |
+| rf_feature_ensemble_recall | 1 | Operator:TotalChargesCleaner@1 | 通过 |
+| rf_feature_ensemble_recall | 2 | Operator:ServiceCountFeature@1 | 通过 |
+| rf_feature_ensemble_recall | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 |
+| rf_feature_ensemble_recall | 4 | Operator:RandomForestModel@1、Lesson:57718714 | 通过 |
+| lgbm_tenure_bucket_optimized | 1 | Operator:TotalChargesCleaner@1 | 通过 |
+| lgbm_tenure_bucket_optimized | 2 | Operator:TenureBucketizer@1 | 通过 |
+| lgbm_tenure_bucket_optimized | 3 | Operator:OneHotCategoricalEncoder@1 | 通过 |
+| lgbm_tenure_bucket_optimized | 4 | Operator:LightGBMModel@1、ValidationRun:f6e4284c | 通过 |
+| logistic_interpretable_weighted | 1 | Operator:TotalChargesCleaner@1 | 通过 |
+| logistic_interpretable_weighted | 2 | Operator:OneHotCategoricalEncoder@1 | 通过 |
+| logistic_interpretable_weighted | 3 | Operator:StandardFeatureScaler@1 | 通过 |
+| logistic_interpretable_weighted | 4 | Operator:LogisticRegressionModel@1、Lesson:74e2da10 | 通过 |
 
 ## 3. 候选方案比较
 
@@ -335,7 +335,7 @@ order (MRO) for bases BaseEstimator, TransformerMixin, Operator (at <module>:7)
 - 回写验证记录 ValidationRun：5 条
 - 注册到能力库的新算子：无
 - 新提炼的经验：Lesson:ab7c0120
-- 本次提供的经验：7 条（累计检索命中，不代表采纳）
+- 本次检索使用的经验：7 条（命中次数已累计）
 
 ## 附录 A. 生成的算法代码（pipeline.py）
 

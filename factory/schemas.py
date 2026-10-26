@@ -99,6 +99,7 @@ class Step(BaseModel):
     synth_spec: SynthSpec | None = None
     params: dict[str, Any] = Field(default_factory=dict)
     rationale: str = ""
+    # description 会进入发给 LLM 的 JSON schema，修改会使已录制的规划请求无法回放
     evidence_ids: list[str] = Field(default_factory=list, description="本轮上下文中的证据 ID；引用仅表示模型声明采用")
 
     @model_validator(mode="after")
@@ -291,7 +292,7 @@ class RunState(BaseModel):
     artifacts: dict[str, str] = Field(default_factory=dict)
     llm_model: str | None = None
     retrieval: dict[str, Any] = Field(default_factory=dict, description="Planner 检索到的候选算子与经验（设计依据）")
-    evidence_checks: list[dict[str, Any]] = Field(default_factory=list, description="已接受步骤的引用范围检查；不代表语义落实")
+    evidence_checks: list[dict[str, Any]] = Field(default_factory=list, description="引用范围检查结果，含被拒绝的规划及原因")
     llm_calls: list[dict[str, Any]] = Field(default_factory=list)
     knowledge_mode: str = "full"
     verify_config: dict[str, Any] = Field(default_factory=dict)

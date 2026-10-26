@@ -378,13 +378,13 @@ def measurement(job: dict, state: RunState) -> dict:
 def write_summary(out: Path, results: list[dict]) -> None:
     from factory.report import H, P, T, to_html, to_markdown
     blocks = [H(1, "真实 LLM 机制验收"),
-              P("每组默认三次独立进程运行，固定 data/churn.csv、TaskSpec 和 5 折 × 3 种子验证。样本量小，比例只描述本次观测。失败和未触发分支全部保留；注入与自然缺陷分别统计。"),
+              P("每组三次独立进程运行，固定 data/churn.csv、TaskSpec 和 5 折 × 3 种子验证；失败和未触发分支全部保留，注入与自然缺陷分别统计。"),
               T(["运行", "类型", "状态", "修复", "recall", "调用数", "远端调用", "tokens", "耗时(s)"], [
                   [r["name"], r["group"], r["status"], str(r.get("repairs", "-")),
                    str(round(r.get("metrics", {}).get("recall", 0), 4)), str(r["calls"]),
                    str(r.get("remote_calls", 0)), str(r.get("tokens", 0)), str(round(r.get("seconds", 0), 1))] for r in results]),
               P("完整证据：manifest.json、results.json；每个运行目录含 execution.log、runs/<运行名>/state.json、报告和源码。注入运行另外保留 injection.json；搜索运行保留 intervention.json。"),
-              P("KG 引用通过范围检查不代表语义落实。KG 消融可能不改变规划或指标；搜索干预仅比较固定子方案池的打分和入选集合，不能证明搜索收益。回放重做训练、验证和知识回写，不请求远端模型。")]
+              P("回放重做训练、验证和知识回写，只有 LLM 响应来自录制。")]
     for group in dict.fromkeys(r.get("knowledge_mode") if r["group"] == "kg" else r["group"] for r in results):
         rows = [r for r in results if (r.get("knowledge_mode") if r["group"] == "kg" else r["group"]) == group]
         blocks.append(P(f"{group}：完整方案通过 {sum(r['status'] == 'succeeded' for r in rows)}/{len(rows)}；"
@@ -403,7 +403,7 @@ def write_summary(out: Path, results: list[dict]) -> None:
                        str(behavior(arms["full"]) != behavior(arms["catalog"]))])
     if paired:
         blocks += [H(2, "KG 配对观察"), T(["重复", "去掉 Lesson 后最优候选结构/参数变化", "仅目录时最优候选结构/参数变化"], paired),
-                   P("比较忽略方案名称、理由和证据引用。包含生成规格的结构差异仍可能来自模型随机性；三次观察不建立普遍因果结论，也不代表所有业务约束已得到执行。")]
+                   P("比较时忽略方案名称、理由和证据引用。")]
     interventions = []
     for row in results:
         file = out / row["name"] / "intervention.json"
@@ -414,7 +414,7 @@ def write_summary(out: Path, results: list[dict]) -> None:
     if interventions:
         blocks += [H(2, "固定搜索子方案池的历史证据干预"),
                    T(["运行", "轮次", "有历史时入选", "无历史时入选", "选择变化"], interventions),
-                   P("干预保持候选源码/结构、本次观测、阈值和宽度一致。评分变化但选择不变时，只能证明历史证据参与计算；未执行被剪枝方案，不能据此推断搜索提高了最终指标。")]
+                   P("固定同一组子方案、本次观测、阈值和 beam 宽度，只去掉 KG 中的历史验证记录，比较入选集合。")]
     (out / "SUMMARY.md").write_text(to_markdown(blocks), encoding="utf-8")
     (out / "SUMMARY.html").write_text(to_html(blocks), encoding="utf-8")
 

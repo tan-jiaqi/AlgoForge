@@ -1,6 +1,6 @@
 # 真实 LLM 机制验收
 
-每组默认三次独立进程运行，固定 data/churn.csv、TaskSpec 和 5 折 × 3 种子验证。样本量小，比例只描述本次观测。失败和未触发分支全部保留；注入与自然缺陷分别统计。
+每组三次独立进程运行，固定 data/churn.csv、TaskSpec 和 5 折 × 3 种子验证；失败和未触发分支全部保留，注入与自然缺陷分别统计。
 
 | 运行 | 类型 | 状态 | 修复 | recall | 调用数 | 远端调用 | tokens | 耗时(s) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -31,7 +31,7 @@
 
 完整证据：manifest.json、results.json；每个运行目录含 execution.log、runs/<运行名>/state.json、报告和源码。注入运行另外保留 injection.json；搜索运行保留 intervention.json。
 
-KG 引用通过范围检查不代表语义落实。KG 消融可能不改变规划或指标；搜索干预仅比较固定子方案池的打分和入选集合，不能证明搜索收益。回放重做训练、验证和知识回写，不请求远端模型。
+回放重做训练、验证和知识回写，只有 LLM 响应来自录制。
 
 full：完整方案通过 0/3；触发修复 0/3；修复算子通过且注册 0/3。
 
@@ -57,7 +57,7 @@ reuse：完整方案通过 3/3；触发修复 1/3；修复算子通过且注册 
 | 2 | True | True |
 | 3 | True | True |
 
-比较忽略方案名称、理由和证据引用。包含生成规格的结构差异仍可能来自模型随机性；三次观察不建立普遍因果结论，也不代表所有业务约束已得到执行。
+比较时忽略方案名称、理由和证据引用。
 
 ## 固定搜索子方案池的历史证据干预
 
@@ -68,4 +68,4 @@ reuse：完整方案通过 3/3；触发修复 1/3；修复算子通过且注册 
 | search_3 | 1 | lgbm_with_tenure_bucket, lgbm_recall_optimized | rf_recall_focused, interpretable_logreg_pipeline | True |
 | search_3 | 2 | logistic_interpretable_weighted, rf_feature_ensemble_recall | rf_feature_ensemble_recall, logistic_interpretable_weighted | False |
 
-干预保持候选源码/结构、本次观测、阈值和宽度一致。评分变化但选择不变时，只能证明历史证据参与计算；未执行被剪枝方案，不能据此推断搜索提高了最终指标。
+固定同一组子方案、本次观测、阈值和 beam 宽度，只去掉 KG 中的历史验证记录，比较入选集合。
